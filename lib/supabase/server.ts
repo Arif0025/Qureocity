@@ -15,13 +15,23 @@ export function createServerSupabase() {
           return cookieStore.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options });
+          try {
+            cookieStore.set({ name, value, ...options });
+          } catch {
+            // Expected when called from a Server Component (which can only
+            // read cookies, not write them) — the middleware below is what
+            // actually persists a refreshed session's cookie.
+          }
         },
         remove(name: string, options: CookieOptions) {
-          cookieStore.set({ name, value: "", ...options });
+          try {
+            cookieStore.set({ name, value: "", ...options });
+          } catch {
+            // Same reasoning as set() above.
+          }
         },
       },
-    }
+    },
   );
 }
 
@@ -36,6 +46,6 @@ export function createServiceRoleClient() {
   return createRawClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
+    { auth: { persistSession: false } },
   );
 }

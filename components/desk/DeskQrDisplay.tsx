@@ -2,61 +2,148 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const STATIC_QR_VALUE = process.env.NEXT_PUBLIC_DESK_QR_VALUE ?? "QUREOCITY-FRONT-DESK";
+const STATIC_QR_VALUE =
+  process.env.NEXT_PUBLIC_DESK_QR_VALUE ?? "QUREOCITY-FRONT-DESK";
+const BUCKET_MS = 45_000; // must match lib/qrToken.ts
 
 // ---------------------------------------------------------------------
-// PLUG-AND-PLAY POINT for the future rotating QR.
-// When you're ready to build it, this is the one function to implement:
-// it should return a fresh signed value (e.g. a short JWT or
-// HMAC(secret, timestamp)) from a server endpoint, and this component
-// already re-calls it on the interval below. Everything else — the
-// toggle, the settings row, the desk page, the QR rendering — is
-// already wired to use whatever this returns.
+// Fetches a fresh signed, time-boxed token every 45s from the server.
+// The signing secret never reaches the browser — this just displays
+// whatever the server hands back.
 // ---------------------------------------------------------------------
 async function getDynamicQrValue(): Promise<string> {
-  // TODO: replace with a fetch to a signed-token endpoint, e.g.:
-  // const res = await fetch("/api/desk/qr-token");
-  // return (await res.json()).token;
-  return STATIC_QR_VALUE; // falls back to static until this is implemented
+  try {
+    const res = await fetch("/api/desk/qr-token", { cache: "no-store" });
+    const data = await res.json();
+    return data.token ?? STATIC_QR_VALUE;
+  } catch {
+    return STATIC_QR_VALUE; // fail safe to static rather than showing a broken code
+  }
 }
 
-export default function DeskQrDisplay({ mode }: { mode: "static" | "dynamic" }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [notice, setNotice] = useState<string | null>(
-    mode === "dynamic" ? "Dynamic mode not built yet — showing the static code." : null
+// Ring is synced to the actual wall-clock bucket boundary (not a local
+// timer that starts counting from whenever the page loaded) — so it
+// stays accurate to the moment the code will really refresh, even if
+// this tab has been open for hours.
+function useBucketCountdown(active: boolean) {
+  const [remainingMs, setRemainingMs] = useState(BUCKET_MS);
+
+  useEffect(() => {
+    if (!active) return;
+    const tick = () => setRemainingMs(BUCKET_MS - (Date.now() % BUCKET_MS));
+    tick();
+    const id = setInterval(tick, 200);
+    return () => clearInterval(id);
+  }, [active]);
+
+  return remainingMs;
+}
+
+function CountdownRing({ remainingMs }: { remainingMs: number }) {
+  const pct = remainingMs / BUCKET_MS;
+  const radius = 22;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference * (1 - pct);
+  const seconds = Math.ceil(remainingMs / 1000);
+
+  return (
+    <div className="relative w-14 h-14 mx-auto">
+      <svg viewBox="0 0 52 52" className="w-14 h-14 -rotate-90">
+        <circle
+          cx="26"
+          cy="26"
+          r={radius}
+          fill="none"
+          stroke="#00000012"
+          strokeWidth="4"
+        />
+        <circle
+          cx="26"
+          cy="26"
+          r={radius}
+          fill="none"
+          stroke="#9A66AF"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          style={{ transition: "stroke-dashoffset 0.2s linear" }}
+        />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-brand-sky">
+        {seconds}
+      </span>
+    </div>
   );
+}
+
+export default function DeskQrDisplay({
+  mode,
+}: {
+  mode: "static" | "dynamic";
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const remainingMs = useBucketCountdown(mode === "dynamic");
 
   useEffect(() => {
     let cancelled = false;
-    let interval: ReturnType<typeof setInterval> | undefined;
 
     async function render() {
       const QRCode = (await import("qrcode")).default;
-      const value = mode === "dynamic" ? await getDynamicQrValue() : STATIC_QR_VALUE;
+      const value =
+        mode === "dynamic" ? await getDynamicQrValue() : STATIC_QR_VALUE;
       if (cancelled || !canvasRef.current) return;
-      QRCode.toCanvas(canvasRef.current, value, { width: 360, margin: 2 });
+      QRCode.toCanvas(canvasRef.current, value, {
+        width: 320,
+        margin: 2,
+        color: { dark: "#3A2E42", light: "#FFFFFF" },
+      });
     }
 
     render();
+    // Re-fetch right as each bucket rolls over, synced to the same
+    // clock the countdown ring uses, rather than a fixed setInterval
+    // that could drift out of step with it.
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     if (mode === "dynamic") {
-      // Re-renders every 45s once getDynamicQrValue() actually rotates —
-      // harmless no-op refresh until then, since it returns the same
-      // static value each time.
-      interval = setInterval(render, 45_000);
+      const msUntilNextBucket = BUCKET_MS - (Date.now() % BUCKET_MS);
+      timeout = setTimeout(function loop() {
+        render();
+        timeout = setTimeout(loop, BUCKET_MS);
+      }, msUntilNextBucket);
     }
 
     return () => {
       cancelled = true;
-      if (interval) clearInterval(interval);
+      if (timeout) clearTimeout(timeout);
     };
   }, [mode]);
 
   return (
-    <div className="min-h-screen bg-brand-cloud flex flex-col items-center justify-center px-4">
-      <div className="bg-white rounded-xl2 shadow-sm p-10 text-center">
-        <p className="text-brand-ink/60 font-medium mb-6">Scan to punch in / out</p>
-        <canvas ref={canvasRef} />
-        {notice && <p className="text-xs text-brand-ink/40 mt-4">{notice}</p>}
+    <div className="min-h-screen bg-brand-cloud flex flex-col items-center justify-center px-4 relative overflow-hidden">
+      <div className="pointer-events-none absolute -top-20 -left-20 w-72 h-72 rounded-full bg-brand-sun/20 blur-2xl" />
+      <div className="pointer-events-none absolute bottom-0 -right-20 w-80 h-80 rounded-full bg-brand-sky/10 blur-2xl" />
+
+      <img
+        src="/logo-full.png"
+        alt="QureoCity"
+        className="h-14 mb-6 relative"
+      />
+
+      <div className="bg-white rounded-xl2 shadow-lg p-10 text-center relative">
+        <p className="text-brand-ink/60 font-semibold mb-6">
+          Scan to punch in / out
+        </p>
+        <canvas ref={canvasRef} className="mx-auto rounded-lg" />
+
+        {mode === "dynamic" && (
+          <div className="mt-6">
+            <CountdownRing remainingMs={remainingMs} />
+            <p className="text-xs text-brand-ink/40 mt-2">
+              Refreshes automatically
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -6,21 +6,27 @@ import { resetEmployeePassword } from "@/app/admin/actions";
 
 type Staff = { id: string; name: string; role: string };
 
-export default function StaffTable({ staff, isAdmin }: { staff: Staff[]; isAdmin: boolean }) {
+export default function StaffTable({
+  staff,
+  isAdmin,
+}: {
+  staff: Staff[];
+  isAdmin: boolean;
+}) {
   const [modalOpen, setModalOpen] = useState(false);
   const [resettingId, setResettingId] = useState<string | null>(null);
 
   const handleReset = async (id: string, name: string) => {
     if (!confirm(`Reset ${name}'s password?`)) return;
     setResettingId(id);
-    try {
-      const { newTemporaryPassword } = await resetEmployeePassword(id);
-      alert(`New temporary password for ${name}: ${newTemporaryPassword}`);
-    } catch (e: any) {
-      alert(e.message ?? "Couldn't reset password.");
-    } finally {
-      setResettingId(null);
+    const result = await resetEmployeePassword(id);
+    setResettingId(null);
+
+    if (result.error) {
+      alert(result.error);
+      return;
     }
+    alert(`New temporary password for ${name}: ${result.newTemporaryPassword}`);
   };
 
   return (
@@ -37,7 +43,9 @@ export default function StaffTable({ staff, isAdmin }: { staff: Staff[]; isAdmin
           {staff.map((s) => (
             <tr key={s.id} className="border-t border-black/5">
               <td className="px-5 py-3 font-medium text-brand-ink">{s.name}</td>
-              <td className="px-5 py-3 text-brand-ink/60 capitalize">{s.role}</td>
+              <td className="px-5 py-3 text-brand-ink/60 capitalize">
+                {s.role}
+              </td>
               {isAdmin && (
                 <td className="px-5 py-3 text-right">
                   <button

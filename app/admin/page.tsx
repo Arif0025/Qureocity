@@ -23,9 +23,13 @@ export default async function AdminPage() {
     .single();
 
   if (!employee) redirect("/employee/login");
+  if (employee.role !== "admin") redirect("/employee");
 
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
+
+  const seventyDaysAgo = new Date();
+  seventyDaysAgo.setDate(seventyDaysAgo.getDate() - 70);
 
   const [
     { data: sessions },
@@ -34,10 +38,15 @@ export default async function AdminPage() {
     { data: onDutyLogs },
     { count: todayCheckinCount },
     { data: durationRows },
+    { data: ageBuckets },
+    { data: dailyCounts },
+    { data: shifts },
   ] = await Promise.all([
     supabase
       .from("play_sessions")
-      .select("id, start_time, end_time, status, children(name, customers(name))")
+      .select(
+        "id, start_time, end_time, status, children(name, customers(name))",
+      )
       .eq("status", "active")
       .order("end_time", { ascending: true, nullsFirst: false }),
     supabase.from("employees").select("id, name, role"),
@@ -55,11 +64,22 @@ export default async function AdminPage() {
       .select("duration_mins")
       .gte("start_time", startOfToday.toISOString())
       .not("duration_mins", "is", null),
+    supabase.rpc("checkin_age_buckets", {
+      p_since: startOfToday.toISOString(),
+    }),
+    supabase.rpc("checkin_daily_counts", { p_days: 70 }),
+    supabase
+      .from("shifts")
+      .select("id, employee_id, start_time, end_time, notes, employees(name)")
+      .order("start_time", { ascending: true }),
   ]);
 
   const avgDurationMins =
     durationRows && durationRows.length > 0
-      ? Math.round(durationRows.reduce((sum, r) => sum + (r.duration_mins ?? 0), 0) / durationRows.length)
+      ? Math.round(
+          durationRows.reduce((sum, r) => sum + (r.duration_mins ?? 0), 0) /
+            durationRows.length,
+        )
       : null;
 
   return (
@@ -73,6 +93,9 @@ export default async function AdminPage() {
       todayCheckinCount={todayCheckinCount ?? 0}
       avgDurationMins={avgDurationMins}
       venueCapacity={VENUE_CAPACITY}
+      ageBuckets={(ageBuckets as any) ?? []}
+      dailyCounts={(dailyCounts as any) ?? []}
+      shifts={(shifts as any) ?? []}
     />
   );
 }

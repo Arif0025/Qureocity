@@ -13,20 +13,25 @@ export default function AddEmployeeModal({ onClose }: { onClose: () => void }) {
   const handleSubmit = async () => {
     setSubmitting(true);
     setError(null);
-    try {
-      // A one-time temp password the employee changes on first login is
-      // simpler and less error-prone than emailing invite links for a
-      // small front-desk team — swap for Supabase's invite flow later
-      // if the roster grows.
-      const tempPassword = crypto.randomUUID().slice(0, 12);
-      await createEmployee({ name, email, temporaryPassword: tempPassword, role });
-      alert(`Employee created. Temporary password: ${tempPassword}`);
-      onClose();
-    } catch (e: any) {
-      setError(e.message ?? "Couldn't create employee.");
-    } finally {
-      setSubmitting(false);
+    // A one-time temp password the employee changes on first login is
+    // simpler and less error-prone than emailing invite links for a
+    // small front-desk team — swap for Supabase's invite flow later
+    // if the roster grows.
+    const tempPassword = crypto.randomUUID().slice(0, 12);
+    const result = await createEmployee({
+      name,
+      email,
+      temporaryPassword: tempPassword,
+      role,
+    });
+    setSubmitting(false);
+
+    if (result.error) {
+      setError(result.error);
+      return;
     }
+    alert(`Employee created. Temporary password: ${tempPassword}`);
+    onClose();
   };
 
   return (

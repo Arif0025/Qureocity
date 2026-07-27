@@ -32,7 +32,13 @@ export default function EmployeeLoginPage() {
       .single();
 
     setLoading(false);
-    router.push(employee?.role === "admin" ? "/admin" : "/employee");
+
+    if (!employee) {
+      setError("This account is not registered as an employee.");
+      return;
+    }
+
+    router.replace(employee.role === "admin" ? "/admin" : "/employee");
   };
 
   return (
