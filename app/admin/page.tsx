@@ -41,6 +41,7 @@ export default async function AdminPage() {
     { data: ageBuckets },
     { data: dailyCounts },
     { data: shifts },
+    { data: attendanceLogs },
   ] = await Promise.all([
     supabase
       .from("play_sessions")
@@ -67,11 +68,16 @@ export default async function AdminPage() {
     supabase.rpc("checkin_age_buckets", {
       p_since: startOfToday.toISOString(),
     }),
-    supabase.rpc("checkin_daily_counts", { p_days: 70 }),
+    supabase.rpc("checkin_daily_counts", { p_days: 110 }),
     supabase
       .from("shifts")
       .select("id, employee_id, start_time, end_time, notes, employees(name)")
       .order("start_time", { ascending: true }),
+    supabase
+      .from("attendance_logs")
+      .select("id, employee_id, punch_in, punch_out, employees(name)")
+      .order("punch_in", { ascending: false })
+      .limit(200),
   ]);
 
   const avgDurationMins =
@@ -96,6 +102,7 @@ export default async function AdminPage() {
       ageBuckets={(ageBuckets as any) ?? []}
       dailyCounts={(dailyCounts as any) ?? []}
       shifts={(shifts as any) ?? []}
+      attendanceLogs={(attendanceLogs as any) ?? []}
     />
   );
 }

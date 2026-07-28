@@ -13,7 +13,7 @@ export default async function EmployeePage() {
 
   const { data: employee } = await supabase
     .from("employees")
-    .select("role")
+    .select("role, name")
     .eq("id", user.id)
     .single();
 
@@ -37,6 +37,7 @@ export default async function EmployeePage() {
 
   return (
     <EmployeePanel
+      employeeName={employee.name}
       initialSessions={(sessions as any) ?? []}
       myShift={(myShift as any) ?? null}
     />

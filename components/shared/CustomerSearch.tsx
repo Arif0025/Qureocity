@@ -7,9 +7,78 @@ type Result = {
   customer_id: string;
   parent_name: string;
   phone: string;
+  subscription_active: boolean;
+  subscription_expires_on: string | null;
   children: { id: string; name: string; age: number }[] | null;
   currently_checked_in: boolean;
 };
+
+function SubscriptionEditor({
+  result,
+  onSaved,
+}: {
+  result: Result;
+  onSaved: (updated: {
+    subscription_active: boolean;
+    subscription_expires_on: string | null;
+  }) => void;
+}) {
+  const supabase = createClient();
+  const [active, setActive] = useState(result.subscription_active);
+  const [expiresOn, setExpiresOn] = useState(
+    result.subscription_expires_on ?? "",
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    const { error } = await supabase
+      .from("customers")
+      .update({
+        subscription_active: active,
+        subscription_expires_on: expiresOn || null,
+      })
+      .eq("id", result.customer_id);
+    setSaving(false);
+    if (error) return setError(error.message);
+    onSaved({
+      subscription_active: active,
+      subscription_expires_on: expiresOn || null,
+    });
+  };
+
+  return (
+    <div className="mt-3 rounded-xl border border-black/5 bg-brand-cloud/70 p-3">
+      <p className="text-xs font-semibold text-brand-ink/60 mb-2">Membership</p>
+      {error && <p className="text-brand-coral text-xs mb-2">{error}</p>}
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-sm text-brand-ink">
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(e) => setActive(e.target.checked)}
+          />
+          Active subscriber
+        </label>
+        <input
+          type="date"
+          value={expiresOn}
+          onChange={(e) => setExpiresOn(e.target.value)}
+          className="min-h-[36px] rounded-lg border border-black/10 px-2 text-sm"
+        />
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="min-h-[36px] px-3 rounded-lg bg-brand-sky text-white text-sm font-semibold disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 type VisitHistoryEntry = {
   child_name: string;
@@ -21,7 +90,11 @@ type VisitHistoryEntry = {
   actual_duration_mins: number | null;
 };
 
-export default function CustomerSearch() {
+export default function CustomerSearch({
+  isAdmin = false,
+}: {
+  isAdmin?: boolean;
+}) {
   const supabase = createClient();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Result[]>([]);
@@ -104,13 +177,20 @@ export default function CustomerSearch() {
             key={r.customer_id}
             className="bg-white rounded-2xl border border-black/5 p-5"
           >
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-2 gap-2">
               <p className="font-bold text-brand-ink">{r.parent_name}</p>
-              {r.currently_checked_in && (
-                <span className="text-xs font-semibold text-brand-leaf bg-brand-leaf/10 px-2 py-1 rounded-full">
-                  Checked in now
-                </span>
-              )}
+              <div className="flex items-center gap-2 shrink-0">
+                {r.subscription_active && (
+                  <span className="text-xs font-semibold text-brand-sky bg-brand-sky/10 px-2 py-1 rounded-full">
+                    Member
+                  </span>
+                )}
+                {r.currently_checked_in && (
+                  <span className="text-xs font-semibold text-brand-leaf bg-brand-leaf/10 px-2 py-1 rounded-full">
+                    Checked in now
+                  </span>
+                )}
+              </div>
             </div>
             <p className="text-sm text-brand-ink/50 mb-3">{r.phone}</p>
             <div className="flex flex-wrap gap-2 mb-4">
@@ -124,10 +204,25 @@ export default function CustomerSearch() {
               ))}
             </div>
 
+            {isAdmin && (
+              <SubscriptionEditor
+                result={r}
+                onSaved={(updated) =>
+                  setResults((prev) =>
+                    prev.map((row) =>
+                      row.customer_id === r.customer_id
+                        ? { ...row, ...updated }
+                        : row,
+                    ),
+                  )
+                }
+              />
+            )}
+
             <button
               type="button"
               onClick={() => handleViewHistory(r.customer_id)}
-              className="min-h-[40px] rounded-xl2 bg-brand-sky px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-sky/90"
+              className="mt-3 min-h-[40px] rounded-xl2 bg-brand-sky px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-sky/90"
             >
               {historyLoadingCustomerId === r.customer_id
                 ? "Loading history…"

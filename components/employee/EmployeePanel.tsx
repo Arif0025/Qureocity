@@ -1,8 +1,11 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import PunchInFlow from "./PunchInFlow";
+import QuickCheckin from "./QuickCheckin";
 import LiveFloorView from "@/components/admin/LiveFloorView";
 import CustomerSearch from "@/components/shared/CustomerSearch";
 
@@ -99,7 +102,7 @@ function ChangePasswordCard() {
           Change password
         </button>
       ) : (
-        <div className="bg-white/70 rounded-xl2 border border-black/5 p-3 text-sm max-w-sm">
+        <div className="bg-white/70 rounded-xl2 border border-black/5 p-3 text-sm max-w-sm mx-auto text-left">
           <p className="font-semibold text-brand-ink mb-1">Change password</p>
           <p className="text-brand-ink/50 mb-3">
             Update the password for your own account only.
@@ -150,25 +153,44 @@ function ChangePasswordCard() {
   );
 }
 
+const TAB_META = [
+  { id: "punch", label: "Punch" },
+  { id: "quickcheckin", label: "Quick Check-In" },
+  { id: "floor", label: "On Site" },
+  { id: "search", label: "Search" },
+  { id: "shifts", label: "My Shift" },
+] as const;
+
+type Tab = (typeof TAB_META)[number]["id"];
+
 export default function EmployeePanel({
+  employeeName,
   initialSessions,
   myShift,
 }: {
+  employeeName: string;
   initialSessions: SessionRow[];
   myShift: Shift | null;
 }) {
-  const [tab, setTab] = useState<"punch" | "floor" | "shifts" | "search">(
-    "punch",
-  );
+  const [tab, setTab] = useState<Tab>("punch");
+  const supabase = createClient();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push("/employee/login");
+  };
 
   const renderActiveTab = () => {
     switch (tab) {
+      case "quickcheckin":
+        return <QuickCheckin key="quickcheckin" />;
       case "floor":
         return <LiveFloorView key="floor" initialSessions={initialSessions} />;
       case "shifts":
         return <MyShift key="shifts" shift={myShift} />;
       case "search":
-        return <CustomerSearch key="search" />;
+        return <CustomerSearch key="search" isAdmin={false} />;
       case "punch":
       default:
         return <PunchInFlow key="punch" />;
@@ -177,50 +199,68 @@ export default function EmployeePanel({
 
   return (
     <div className="min-h-screen bg-brand-cloud">
-      <div className="max-w-2xl mx-auto px-4 pt-8 pb-10">
-        <img
-          src="/logo-full.png"
-          alt="QureoCity"
-          className="h-12 mx-auto mb-6"
-        />
+      <div className="max-w-2xl mx-auto px-4 pt-6 pb-10">
+        {/* Header: greeting + sign out, so the top of the screen isn't
+            just a floating logo with nothing else going on */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Image
+              src="/logo-full.png"
+              alt="QureoCity"
+              width={132}
+              height={48}
+              className="h-8 w-auto"
+              priority
+            />
+            <div>
+              <p className="text-xs text-brand-ink/40 leading-none">Welcome</p>
+              <p className="font-bold text-brand-ink leading-tight">
+                {employeeName}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleSignOut}
+            className="text-sm text-brand-ink/40 hover:text-brand-coral font-medium"
+          >
+            Sign out
+          </button>
+        </div>
 
-        <div className="flex gap-1 mb-4 bg-white rounded-full p-1 border border-black/5 max-w-md mx-auto text-sm">
-          <button
-            type="button"
-            onClick={() => setTab("punch")}
-            className={`flex-1 min-h-[40px] rounded-full font-semibold transition-colors ${
-              tab === "punch" ? "bg-brand-sky text-white" : "text-brand-ink/50"
-            }`}
-          >
-            Punch In/Out
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("floor")}
-            className={`flex-1 min-h-[40px] rounded-full font-semibold transition-colors ${
-              tab === "floor" ? "bg-brand-sky text-white" : "text-brand-ink/50"
-            }`}
-          >
-            Kids on site ({initialSessions.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("shifts")}
-            className={`flex-1 min-h-[40px] rounded-full font-semibold transition-colors ${
-              tab === "shifts" ? "bg-brand-sky text-white" : "text-brand-ink/50"
-            }`}
-          >
-            My Shift
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("search")}
-            className={`flex-1 min-h-[40px] rounded-full font-semibold transition-colors ${
-              tab === "search" ? "bg-brand-sky text-white" : "text-brand-ink/50"
-            }`}
-          >
-            Search
-          </button>
+        {/* Quick-glance chips so the screen has something to look at
+            before you even pick a tab */}
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <div className="bg-white rounded-xl2 border border-black/5 px-4 py-3">
+            <p className="text-xs text-brand-ink/40">Kids on site</p>
+            <p className="text-2xl font-extrabold text-brand-ink">
+              {initialSessions.length}
+            </p>
+          </div>
+          <div className="bg-white rounded-xl2 border border-black/5 px-4 py-3">
+            <p className="text-xs text-brand-ink/40">Your shift</p>
+            <p className="text-lg font-extrabold text-brand-ink">
+              {myShift
+                ? `${myShift.start_time.slice(0, 5)}–${myShift.end_time.slice(0, 5)}`
+                : "—"}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-5 gap-1 mb-6 bg-white rounded-2xl p-1 border border-black/5 shadow-sm">
+          {TAB_META.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={`flex items-center justify-center min-h-[52px] rounded-xl px-2 text-[11px] md:text-xs font-semibold tracking-wide transition-colors ${
+                tab === t.id
+                  ? "bg-brand-sky text-white shadow-sm"
+                  : "text-brand-ink/50 hover:text-brand-ink"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
         {renderActiveTab()}

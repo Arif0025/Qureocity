@@ -85,6 +85,14 @@ export default function ShiftsManager({
     }
   };
 
+  const handleChange = (shift: Shift) => {
+    setEmployeeId(shift.employee_id);
+    setStartTime(shift.start_time.slice(0, 5));
+    setEndTime(shift.end_time.slice(0, 5));
+    setNotes(shift.notes ?? "");
+    setError(null);
+  };
+
   return (
     <div className="grid lg:grid-cols-2 gap-6">
       <div className="bg-white rounded-2xl border border-black/5 p-5">
@@ -174,12 +182,20 @@ export default function ShiftsManager({
                     {s.notes ? ` · ${s.notes}` : ""}
                   </p>
                 </div>
-                <button
-                  onClick={() => handleDelete(s.id, s.employee_id)}
-                  className="text-brand-coral text-xs font-semibold"
-                >
-                  Remove
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => handleChange(s)}
+                    className="text-brand-sky text-xs font-semibold"
+                  >
+                    Change
+                  </button>
+                  <button
+                    onClick={() => handleDelete(s.id, s.employee_id)}
+                    className="text-brand-coral text-xs font-semibold"
+                  >
+                    Remove
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

@@ -31,36 +31,40 @@ export default function StaffTable({
 
   return (
     <div className="bg-white rounded-2xl border border-black/5 overflow-hidden">
-      <table className="w-full text-left">
-        <thead className="bg-black/[0.02] text-brand-ink/50 text-sm">
-          <tr>
-            <th className="px-5 py-3 font-medium">Name</th>
-            <th className="px-5 py-3 font-medium">Role</th>
-            {isAdmin && <th className="px-5 py-3 font-medium">&nbsp;</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {staff.map((s) => (
-            <tr key={s.id} className="border-t border-black/5">
-              <td className="px-5 py-3 font-medium text-brand-ink">{s.name}</td>
-              <td className="px-5 py-3 text-brand-ink/60 capitalize">
-                {s.role}
-              </td>
-              {isAdmin && (
-                <td className="px-5 py-3 text-right">
-                  <button
-                    onClick={() => handleReset(s.id, s.name)}
-                    disabled={resettingId === s.id}
-                    className="text-brand-sky text-sm font-semibold disabled:opacity-50"
-                  >
-                    {resettingId === s.id ? "Resetting…" : "Reset password"}
-                  </button>
-                </td>
-              )}
+      <div className="overflow-x-auto">
+        <table className="w-full text-left min-w-[400px]">
+          <thead className="bg-black/[0.02] text-brand-ink/50 text-sm">
+            <tr>
+              <th className="px-5 py-3 font-medium">Name</th>
+              <th className="px-5 py-3 font-medium">Role</th>
+              {isAdmin && <th className="px-5 py-3 font-medium">&nbsp;</th>}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {staff.map((s) => (
+              <tr key={s.id} className="border-t border-black/5">
+                <td className="px-5 py-3 font-medium text-brand-ink">
+                  {s.name}
+                </td>
+                <td className="px-5 py-3 text-brand-ink/60 capitalize">
+                  {s.role}
+                </td>
+                {isAdmin && (
+                  <td className="px-5 py-3 text-right">
+                    <button
+                      onClick={() => handleReset(s.id, s.name)}
+                      disabled={resettingId === s.id}
+                      className="text-brand-sky text-sm font-semibold disabled:opacity-50"
+                    >
+                      {resettingId === s.id ? "Resetting…" : "Reset password"}
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {isAdmin && (
         <div className="p-4 border-t border-black/5">

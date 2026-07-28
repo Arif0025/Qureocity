@@ -37,11 +37,28 @@ export default function PunchInFlow() {
     setScannerLoading(true);
     setError(null);
     let html5QrCode: any;
+    let hasStopped = false;
+
+    // Both the "scan succeeded" path and the effect cleanup path need to
+    // stop the camera, but calling .stop() a second time on an already-
+    // stopped scanner throws — in some versions of this library, that
+    // throw happens synchronously rather than as a promise rejection, so
+    // a plain .catch() doesn't actually catch it and it crashes the page.
+    // This flag guarantees stop() only ever runs once per instance.
+    const stopScanner = () => {
+      if (hasStopped) return;
+      hasStopped = true;
+      try {
+        html5QrCode?.stop()?.catch(() => {});
+      } catch {
+        // some versions throw synchronously instead of rejecting
+      }
+    };
 
     import("html5-qrcode")
       .then(({ Html5Qrcode }) => {
         html5QrCode = new Html5Qrcode("qr-reader");
-        scannerRef.current = html5QrCode;
+        scannerRef.current = { stop: stopScanner };
         return html5QrCode.start(
           { facingMode: "environment" },
           { fps: 10, qrbox: 250 },
@@ -53,7 +70,7 @@ export default function PunchInFlow() {
 
             if (looksValid) {
               setScannedValue(decodedText);
-              html5QrCode.stop().catch(() => {});
+              stopScanner();
             }
           },
           () => {},
@@ -69,8 +86,7 @@ export default function PunchInFlow() {
       });
 
     return () => {
-      scannerRef.current?.stop?.().catch(() => {});
-      scannerRef.current = null;
+      stopScanner();
     };
   }, [scannerActive, scannedValue, result, qrMode]);
 
@@ -116,18 +132,22 @@ export default function PunchInFlow() {
       )}
 
       {!scannedValue && !scannerActive && (
-        <div className="w-full max-w-sm bg-white rounded-xl2 shadow-sm p-6 text-center">
-          <p className="text-brand-ink/70 text-sm mb-4">
-            Tap below to open the camera and scan the desk QR code.
+        <div className="w-full max-w-sm bg-white rounded-xl2 shadow-sm p-8 text-center">
+          <p className="text-brand-ink/70 text-sm mb-6">
+            Tap to open the camera and scan the desk QR code
           </p>
           <button
             type="button"
             onClick={() => setScannerActive(true)}
             disabled={scannerLoading}
-            className="min-h-[48px] rounded-xl2 bg-brand-sky px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className="relative mx-auto flex items-center justify-center w-24 h-24 rounded-full bg-brand-sky text-white text-3xl disabled:opacity-50 hover:scale-105 active:scale-95 transition-transform"
           >
-            {scannerLoading ? "Starting camera…" : "Start camera"}
+            <span className="absolute inset-0 rounded-full bg-brand-sky animate-ping opacity-20" />
+            <span className="relative">{scannerLoading ? "…" : "📷"}</span>
           </button>
+          <p className="text-xs text-brand-ink/40 mt-4 font-semibold">
+            {scannerLoading ? "Starting camera…" : "Tap to scan"}
+          </p>
         </div>
       )}
 

@@ -8,6 +8,11 @@ import StaffTable from "./StaffTable";
 import QrModeToggle from "./QrModeToggle";
 import AnalyticsOverview from "./AnalyticsOverview";
 import ShiftsManager from "./ShiftsManager";
+import AttendanceHistory from "./AttendanceHistory";
+import SubscriptionsManager from "./SubscriptionsManager";
+import AdminPasswordCard from "./AdminPasswordCard";
+import ShiftStatusSummary from "@/components/admin/ShiftStatusSummary";
+import QuickCheckin from "@/components/employee/QuickCheckin";
 import CustomerSearch from "@/components/shared/CustomerSearch";
 
 type SessionRow = {
@@ -26,7 +31,6 @@ type OnDutyLog = {
 type Shift = {
   id: string;
   employee_id: string;
-  shift_date: string;
   start_time: string;
   end_time: string;
   notes: string | null;
@@ -35,7 +39,8 @@ type Shift = {
 
 const TABS = [
   { id: "overview", label: "Overview" },
-  { id: "floor", label: "Floor View" },
+  { id: "floor", label: "Kids Checked In" },
+  { id: "quickcheckin", label: "Quick Check-In" },
   { id: "search", label: "Search" },
   { id: "staff", label: "Staff" },
 ] as const;
@@ -53,6 +58,7 @@ export default function AdminDashboard({
   ageBuckets,
   dailyCounts,
   shifts,
+  attendanceLogs,
 }: {
   employeeName: string;
   isAdmin: boolean;
@@ -66,17 +72,28 @@ export default function AdminDashboard({
   ageBuckets: { bucket: string; cnt: number }[];
   dailyCounts: { day: string; cnt: number }[];
   shifts: Shift[];
+  attendanceLogs: {
+    id: string;
+    employee_id: string;
+    punch_in: string;
+    punch_out: string | null;
+    employees: { name: string } | null;
+  }[];
 }) {
   const tabs = isAdmin
     ? [
         ...TABS,
+        { id: "subscriptions" as const, label: "Subscriptions" },
         { id: "shifts" as const, label: "Shifts" },
+        { id: "attendance" as const, label: "Attendance" },
         { id: "settings" as const, label: "Settings" },
       ]
     : TABS;
   const [tab, setTab] = useState<(typeof tabs)[number]["id"]>("overview");
   const supabase = createClient();
   const router = useRouter();
+  const goToKidsCheckedIn = () => setTab("floor");
+  const goToAttendance = () => setTab("attendance");
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -101,12 +118,12 @@ export default function AdminDashboard({
           </div>
         </div>
 
-        <nav className="max-w-6xl mx-auto px-6 md:px-8 flex gap-1">
+        <nav className="max-w-6xl mx-auto px-6 md:px-8 flex gap-1 overflow-x-auto no-scrollbar">
           {tabs.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+              className={`shrink-0 whitespace-nowrap px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
                 tab === t.id
                   ? "border-brand-sky text-brand-sky"
                   : "border-transparent text-brand-ink/50 hover:text-brand-ink"
@@ -128,18 +145,32 @@ export default function AdminDashboard({
             onDutyStaff={onDutyStaff}
             ageBuckets={ageBuckets}
             dailyCounts={dailyCounts}
+            onKidsCheckedIn={goToKidsCheckedIn}
+            onAttendance={goToAttendance}
           />
         )}
 
         {tab === "floor" && (
           <>
             <h1 className="text-lg font-bold text-brand-ink mb-1">
-              Floor view
+              Kids checked in
             </h1>
             <p className="text-brand-ink/50 text-sm mb-6">
               Updates automatically — no refresh needed
             </p>
             <LiveFloorView initialSessions={initialSessions} />
+          </>
+        )}
+
+        {tab === "quickcheckin" && (
+          <>
+            <h1 className="text-lg font-bold text-brand-ink mb-1">
+              Quick Check-In
+            </h1>
+            <p className="text-brand-ink/50 text-sm mb-6">
+              Search a subscribed child by name — no phone number needed.
+            </p>
+            <QuickCheckin />
           </>
         )}
 
@@ -149,7 +180,7 @@ export default function AdminDashboard({
             <p className="text-brand-ink/50 text-sm mb-6">
               Look up a family by parent name, child's name, or phone number.
             </p>
-            <CustomerSearch />
+            <CustomerSearch isAdmin={true} />
           </>
         )}
 
@@ -165,6 +196,18 @@ export default function AdminDashboard({
           </>
         )}
 
+        {tab === "subscriptions" && isAdmin && (
+          <>
+            <h1 className="text-lg font-bold text-brand-ink mb-1">
+              Subscriptions
+            </h1>
+            <p className="text-brand-ink/50 text-sm mb-6">
+              Activate or renew a monthly subscription for a registered family.
+            </p>
+            <SubscriptionsManager />
+          </>
+        )}
+
         {tab === "shifts" && isAdmin && (
           <>
             <h1 className="text-lg font-bold text-brand-ink mb-1">Shifts</h1>
@@ -176,14 +219,33 @@ export default function AdminDashboard({
           </>
         )}
 
+        {tab === "attendance" && isAdmin && (
+          <>
+            <h1 className="text-lg font-bold text-brand-ink mb-1">
+              Attendance
+            </h1>
+            <p className="text-brand-ink/50 text-sm mb-6">
+              Today’s scheduled duty status and recent punch in/out history.
+            </p>
+            <div className="mb-4">
+              <ShiftStatusSummary
+                shifts={shifts}
+                attendanceLogs={attendanceLogs}
+              />
+            </div>
+            <AttendanceHistory logs={attendanceLogs} />
+          </>
+        )}
+
         {tab === "settings" && isAdmin && (
           <>
             <h1 className="text-lg font-bold text-brand-ink mb-1">Settings</h1>
             <p className="text-brand-ink/50 text-sm mb-6">
-              Front-desk configuration.
+              Front-desk configuration and your admin account.
             </p>
-            <div className="max-w-sm">
+            <div className="max-w-sm space-y-4">
               <QrModeToggle initialMode={qrMode} />
+              <AdminPasswordCard />
             </div>
           </>
         )}
