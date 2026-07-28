@@ -11,69 +11,9 @@ type LogRow = {
   employees: { name: string } | { name: string }[] | null;
 };
 
-type DayCell = {
-  date: string;
-  count: number;
-} | null;
-
 function employeeName(employees: LogRow["employees"]): string {
   if (Array.isArray(employees)) return employees[0]?.name ?? "—";
   return employees?.name ?? "—";
-}
-
-function dayKey(value: string): string {
-  return value.slice(0, 10);
-}
-
-function minutesBetween(start: string, end: string | null): number | null {
-  if (!end) return null;
-  return Math.max(
-    0,
-    Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000),
-  );
-}
-
-function durationLabel(totalMinutes: number): string {
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
-
-function formatDateLabel(value: string): string {
-  return new Date(value).toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function formatTimeLabel(value: string): string {
-  return new Date(value).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function buildHeatmap(logs: LogRow[]): DayCell[] {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const start = new Date(today);
-  start.setDate(start.getDate() - 55);
-
-  const countByDay = new Map<string, number>();
-  for (const log of logs) {
-    const key = dayKey(log.punch_in);
-    countByDay.set(key, (countByDay.get(key) ?? 0) + 1);
-  }
-
-  const cells: DayCell[] = [];
-  const cursor = new Date(start);
-  while (cursor <= today) {
-    const key = cursor.toISOString().slice(0, 10);
-    cells.push({ date: key, count: countByDay.get(key) ?? 0 });
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  while (cells.length % 7 !== 0) cells.push(null);
-  return cells;
 }
 
 function formatDuration(punchIn: string, punchOut: string | null): string {
@@ -97,25 +37,6 @@ export default function AttendanceHistory({ logs }: { logs: LogRow[] }) {
   const [employeeHistory, setEmployeeHistory] = useState<LogRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-
-  const heatmapCells = buildHeatmap(employeeHistory);
-  const totalMinutes = employeeHistory.reduce((sum, log) => {
-    const mins = minutesBetween(log.punch_in, log.punch_out);
-    return sum + (mins ?? 0);
-  }, 0);
-  const workedDays = new Set(employeeHistory.map((log) => dayKey(log.punch_in)));
-  const todayKey = new Date().toISOString().slice(0, 10);
-  const todaysLog = employeeHistory.find((log) => dayKey(log.punch_in) === todayKey);
-  const currentStatus = todaysLog
-    ? todaysLog.punch_out
-      ? "Left today"
-      : "Present on site"
-    : "Absent today";
-  const currentStatusTone = todaysLog
-    ? todaysLog.punch_out
-      ? "bg-black/5 text-brand-ink"
-      : "bg-brand-leaf/10 text-brand-leaf"
-    : "bg-brand-coral/10 text-brand-coral";
 
   const loadHistory = async (employeeId: string, employeeName: string) => {
     if (selectedEmployeeId === employeeId) {
@@ -147,7 +68,7 @@ export default function AttendanceHistory({ logs }: { logs: LogRow[] }) {
       return;
     }
 
-    setEmployeeHistory(((data ?? []) as unknown) as LogRow[]);
+    setEmployeeHistory((data as LogRow[]) ?? []);
   };
 
   if (logs.length === 0) {
@@ -239,7 +160,7 @@ export default function AttendanceHistory({ logs }: { logs: LogRow[] }) {
                   {selectedEmployeeName}'s history
                 </p>
                 <p className="text-xs text-brand-ink/40">
-                  Showing attendance performance, heatmap, and punch drill-down.
+                  Showing the most recent attendance records for this employee.
                 </p>
               </div>
               {loadingHistory && (
@@ -247,72 +168,6 @@ export default function AttendanceHistory({ logs }: { logs: LogRow[] }) {
                   Loading…
                 </span>
               )}
-            </div>
-
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
-              <div className="rounded-xl bg-white border border-black/5 px-3 py-2">
-                <p className="text-[11px] font-medium text-brand-ink/40">
-                  Current status
-                </p>
-                <p className={`text-sm font-semibold inline-flex px-2 py-1 rounded-full ${currentStatusTone}`}>
-                  {currentStatus}
-                </p>
-              </div>
-              <div className="rounded-xl bg-white border border-black/5 px-3 py-2">
-                <p className="text-[11px] font-medium text-brand-ink/40">Days recorded</p>
-                <p className="text-lg font-bold text-brand-ink">{workedDays.size}</p>
-              </div>
-              <div className="rounded-xl bg-white border border-black/5 px-3 py-2">
-                <p className="text-[11px] font-medium text-brand-ink/40">Punch records</p>
-                <p className="text-lg font-bold text-brand-ink">{employeeHistory.length}</p>
-              </div>
-              <div className="rounded-xl bg-white border border-black/5 px-3 py-2">
-                <p className="text-[11px] font-medium text-brand-ink/40">Total time</p>
-                <p className="text-lg font-bold text-brand-ink">{totalMinutes > 0 ? durationLabel(totalMinutes) : "—"}</p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-black/5 p-4 mb-4">
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <p className="font-semibold text-brand-ink">Attendance heatmap</p>
-                <p className="text-[11px] text-brand-ink/40">Last 8 weeks</p>
-              </div>
-              <div className="overflow-x-auto">
-                <div className="inline-block min-w-full">
-                  <div className="grid grid-cols-7 gap-1">
-                    {heatmapCells.map((cell, index) =>
-                      cell === null ? (
-                        <div key={index} className="aspect-square rounded-md bg-transparent" />
-                      ) : (
-                        <div
-                          key={cell.date}
-                          title={`${formatDateLabel(cell.date)}: ${cell.count} punch${cell.count === 1 ? "" : "es"}`}
-                          className={`aspect-square rounded-md ${
-                            cell.count === 0
-                              ? "bg-black/5"
-                              : cell.count === 1
-                                ? "bg-brand-sky/25"
-                                : cell.count === 2
-                                  ? "bg-brand-sky/45"
-                                  : cell.count === 3
-                                    ? "bg-brand-sky/65"
-                                    : "bg-brand-sky"
-                          }`}
-                        />
-                      ),
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 mt-3 text-[11px] text-brand-ink/40 flex-wrap">
-                    <span>Less</span>
-                    <span className="w-3.5 h-3.5 rounded-sm bg-black/5" />
-                    <span className="w-3.5 h-3.5 rounded-sm bg-brand-sky/25" />
-                    <span className="w-3.5 h-3.5 rounded-sm bg-brand-sky/45" />
-                    <span className="w-3.5 h-3.5 rounded-sm bg-brand-sky/65" />
-                    <span className="w-3.5 h-3.5 rounded-sm bg-brand-sky" />
-                    <span>More</span>
-                  </div>
-                </div>
-              </div>
             </div>
 
             {historyError && (
