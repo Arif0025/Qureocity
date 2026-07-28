@@ -121,15 +121,6 @@ export default function ShiftStatusSummary({
     (a.employees?.name ?? "").localeCompare(b.employees?.name ?? ""),
   );
 
-  const counts = ordered.reduce(
-    (acc, shift) => {
-      const { state } = determineState(shift, attendanceByEmployee);
-      acc[state] += 1;
-      return acc;
-    },
-    { present: 0, left: 0, absent: 0, upcoming: 0 } as Record<DutyState, number>,
-  );
-
   return (
     <div className="bg-white rounded-2xl border border-black/5 p-5">
       <div className="flex items-center justify-between mb-4">
@@ -137,21 +128,6 @@ export default function ShiftStatusSummary({
         <p className="text-xs text-brand-ink/40">
           Present, left, absent, or upcoming
         </p>
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-        {(
-          [
-            ["present", "Present", "bg-brand-leaf/10 text-brand-leaf"],
-            ["left", "Left", "bg-black/5 text-brand-ink"],
-            ["absent", "Absent", "bg-brand-coral/10 text-brand-coral"],
-            ["upcoming", "Upcoming", "bg-brand-sun/10 text-brand-sun"],
-          ] as const
-        ).map(([key, label, tone]) => (
-          <div key={key} className={`rounded-xl px-3 py-2 ${tone}`}>
-            <p className="text-[11px] font-medium opacity-70">{label}</p>
-            <p className="text-lg font-bold leading-tight">{counts[key]}</p>
-          </div>
-        ))}
       </div>
       <div className="space-y-3">
         {ordered.map((shift) => {
