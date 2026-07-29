@@ -104,6 +104,11 @@ export default function PunchInFlow() {
       setResult({ action: data.action, at: data.at });
     } catch (e: any) {
       setError(e.message ?? "Couldn't record punch.");
+      // The scanner has already stopped after a successful QR read. Return
+      // to the camera-launch state so an expired/used dynamic token can be
+      // scanned again without reloading the employee panel.
+      setScannedValue(null);
+      setScannerActive(false);
     } finally {
       setSliding(false);
     }

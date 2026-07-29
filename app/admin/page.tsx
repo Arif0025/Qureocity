@@ -75,7 +75,7 @@ export default async function AdminPage() {
       .order("start_time", { ascending: true }),
     supabase
       .from("attendance_logs")
-      .select("id, employee_id, punch_in, punch_out, employees(name)")
+      .select("id, employee_id, punch_in, punch_out, auto_punched_out, employees(name)")
       .order("punch_in", { ascending: false })
       .limit(200),
   ]);

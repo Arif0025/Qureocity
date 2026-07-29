@@ -19,9 +19,11 @@ export default function QuickCheckin() {
   const supabase = createClient();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Result[]>([]);
+  const [activeMembers, setActiveMembers] = useState<Result[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyChildId, setBusyChildId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [durationChoiceFor, setDurationChoiceFor] = useState<Result | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
@@ -49,11 +51,23 @@ export default function QuickCheckin() {
     };
   }, [query, supabase]);
 
+  const loadActiveMembers = async () => {
+    const { data } = await supabase.rpc("checkin_list_active_subscribers");
+    setActiveMembers((data as Result[]) ?? []);
+  };
+
+  useEffect(() => {
+    void loadActiveMembers();
+    // The browser client is stable for the mounted component.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const refreshOne = async (childId: string) => {
     const { data } = await supabase.rpc("checkin_search_active_subscribers", {
       p_query: query.trim(),
     });
     setResults((data as Result[]) ?? []);
+    void loadActiveMembers();
   };
 
   const handleCheckIn = async (r: Result, durationMins: number | null) => {
@@ -95,6 +109,23 @@ export default function QuickCheckin() {
         className="w-full min-h-[52px] rounded-xl2 border-2 border-black/10 focus:border-brand-sky px-4 text-lg mb-4"
         autoFocus
       />
+
+      {activeMembers.length > 0 && (
+        <div className="mb-4 rounded-xl2 border border-black/5 bg-white p-3">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <p className="text-sm font-semibold text-brand-ink">Active members</p>
+            <span className="text-xs text-brand-ink/40">Quick check-in</span>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {activeMembers.map((r) => (
+              <div key={r.child_id} className="rounded-xl bg-brand-cloud px-3 py-2 flex items-center justify-between gap-2">
+                <div className="min-w-0"><p className="text-sm font-semibold text-brand-ink truncate">{r.child_name}</p><p className="text-[11px] text-brand-ink/40 truncate">{r.parent_name}</p></div>
+                {r.currently_checked_in ? <button onClick={() => handleCheckOut(r)} disabled={busyChildId === r.child_id} className="shrink-0 min-h-[36px] px-2 rounded-lg bg-brand-coral text-white text-xs font-semibold disabled:opacity-50">Out</button> : <button onClick={() => setDurationChoiceFor(r)} disabled={busyChildId === r.child_id} className="shrink-0 min-h-[36px] px-2 rounded-lg bg-brand-leaf text-white text-xs font-semibold disabled:opacity-50">Check in</button>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {error && <p className="text-brand-coral text-sm mb-3">{error}</p>}
       {loading && <p className="text-sm text-brand-ink/40">Searching…</p>}
@@ -151,6 +182,19 @@ export default function QuickCheckin() {
           </div>
         ))}
       </div>
+
+      {durationChoiceFor && (
+        <div className="fixed inset-0 z-50 bg-black/30 flex items-end sm:items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Choose visit duration">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+            <p className="font-bold text-brand-ink">Check in {durationChoiceFor.child_name}</p>
+            <p className="text-sm text-brand-ink/50 mt-1 mb-4">Choose the planned visit length.</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[{ label: "1 hour", value: 60 }, { label: "2 hours", value: 120 }, { label: "Unlimited", value: null }].map((option) => <button key={option.label} type="button" onClick={() => { void handleCheckIn(durationChoiceFor, option.value); setDurationChoiceFor(null); }} className="min-h-[52px] rounded-xl bg-brand-leaf text-white text-sm font-semibold">{option.label}</button>)}
+            </div>
+            <button type="button" onClick={() => setDurationChoiceFor(null)} className="w-full min-h-[44px] mt-2 rounded-xl bg-black/5 text-sm font-semibold text-brand-ink">Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

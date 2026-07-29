@@ -12,16 +12,29 @@ type AttendanceRow = {
   employee_id: string;
   punch_in: string;
   punch_out: string | null;
+  auto_punched_out?: boolean;
   employees: { name: string } | null;
 };
 
-type DutyState = "present" | "left" | "absent" | "upcoming";
+type DutyState = "present" | "left" | "auto_left" | "absent" | "upcoming";
 
 function timeLabel(value: string): string {
-  return new Date(`1970-01-01T${value}`).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const [hour, minute] = value.split(":").map(Number);
+  const period = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${String(displayHour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`;
+}
+
+function punchTimeLabel(value: string): string {
+  // Attendance timestamps are stored in UTC; display them consistently in
+  // the venue's India time zone instead of using the server/browser locale.
+  const indiaOffsetMinutes = 330;
+  const shifted = new Date(new Date(value).getTime() + indiaOffsetMinutes * 60_000);
+  const hour = shifted.getUTCHours();
+  const minute = shifted.getUTCMinutes();
+  const period = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${String(displayHour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`;
 }
 
 function shiftDate(value: string): Date {
@@ -43,6 +56,8 @@ function stateMeta(state: DutyState) {
     return { label: "Present", tone: "text-brand-leaf bg-brand-leaf/10" };
   if (state === "left")
     return { label: "Left", tone: "text-brand-ink bg-black/5" };
+  if (state === "auto_left")
+    return { label: "Auto clocked out", tone: "text-brand-sky bg-brand-sky/10" };
   if (state === "upcoming")
     return { label: "Upcoming", tone: "text-brand-sun bg-brand-sun/10" };
   return { label: "Absent", tone: "text-brand-coral bg-brand-coral/10" };
@@ -65,25 +80,22 @@ function determineState(
 
   if (log) {
     const punchInTime = new Date(log.punch_in);
-    if (punchInTime > start) {
+    if (false && punchInTime > start) {
       return {
         state: "absent",
         detail: `Expected ${timeLabel(shift.start_time)}–${timeLabel(shift.end_time)}`,
       };
     }
 
-    const punchIn = new Date(log.punch_in).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const punchIn = punchTimeLabel(log.punch_in);
     if (!log.punch_out) {
       return { state: "present", detail: `In at ${punchIn}, still punched in` };
     }
 
-    const punchOut = new Date(log.punch_out).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const punchOut = punchTimeLabel(log.punch_out);
+    if (log.auto_punched_out) {
+      return { state: "auto_left", detail: `Auto clocked out at ${punchOut}` };
+    }
     return { state: "left", detail: `In at ${punchIn}, out at ${punchOut}` };
   }
 
@@ -117,21 +129,35 @@ export default function ShiftStatusSummary({
     }
   }
 
-  const ordered = [...shifts].sort((a, b) =>
-    (a.employees?.name ?? "").localeCompare(b.employees?.name ?? ""),
-  );
+  const order: Record<DutyState, number> = {
+    present: 0,
+    absent: 1,
+    left: 2,
+    auto_left: 3,
+    upcoming: 4,
+  };
+  const ordered = shifts
+    .map((shift) => ({
+      shift,
+      ...determineState(shift, attendanceByEmployee),
+    }))
+    .sort((a, b) =>
+      order[a.state] - order[b.state] ||
+      (a.shift.employees?.name ?? "").localeCompare(
+        b.shift.employees?.name ?? "",
+      ),
+    );
 
   return (
     <div className="bg-white rounded-2xl border border-black/5 p-5">
       <div className="flex items-center justify-between mb-4">
-        <p className="font-semibold text-brand-ink">Today's duty status</p>
+        <p className="font-semibold text-brand-ink">Who’s on duty today</p>
         <p className="text-xs text-brand-ink/40">
           Present, left, absent, or upcoming
         </p>
       </div>
-      <div className="space-y-3">
-        {ordered.map((shift) => {
-          const { state, detail } = determineState(shift, attendanceByEmployee);
+      <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+        {ordered.map(({ shift, state, detail }) => {
           const meta = stateMeta(state);
 
           return (

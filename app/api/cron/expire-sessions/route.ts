@@ -18,5 +18,16 @@ export async function GET(req: NextRequest) {
   const { error } = await supabase.rpc("expire_overdue_sessions");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ ok: true, ranAt: new Date().toISOString() });
+  const { data: autoPunchedOut, error: attendanceError } = await supabase.rpc(
+    "auto_punch_out_open_attendance",
+  );
+  if (attendanceError) {
+    return NextResponse.json({ error: attendanceError.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    autoPunchedOut: autoPunchedOut ?? 0,
+    ranAt: new Date().toISOString(),
+  });
 }

@@ -7,6 +7,11 @@ type SearchResult = {
   customer_id: string;
   parent_name: string;
   phone: string;
+  subscription_active: boolean;
+  subscription_started_on: string | null;
+  subscription_expires_on: string | null;
+  children: { id: string; name: string; age: number; date_of_birth: string }[] | null;
+  currently_checked_in: boolean;
 };
 
 type Subscriber = {
@@ -16,6 +21,7 @@ type Subscriber = {
   subscription_active: boolean;
   subscription_started_on: string | null;
   subscription_expires_on: string | null;
+  children: { name: string }[] | null;
 };
 
 function addMonths(dateStr: string, months: number): string {
@@ -68,6 +74,11 @@ export default function SubscriptionsManager() {
           customer_id: r.customer_id,
           parent_name: r.parent_name,
           phone: r.phone,
+          subscription_active: r.subscription_active,
+          subscription_started_on: r.subscription_started_on,
+          subscription_expires_on: r.subscription_expires_on,
+          children: r.children,
+          currently_checked_in: r.currently_checked_in,
         })),
       );
     }, 300);
@@ -120,7 +131,7 @@ export default function SubscriptionsManager() {
     const { data } = await supabase
       .from("customers")
       .select(
-        "id, name, phone, subscription_active, subscription_started_on, subscription_expires_on",
+        "id, name, phone, subscription_active, subscription_started_on, subscription_expires_on, children(name)",
       )
       .not("subscription_expires_on", "is", null);
     setSubscribers((data as any) ?? []);
@@ -191,6 +202,9 @@ export default function SubscriptionsManager() {
                       {r.parent_name}
                     </p>
                     <p className="text-xs text-brand-ink/40">{r.phone}</p>
+                    <p className="text-xs text-brand-ink/50 mt-1">
+                      {r.children?.map((child) => `${child.name} (${child.age}y)`).join(", ") || "No children registered"}
+                    </p>
                   </button>
                 ))}
               </div>
@@ -204,6 +218,9 @@ export default function SubscriptionsManager() {
                   {selected.parent_name}
                 </p>
                 <p className="text-xs text-brand-ink/50">{selected.phone}</p>
+                <p className="text-xs text-brand-ink/50 mt-1">
+                  Children: {selected.children?.map((child) => `${child.name} (${child.age}y)`).join(", ") || "No children registered"}
+                </p>
               </div>
               <button
                 type="button"
@@ -299,6 +316,8 @@ export default function SubscriptionsManager() {
               <thead className="text-brand-ink/40">
                 <tr>
                   <th className="py-2 font-medium">Parent</th>
+                  <th className="py-2 font-medium">Mobile</th>
+                  <th className="py-2 font-medium">Children</th>
                   <th className="py-2 font-medium">Started</th>
                   <th className="py-2 font-medium">Expires</th>
                   <th className="py-2 font-medium">Status</th>
@@ -311,6 +330,12 @@ export default function SubscriptionsManager() {
                     <tr key={s.id} className="border-t border-black/5">
                       <td className="py-2 font-medium text-brand-ink whitespace-nowrap">
                         {s.name}
+                      </td>
+                      <td className="py-2 text-brand-ink/60 whitespace-nowrap">
+                        {s.phone}
+                      </td>
+                      <td className="py-2 text-brand-ink/60 whitespace-nowrap">
+                        {s.children?.map((child) => child.name).join(", ") || "—"}
                       </td>
                       <td className="py-2 text-brand-ink/60 whitespace-nowrap">
                         {s.subscription_started_on ?? "—"}

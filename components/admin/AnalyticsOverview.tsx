@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 type OnDutyLog = {
   employee_id: string;
   punch_in: string;
@@ -107,7 +109,7 @@ function AgeBreakdown({ ageBuckets }: { ageBuckets: AgeBucket[] }) {
 
 // Venue is closed Tuesdays — change this if that ever changes.
 // 0 = Sunday, 1 = Monday, 2 = Tuesday, ...
-const CLOSED_WEEKDAY = 3;
+const CLOSED_WEEKDAY = 2;
 const WEEKS_SHOWN = 14;
 
 type Cell = {
@@ -132,6 +134,7 @@ function intensityClass(count: number): string {
 const WEEKDAY_LABELS = ["", "Mon", "", "Wed", "", "Fri", ""];
 
 function ActivityHeatmap({ dailyCounts }: { dailyCounts: DailyCount[] }) {
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const countByDay = new Map(dailyCounts.map((d) => [d.day, Number(d.cnt)]));
 
   const today = new Date();
@@ -234,14 +237,16 @@ function ActivityHeatmap({ dailyCounts }: { dailyCounts: DailyCount[] }) {
                     cell === null ? (
                       <div key={ri} className="w-3.5 h-3.5" />
                     ) : (
-                      <div
+                      <button
                         key={ri}
+                        type="button"
+                        onClick={() => setSelectedDate(cell.date)}
                         title={
                           cell.isClosed
                             ? `${cell.date}: Closed`
                             : `${cell.date}: ${cell.count} check-in${cell.count === 1 ? "" : "s"}`
                         }
-                        className={`w-3.5 h-3.5 rounded-sm ${cell.isClosed ? "bg-black/5" : intensityClass(cell.count)}`}
+                        className={`w-3.5 h-3.5 rounded-sm hover:ring-2 hover:ring-brand-sky focus:outline-none focus:ring-2 focus:ring-brand-sky ${cell.isClosed ? "bg-black/5" : intensityClass(cell.count)}`}
                         style={
                           cell.isClosed
                             ? {
@@ -259,6 +264,21 @@ function ActivityHeatmap({ dailyCounts }: { dailyCounts: DailyCount[] }) {
           </div>
         </div>
       </div>
+      {selectedDate && (
+        <div className="mt-4 rounded-xl bg-brand-cloud px-3 py-2 text-sm text-brand-ink">
+          <span className="font-semibold">
+            {new Date(selectedDate + "T00:00:00").toLocaleDateString(undefined, {
+              weekday: "long",
+              month: "short",
+              day: "numeric",
+            })}
+            :
+          </span>{" "}
+          {new Date(selectedDate + "T00:00:00").getDay() === CLOSED_WEEKDAY
+            ? "Venue closed"
+            : `${countByDay.get(selectedDate) ?? 0} check-in${(countByDay.get(selectedDate) ?? 0) === 1 ? "" : "s"}`}
+        </div>
+      )}
     </div>
   );
 }
@@ -273,6 +293,8 @@ export default function AnalyticsOverview({
   dailyCounts,
   onKidsCheckedIn,
   onAttendance,
+  shifts,
+  attendanceLogs,
 }: {
   activeCount: number;
   venueCapacity: number;
@@ -283,6 +305,22 @@ export default function AnalyticsOverview({
   dailyCounts: DailyCount[];
   onKidsCheckedIn: () => void;
   onAttendance: () => void;
+  shifts: {
+    id: string;
+    employee_id: string;
+    start_time: string;
+    end_time: string;
+    notes: string | null;
+    employees: { name: string } | null;
+  }[];
+  attendanceLogs: {
+    id: string;
+    employee_id: string;
+    punch_in: string;
+    punch_out: string | null;
+    auto_punched_out?: boolean;
+    employees: { name: string } | null;
+  }[];
 }) {
   const capacityPct = Math.min(
     100,
@@ -329,7 +367,7 @@ export default function AnalyticsOverview({
         />
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+      <div className="hidden">
         <div className="bg-white rounded-2xl border border-black/5 p-5">
           <div className="flex items-center justify-between mb-2">
             <p className="font-semibold text-brand-ink">Floor capacity</p>
@@ -385,9 +423,10 @@ export default function AnalyticsOverview({
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
-        <AgeBreakdown ageBuckets={ageBuckets} />
+        <ShiftStatusSummary shifts={shifts} attendanceLogs={attendanceLogs} />
         <ActivityHeatmap dailyCounts={dailyCounts} />
       </div>
     </div>
   );
 }
+import ShiftStatusSummary from "./ShiftStatusSummary";

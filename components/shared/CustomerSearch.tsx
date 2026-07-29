@@ -8,8 +8,9 @@ type Result = {
   parent_name: string;
   phone: string;
   subscription_active: boolean;
+  subscription_started_on: string | null;
   subscription_expires_on: string | null;
-  children: { id: string; name: string; age: number }[] | null;
+  children: { id: string; name: string; age: number; date_of_birth: string }[] | null;
   currently_checked_in: boolean;
 };
 
@@ -106,6 +107,10 @@ export default function CustomerSearch({
     string | null
   >(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const today = new Date().toISOString().slice(0, 10);
+  const hasActiveSubscription = (result: Result) =>
+    result.subscription_active &&
+    (!result.subscription_expires_on || result.subscription_expires_on >= today);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -180,11 +185,15 @@ export default function CustomerSearch({
             <div className="flex items-center justify-between mb-2 gap-2">
               <p className="font-bold text-brand-ink">{r.parent_name}</p>
               <div className="flex items-center gap-2 shrink-0">
-                {r.subscription_active && (
+                {hasActiveSubscription(r) ? (
                   <span className="text-xs font-semibold text-brand-sky bg-brand-sky/10 px-2 py-1 rounded-full">
                     Member
                   </span>
-                )}
+                ) : r.subscription_active && r.subscription_expires_on ? (
+                  <span className="text-xs font-semibold text-brand-coral bg-brand-coral/10 px-2 py-1 rounded-full">
+                    Membership expired
+                  </span>
+                ) : null}
                 {r.currently_checked_in && (
                   <span className="text-xs font-semibold text-brand-leaf bg-brand-leaf/10 px-2 py-1 rounded-full">
                     Checked in now

@@ -77,16 +77,21 @@ export default function AdminDashboard({
     employee_id: string;
     punch_in: string;
     punch_out: string | null;
+    auto_punched_out?: boolean;
     employees: { name: string } | null;
   }[];
 }) {
   const tabs = isAdmin
     ? [
-        ...TABS,
+        TABS[0],
+        TABS[1],
+        TABS[2],
         { id: "subscriptions" as const, label: "Subscriptions" },
+        TABS[4],
         { id: "shifts" as const, label: "Shifts" },
         { id: "attendance" as const, label: "Attendance" },
         { id: "settings" as const, label: "Settings" },
+        TABS[3],
       ]
     : TABS;
   const [tab, setTab] = useState<(typeof tabs)[number]["id"]>("overview");
@@ -147,6 +152,8 @@ export default function AdminDashboard({
             dailyCounts={dailyCounts}
             onKidsCheckedIn={goToKidsCheckedIn}
             onAttendance={goToAttendance}
+            shifts={shifts}
+            attendanceLogs={attendanceLogs}
           />
         )}
 
