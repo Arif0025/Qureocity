@@ -1,54 +1,25 @@
 "use client";
 
-import Image from "next/image";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import PunchInFlow from "./PunchInFlow";
 import QuickCheckin from "./QuickCheckin";
 import LiveFloorView from "@/components/admin/LiveFloorView";
 import CustomerSearch from "@/components/shared/CustomerSearch";
+import PerformanceHeatmap from "./PerformanceHeatmap";
+import LiveKidsOnSiteChip from "./LiveKidsOnSiteChip";
 
 type SessionRow = {
   id: string;
   start_time: string;
   end_time: string | null;
   status: string;
-  children: { name: string; customers: { name: string } | null } | null;
+  children: {
+    name: string;
+    customers: { name: string; phone: string } | null;
+  } | null;
 };
-
-type Shift = {
-  id: string;
-  start_time: string;
-  end_time: string;
-  notes: string | null;
-};
-
-function MyShift({ shift }: { shift: Shift | null }) {
-  if (!shift) {
-    return (
-      <div className="bg-white rounded-xl2 shadow-sm p-8 text-center text-brand-ink/40">
-        No shift assigned yet — check with an admin.
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white rounded-xl2 shadow-sm p-8 text-center">
-      <p className="text-brand-ink/50 text-sm mb-1">Your shift</p>
-      <p className="text-3xl font-extrabold text-brand-ink mb-1">
-        {shift.start_time.slice(0, 5)} – {shift.end_time.slice(0, 5)}
-      </p>
-      <p className="text-xs text-brand-ink/40 mb-2">
-        Every day, until changed by an admin
-      </p>
-      {shift.notes && (
-        <p className="text-sm text-brand-ink/60 mt-3">{shift.notes}</p>
-      )}
-      <ChangePasswordCard />
-    </div>
-  );
-}
 
 function ChangePasswordCard() {
   const supabase = createClient();
@@ -92,19 +63,21 @@ function ChangePasswordCard() {
   };
 
   return (
-    <div className="mt-4">
+    <div className="bg-brand-nightSurface rounded-xl2 border border-white/10 p-4">
       {!isOpen ? (
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="text-xs font-medium text-brand-ink/50 hover:text-brand-sky transition-colors"
+          className="text-sm font-semibold text-brand-nightText/70 hover:text-brand-sky transition-colors"
         >
           Change password
         </button>
       ) : (
-        <div className="bg-white/70 rounded-xl2 border border-black/5 p-3 text-sm max-w-sm mx-auto text-left">
-          <p className="font-semibold text-brand-ink mb-1">Change password</p>
-          <p className="text-brand-ink/50 mb-3">
+        <div className="text-sm text-left">
+          <p className="font-semibold text-brand-nightText mb-1">
+            Change password
+          </p>
+          <p className="text-brand-nightText/50 mb-3">
             Update the password for your own account only.
           </p>
           <form onSubmit={handleSubmit} className="space-y-3">
@@ -113,14 +86,14 @@ function ChangePasswordCard() {
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="New password"
-              className="w-full min-h-[44px] rounded-xl2 border-2 border-black/10 px-4 text-base"
+              className="w-full min-h-[44px] rounded-xl2 border-2 border-white/15 bg-brand-nightSurface2 text-brand-nightText px-4 text-base"
             />
             <input
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Confirm password"
-              className="w-full min-h-[44px] rounded-xl2 border-2 border-black/10 px-4 text-base"
+              className="w-full min-h-[44px] rounded-xl2 border-2 border-white/15 bg-brand-nightSurface2 text-brand-nightText px-4 text-base"
             />
             <div className="flex gap-2">
               <button
@@ -139,7 +112,7 @@ function ChangePasswordCard() {
                   setNewPassword("");
                   setConfirmPassword("");
                 }}
-                className="min-h-[36px] rounded-xl2 bg-black/5 px-3 py-2 text-sm font-semibold text-brand-ink"
+                className="min-h-[36px] rounded-xl2 bg-white/8 px-3 py-2 text-sm font-semibold text-brand-nightText"
               >
                 Cancel
               </button>
@@ -155,26 +128,48 @@ function ChangePasswordCard() {
 
 const TAB_META = [
   { id: "punch", label: "Punch" },
-  { id: "quickcheckin", label: "Quick Check-In" },
+  { id: "quickcheckin", label: "Club check-in" },
   { id: "floor", label: "On Site" },
   { id: "search", label: "Search" },
-  { id: "shifts", label: "My Shift" },
+  { id: "performance", label: "Performance" },
 ] as const;
 
 type Tab = (typeof TAB_META)[number]["id"];
 
-export default function EmployeePanel({
+function EmployeePanelInner({
+  employeeId,
   employeeName,
   initialSessions,
-  myShift,
 }: {
+  employeeId: string;
   employeeName: string;
   initialSessions: SessionRow[];
-  myShift: Shift | null;
 }) {
-  const [tab, setTab] = useState<Tab>("punch");
-  const supabase = createClient();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const VALID_TABS = TAB_META.map((t) => t.id);
+  const tabFromUrl = searchParams.get("tab") as Tab | null;
+  const [tab, setTabState] = useState<Tab>(
+    tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : "punch",
+  );
+
+  const setTab = (id: Tab) => {
+    setTabState(id);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", id);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  useEffect(() => {
+    if (tabFromUrl && VALID_TABS.includes(tabFromUrl) && tabFromUrl !== tab) {
+      setTabState(tabFromUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabFromUrl]);
+
+  const supabase = createClient();
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -187,8 +182,13 @@ export default function EmployeePanel({
         return <QuickCheckin key="quickcheckin" />;
       case "floor":
         return <LiveFloorView key="floor" initialSessions={initialSessions} />;
-      case "shifts":
-        return <MyShift key="shifts" shift={myShift} />;
+      case "performance":
+        return (
+          <div className="space-y-4">
+            <PerformanceHeatmap key="performance" employeeId={employeeId} />
+            <ChangePasswordCard />
+          </div>
+        );
       case "search":
         return <CustomerSearch key="search" isAdmin={false} />;
       case "punch":
@@ -198,55 +198,44 @@ export default function EmployeePanel({
   };
 
   return (
-    <div className="min-h-screen bg-brand-cloud">
-      <div className="max-w-2xl mx-auto px-4 pt-6 pb-10">
-        {/* Header: greeting + sign out, so the top of the screen isn't
-            just a floating logo with nothing else going on */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Image
-              src="/logo-full.png"
-              alt="QureoCity"
-              width={132}
-              height={48}
-              className="h-8 w-auto"
-              priority
-            />
-            <div>
-              <p className="text-xs text-brand-ink/40 leading-none">Welcome</p>
-              <p className="font-bold text-brand-ink leading-tight">
+    <div className="dark-ui min-h-screen bg-brand-nightBg">
+      <div className="max-w-2xl mx-auto px-4 pt-5 pb-10">
+        {/* Header: compact logo, greeting, sign out */}
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={() => router.push("/")}
+              aria-label="Go to home"
+              className="shrink-0"
+            >
+              <img
+                src="/logo-mark.png"
+                alt="QureoCity"
+                className="h-10 w-10 object-contain brightness-0 invert opacity-90 hover:opacity-100 transition-opacity"
+              />
+            </button>
+            <div className="min-w-0">
+              <p className="text-xs text-brand-nightText/40 leading-none">
+                Welcome
+              </p>
+              <p className="font-bold text-brand-nightText leading-tight truncate">
                 {employeeName}
               </p>
             </div>
           </div>
           <button
             onClick={handleSignOut}
-            className="text-sm text-brand-ink/40 hover:text-brand-coral font-medium"
+            className="text-sm text-brand-nightText/40 hover:text-brand-coral font-medium shrink-0 whitespace-nowrap"
           >
             Sign out
           </button>
         </div>
 
-        {/* Quick-glance chips so the screen has something to look at
-            before you even pick a tab */}
-        <div className="grid grid-cols-2 gap-3 mb-6">
-          <div className="bg-white rounded-xl2 border border-black/5 px-4 py-3">
-            <p className="text-xs text-brand-ink/40">Kids on site</p>
-            <p className="text-2xl font-extrabold text-brand-ink">
-              {initialSessions.length}
-            </p>
-          </div>
-          <div className="bg-white rounded-xl2 border border-black/5 px-4 py-3">
-            <p className="text-xs text-brand-ink/40">Your shift</p>
-            <p className="text-lg font-extrabold text-brand-ink">
-              {myShift
-                ? `${myShift.start_time.slice(0, 5)}–${myShift.end_time.slice(0, 5)}`
-                : "—"}
-            </p>
-          </div>
+        <div className="mb-4">
+          <LiveKidsOnSiteChip initialCount={initialSessions.length} />
         </div>
-
-        <div className="grid grid-cols-5 gap-1 mb-6 bg-white rounded-2xl p-1 border border-black/5 shadow-sm">
+        <div className="grid grid-cols-5 gap-1 mb-6 bg-brand-nightSurface rounded-2xl p-1 border border-white/10 shadow-sm">
           {TAB_META.map((t) => (
             <button
               key={t.id}
@@ -255,7 +244,7 @@ export default function EmployeePanel({
               className={`flex items-center justify-center min-h-[52px] rounded-xl px-2 text-[11px] md:text-xs font-semibold tracking-wide transition-colors ${
                 tab === t.id
                   ? "bg-brand-sky text-white shadow-sm"
-                  : "text-brand-ink/50 hover:text-brand-ink"
+                  : "text-brand-nightText/50 hover:text-brand-nightText"
               }`}
             >
               {t.label}
@@ -266,5 +255,15 @@ export default function EmployeePanel({
         {renderActiveTab()}
       </div>
     </div>
+  );
+}
+
+export default function EmployeePanel(
+  props: Parameters<typeof EmployeePanelInner>[0],
+) {
+  return (
+    <Suspense fallback={null}>
+      <EmployeePanelInner {...props} />
+    </Suspense>
   );
 }

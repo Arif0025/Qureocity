@@ -11,13 +11,21 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          sun: "#FFC700",      // exact gold from the logo's sun rays
-          sky: "#9A66AF",      // exact purple from the logo — now the primary color
+          sun: "#FFC700", // exact gold from the logo's sun rays
+          sky: "#9A66AF", // exact purple from the logo — now the primary color
           purpleDeep: "#5B3A73", // darker tint for headings/emphasis
-          coral: "#FF6B6B",    // alerts / overdue
-          leaf: "#3DD68C",     // success / active-and-fine
-          ink: "#3A2E42",      // body text — dark, purple-tinted rather than plain gray
-          cloud: "#FFF9F0",    // warm cream background instead of sterile white
+          coral: "#FF6B6B", // alerts / overdue
+          leaf: "#3DD68C", // success / active-and-fine
+          ink: "#3A2E42", // body text — dark, purple-tinted rather than plain gray
+          cloud: "#FFF9F0", // warm cream background instead of sterile white
+          // Dark theme, used only on the staff-facing side (Admin,
+          // Employee) — the parent-facing check-in kiosk and root page
+          // stay on the light/cream palette above.
+          nightBg: "#15111E", // page background
+          nightSurface: "#1E1929", // cards, sidebar, modals
+          nightSurface2: "#282232", // nested/expanded rows, inputs, chips
+          nightText: "#F3EFFA", // primary text — off-white, purple-tinted
+          skyLight: "#C79EDA", // brighter purple for links/active state on dark
         },
       },
       keyframes: {

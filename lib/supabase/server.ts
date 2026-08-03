@@ -4,6 +4,10 @@ import { cookies } from "next/headers";
 
 // Normal server-side client — respects the logged-in employee's session
 // and therefore their RLS policies (staff vs admin).
+//
+// Uses the getAll/setAll cookie interface (the get/set/remove interface
+// was deprecated by @supabase/ssr as of v0.6.0 and removed in later
+// versions — mixing the two APIs silently breaks session handling).
 export function createServerSupabase() {
   const cookieStore = cookies();
   return createServerClient(
@@ -11,23 +15,24 @@ export function createServerSupabase() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
+        getAll() {
+          return cookieStore.getAll();
         },
-        set(name: string, value: string, options: CookieOptions) {
+        setAll(
+          cookiesToSet: {
+            name: string;
+            value: string;
+            options: CookieOptions;
+          }[],
+        ) {
           try {
-            cookieStore.set({ name, value, ...options });
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options),
+            );
           } catch {
             // Expected when called from a Server Component (which can only
-            // read cookies, not write them) — the middleware below is what
+            // read cookies, not write them) — middleware.ts is what
             // actually persists a refreshed session's cookie.
-          }
-        },
-        remove(name: string, options: CookieOptions) {
-          try {
-            cookieStore.set({ name, value: "", ...options });
-          } catch {
-            // Same reasoning as set() above.
           }
         },
       },

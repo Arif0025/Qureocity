@@ -3,15 +3,19 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getClientKey } from "@/lib/clientKey";
+import BirthDateDial from "./BirthDateDial";
 
-type Child = { id: string; name: string; age: number };
+type Child = {
+  id: string;
+  name: string;
+  age: number;
+  currently_checked_in?: boolean;
+};
 
-// Same UX tradeoff as NewCustomerForm: collect age via a fast stepper
-// rather than a date-of-birth picker, and derive an approximate DOB
-// server-side.
-function approxDOB(age: number): string {
-  const year = new Date().getFullYear() - age;
-  return `${year}-01-01`;
+function defaultDOB(yearsAgo: number): string {
+  const date = new Date();
+  date.setFullYear(date.getFullYear() - yearsAgo);
+  return date.toISOString().slice(0, 10);
 }
 
 export default function ReturningCustomer({
@@ -41,10 +45,11 @@ export default function ReturningCustomer({
 
   const [addingChild, setAddingChild] = useState(false);
   const [newChildName, setNewChildName] = useState("");
-  const [newChildAge, setNewChildAge] = useState(5);
+  const [newChildDateOfBirth, setNewChildDateOfBirth] = useState(defaultDOB(5));
   const [savingChild, setSavingChild] = useState(false);
 
-  const toggle = (id: string) => {
+  const toggle = (id: string, alreadyCheckedIn?: boolean) => {
+    if (alreadyCheckedIn) return; // can't re-select a child who's already on the floor
     setSelected((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -59,7 +64,7 @@ export default function ReturningCustomer({
       const { data, error } = await supabase.rpc("checkin_add_child", {
         p_customer_id: customerId,
         p_name: newChildName.trim(),
-        p_date_of_birth: approxDOB(newChildAge),
+        p_date_of_birth: newChildDateOfBirth,
         p_client_key: getClientKey(),
       });
       if (error) throw error;
@@ -68,7 +73,7 @@ export default function ReturningCustomer({
       setChildren((prev) => [...prev, newChild]);
       setSelected((prev) => new Set(prev).add(newChild.id)); // auto-select — they're obviously playing today
       setNewChildName("");
-      setNewChildAge(5);
+      setNewChildDateOfBirth(defaultDOB(5));
       setAddingChild(false);
     } catch (e: any) {
       onError(e.message ?? "Couldn't add child. Please try again.");
@@ -112,14 +117,18 @@ export default function ReturningCustomer({
       <div className="space-y-3 mb-3">
         {children.map((child) => {
           const isSelected = selected.has(child.id);
+          const alreadyIn = !!child.currently_checked_in;
           return (
             <button
               key={child.id}
-              onClick={() => toggle(child.id)}
+              onClick={() => toggle(child.id, alreadyIn)}
+              disabled={alreadyIn}
               className={`w-full flex items-center justify-between rounded-xl2 border-2 px-5 py-4 min-h-[64px] text-left transition-colors ${
-                isSelected
-                  ? "border-brand-sky bg-brand-sky/10"
-                  : "border-brand-ink/10 bg-white"
+                alreadyIn
+                  ? "border-brand-leaf/30 bg-brand-leaf/5 cursor-not-allowed"
+                  : isSelected
+                    ? "border-brand-sky bg-brand-sky/10"
+                    : "border-brand-ink/10 bg-white"
               }`}
             >
               <span>
@@ -130,15 +139,21 @@ export default function ReturningCustomer({
                   {child.age} yrs
                 </span>
               </span>
-              <span
-                className={`w-7 h-7 rounded-full border-2 flex items-center justify-center ${
-                  isSelected
-                    ? "border-brand-sky bg-brand-sky"
-                    : "border-brand-ink/20"
-                }`}
-              >
-                {isSelected && <span className="text-white text-sm">✓</span>}
-              </span>
+              {alreadyIn ? (
+                <span className="text-xs font-semibold text-brand-leaf bg-brand-leaf/10 px-2 py-1 rounded-full">
+                  Already checked in
+                </span>
+              ) : (
+                <span
+                  className={`w-7 h-7 rounded-full border-2 flex items-center justify-center ${
+                    isSelected
+                      ? "border-brand-sky bg-brand-sky"
+                      : "border-brand-ink/20"
+                  }`}
+                >
+                  {isSelected && <span className="text-white text-sm">✓</span>}
+                </span>
+              )}
             </button>
           );
         })}
@@ -161,26 +176,10 @@ export default function ReturningCustomer({
             placeholder="Child's name"
             className="w-full min-h-[48px] rounded-xl border border-brand-ink/10 px-3 mb-3"
           />
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm text-brand-ink/60">Age</span>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setNewChildAge((a) => Math.max(0, a - 1))}
-                className="min-h-[40px] min-w-[40px] rounded-xl bg-brand-cloud font-bold"
-              >
-                −
-              </button>
-              <span className="w-8 text-center font-semibold">
-                {newChildAge}
-              </span>
-              <button
-                onClick={() => setNewChildAge((a) => Math.min(17, a + 1))}
-                className="min-h-[40px] min-w-[40px] rounded-xl bg-brand-cloud font-bold"
-              >
-                +
-              </button>
-            </div>
-          </div>
+          <BirthDateDial
+            value={newChildDateOfBirth}
+            onChange={setNewChildDateOfBirth}
+          />
           <div className="flex gap-2">
             <button
               onClick={() => setAddingChild(false)}

@@ -8,10 +8,20 @@ import ReturningCustomer from "./ReturningCustomer";
 import NewCustomerForm from "./NewCustomerForm";
 import ConfirmationScreen from "./ConfirmationScreen";
 
-type Child = { id: string; name: string; age: number };
+type Child = {
+  id: string;
+  name: string;
+  age: number;
+  currently_checked_in?: boolean;
+};
 type LookupResult =
   | { found: false }
-  | { found: true; customer_id: string; parent_name: string; children: Child[] };
+  | {
+      found: true;
+      customer_id: string;
+      parent_name: string;
+      children: Child[];
+    };
 
 type Step = "phone" | "returning" | "new" | "confirmed";
 
@@ -48,23 +58,31 @@ export default function CheckinFlow() {
         setLoading(false);
       }
     },
-    [supabase]
+    [supabase],
   );
 
   const [justRegistered, setJustRegistered] = useState(false);
 
-  const handleRegistered = useCallback((customerId: string, parentName: string, children: Child[]) => {
-    setLookup({ found: true, customer_id: customerId, parent_name: parentName, children });
-    setJustRegistered(true);
-    setStep("returning");
-  }, []);
+  const handleRegistered = useCallback(
+    (customerId: string, parentName: string, children: Child[]) => {
+      setLookup({
+        found: true,
+        customer_id: customerId,
+        parent_name: parentName,
+        children,
+      });
+      setJustRegistered(true);
+      setStep("returning");
+    },
+    [],
+  );
 
   const handleSessionsCreated = useCallback(
     (sessions: { session_id: string; end_time: string | null }[]) => {
       setConfirmedSessions(sessions);
       setStep("confirmed");
     },
-    []
+    [],
   );
 
   const handleStartOver = useCallback(() => {
@@ -79,7 +97,11 @@ export default function CheckinFlow() {
   return (
     <div className="min-h-screen bg-brand-cloud flex flex-col items-center justify-center px-4 py-8">
       <div className="w-full max-w-md">
-        <img src="/logo-full.png" alt="QureoCity" className="h-16 mx-auto mb-6" />
+        <img
+          src="/logo-full.png"
+          alt="QureoCity"
+          className="h-16 mx-auto mb-6"
+        />
 
         {error && (
           <div className="mb-4 rounded-xl2 bg-brand-coral/10 border border-brand-coral text-brand-coral px-4 py-3 text-sm font-medium animate-popIn">
@@ -99,7 +121,9 @@ export default function CheckinFlow() {
               children={lookup.children}
               onConfirmed={handleSessionsCreated}
               onError={setError}
-              defaultSelectedIds={justRegistered ? lookup.children.map((c) => c.id) : undefined}
+              defaultSelectedIds={
+                justRegistered ? lookup.children.map((c) => c.id) : undefined
+              }
             />
           )}
 
@@ -112,7 +136,10 @@ export default function CheckinFlow() {
           )}
 
           {step === "confirmed" && (
-            <ConfirmationScreen sessions={confirmedSessions} onDone={handleStartOver} />
+            <ConfirmationScreen
+              sessions={confirmedSessions}
+              onDone={handleStartOver}
+            />
           )}
         </div>
       </div>

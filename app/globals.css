@@ -13,3 +13,13 @@ html {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Staff-facing UI (Admin, Employee) runs dark — this makes native form
+   controls (date/time pickers, <select> dropdowns, scrollbars) render
+   with dark chrome instead of the browser's light-mode default, without
+   needing color-scheme set on every individual input. The parent-facing
+   check-in kiosk and root page never get this class, so they're
+   unaffected and stay on the light/cream palette. */
+.dark-ui {
+  color-scheme: dark;
+}

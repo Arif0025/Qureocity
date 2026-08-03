@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createServerSupabase } from "@/lib/supabase/server";
-import AdminDashboard from "@/components/admin/AdminDashboard";
+import AdminDashboardV2 from "@/components/admin/AdminDashboardV2";
 
 // Simple, honest constant rather than a fake precision number — set this
 // to whatever the venue's actual comfortable capacity is. Move to
@@ -46,7 +46,7 @@ export default async function AdminPage() {
     supabase
       .from("play_sessions")
       .select(
-        "id, start_time, end_time, status, children(name, customers(name))",
+        "id, start_time, end_time, status, children(name, customers(name, phone))",
       )
       .eq("status", "active")
       .order("end_time", { ascending: true, nullsFirst: false }),
@@ -75,7 +75,9 @@ export default async function AdminPage() {
       .order("start_time", { ascending: true }),
     supabase
       .from("attendance_logs")
-      .select("id, employee_id, punch_in, punch_out, auto_punched_out, employees(name)")
+      .select(
+        "id, employee_id, punch_in, punch_out, auto_punched_out, employees(name)",
+      )
       .order("punch_in", { ascending: false })
       .limit(200),
   ]);
@@ -89,7 +91,7 @@ export default async function AdminPage() {
       : null;
 
   return (
-    <AdminDashboard
+    <AdminDashboardV2
       employeeName={employee.name}
       isAdmin={employee.role === "admin"}
       initialSessions={(sessions as any) ?? []}

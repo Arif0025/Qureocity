@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { formatTimeIST } from "@/lib/formatTime";
 
 const STATIC_QR_VALUE =
   process.env.NEXT_PUBLIC_DESK_QR_VALUE ?? "QUREOCITY-FRONT-DESK";
@@ -116,15 +117,15 @@ export default function PunchInFlow() {
 
   if (result) {
     return (
-      <div className="bg-white rounded-xl2 shadow-sm p-8 text-center max-w-sm w-full mx-auto">
+      <div className="bg-brand-nightSurface rounded-xl2 shadow-sm p-8 text-center max-w-sm w-full mx-auto">
         <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-brand-leaf/15 flex items-center justify-center text-brand-leaf text-3xl">
           ✓
         </div>
-        <h1 className="text-xl font-bold text-brand-ink">
+        <h1 className="text-xl font-bold text-brand-nightText">
           Punched {result.action === "in" ? "in" : "out"}
         </h1>
-        <p className="text-brand-ink/50 text-sm mt-1">
-          {new Date(result.at).toLocaleTimeString()}
+        <p className="text-brand-nightText/50 text-sm mt-1">
+          {formatTimeIST(result.at)}
         </p>
       </div>
     );
@@ -137,8 +138,8 @@ export default function PunchInFlow() {
       )}
 
       {!scannedValue && !scannerActive && (
-        <div className="w-full max-w-sm bg-white rounded-xl2 shadow-sm p-8 text-center">
-          <p className="text-brand-ink/70 text-sm mb-6">
+        <div className="w-full max-w-sm bg-brand-nightSurface rounded-xl2 shadow-sm p-8 text-center">
+          <p className="text-brand-nightText/70 text-sm mb-6">
             Tap to open the camera and scan the desk QR code
           </p>
           <button
@@ -150,19 +151,19 @@ export default function PunchInFlow() {
             <span className="absolute inset-0 rounded-full bg-brand-sky animate-ping opacity-20" />
             <span className="relative">{scannerLoading ? "…" : "📷"}</span>
           </button>
-          <p className="text-xs text-brand-ink/40 mt-4 font-semibold">
+          <p className="text-xs text-brand-nightText/40 mt-4 font-semibold">
             {scannerLoading ? "Starting camera…" : "Tap to scan"}
           </p>
         </div>
       )}
 
       {!scannedValue && scannerActive && (
-        <div className="w-full max-w-sm bg-white rounded-xl2 shadow-sm p-4">
-          <p className="text-center text-brand-ink/60 mb-3 text-sm">
+        <div className="w-full max-w-sm bg-brand-nightSurface rounded-xl2 shadow-sm p-4">
+          <p className="text-center text-brand-nightText/60 mb-3 text-sm">
             Scan the desk QR code
           </p>
           {scannerLoading && (
-            <p className="text-center text-brand-ink/50 text-sm mb-3">
+            <p className="text-center text-brand-nightText/50 text-sm mb-3">
               Starting camera…
             </p>
           )}
@@ -171,8 +172,10 @@ export default function PunchInFlow() {
       )}
 
       {scannedValue && (
-        <div className="w-full max-w-sm bg-white rounded-xl2 shadow-sm p-8 text-center">
-          <p className="font-semibold text-brand-ink mb-6">Slide to confirm</p>
+        <div className="w-full max-w-sm bg-brand-nightSurface rounded-xl2 shadow-sm p-8 text-center">
+          <p className="font-semibold text-brand-nightText mb-6">
+            Slide to confirm
+          </p>
           <button
             onClick={handleSlideComplete}
             disabled={sliding}

@@ -3,17 +3,14 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getClientKey } from "@/lib/clientKey";
+import BirthDateDial from "./BirthDateDial";
 
-type ChildDraft = { name: string; age: number };
+type ChildDraft = { name: string; dateOfBirth: string };
 
-// UX tradeoff, noted deliberately: we collect "age" (fast to tap on a
-// stepper) rather than a full date-of-birth picker (slow on mobile),
-// but store an approximate date_of_birth server-side so the schema
-// still avoids the "age drifts wrong every birthday" problem long-term.
-// Good enough for a play-space eligibility check, not a legal record.
-function approxDOB(age: number): string {
-  const year = new Date().getFullYear() - age;
-  return `${year}-01-01`;
+function defaultDOB(yearsAgo: number): string {
+  const date = new Date();
+  date.setFullYear(date.getFullYear() - yearsAgo);
+  return date.toISOString().slice(0, 10);
 }
 
 const MAX_CHILDREN = 10;
@@ -33,7 +30,9 @@ export default function NewCustomerForm({
 }) {
   const supabase = createClient();
   const [parentName, setParentName] = useState("");
-  const [kids, setKids] = useState<ChildDraft[]>([{ name: "", age: 5 }]);
+  const [kids, setKids] = useState<ChildDraft[]>([
+    { name: "", dateOfBirth: defaultDOB(5) },
+  ]);
   const [submitting, setSubmitting] = useState(false);
   // NOTE: real child ids come back from checkin_register, so the parent
   // flows straight into duration selection with everyone pre-selected —
@@ -47,7 +46,7 @@ export default function NewCustomerForm({
 
   const addKid = () => {
     if (kids.length >= MAX_CHILDREN) return;
-    setKids((prev) => [...prev, { name: "", age: 5 }]);
+    setKids((prev) => [...prev, { name: "", dateOfBirth: defaultDOB(5) }]);
   };
 
   const removeKid = (i: number) => {
@@ -66,7 +65,7 @@ export default function NewCustomerForm({
         p_parent_name: parentName.trim(),
         p_children: kids.map((k) => ({
           name: k.name.trim(),
-          date_of_birth: approxDOB(k.age),
+          date_of_birth: k.dateOfBirth,
         })),
         p_client_key: getClientKey(),
       });
@@ -122,30 +121,10 @@ export default function NewCustomerForm({
                 </button>
               )}
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-brand-ink/60">Age</span>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() =>
-                    updateKid(i, { age: Math.max(0, kid.age - 1) })
-                  }
-                  className="min-h-[44px] min-w-[44px] rounded-xl bg-brand-cloud font-bold text-lg"
-                >
-                  −
-                </button>
-                <span className="w-8 text-center font-semibold text-lg">
-                  {kid.age}
-                </span>
-                <button
-                  onClick={() =>
-                    updateKid(i, { age: Math.min(17, kid.age + 1) })
-                  }
-                  className="min-h-[44px] min-w-[44px] rounded-xl bg-brand-cloud font-bold text-lg"
-                >
-                  +
-                </button>
-              </div>
-            </div>
+            <BirthDateDial
+              value={kid.dateOfBirth}
+              onChange={(dateOfBirth) => updateKid(i, { dateOfBirth })}
+            />
           </div>
         ))}
       </div>

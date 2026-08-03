@@ -29,7 +29,9 @@ function punchTimeLabel(value: string): string {
   // Attendance timestamps are stored in UTC; display them consistently in
   // the venue's India time zone instead of using the server/browser locale.
   const indiaOffsetMinutes = 330;
-  const shifted = new Date(new Date(value).getTime() + indiaOffsetMinutes * 60_000);
+  const shifted = new Date(
+    new Date(value).getTime() + indiaOffsetMinutes * 60_000,
+  );
   const hour = shifted.getUTCHours();
   const minute = shifted.getUTCMinutes();
   const period = hour >= 12 ? "PM" : "AM";
@@ -55,9 +57,12 @@ function stateMeta(state: DutyState) {
   if (state === "present")
     return { label: "Present", tone: "text-brand-leaf bg-brand-leaf/10" };
   if (state === "left")
-    return { label: "Left", tone: "text-brand-ink bg-black/5" };
+    return { label: "Left", tone: "text-brand-nightText bg-white/8" };
   if (state === "auto_left")
-    return { label: "Auto clocked out", tone: "text-brand-sky bg-brand-sky/10" };
+    return {
+      label: "Auto clocked out",
+      tone: "text-brand-sky bg-brand-sky/10",
+    };
   if (state === "upcoming")
     return { label: "Upcoming", tone: "text-brand-sun bg-brand-sun/10" };
   return { label: "Absent", tone: "text-brand-coral bg-brand-coral/10" };
@@ -108,13 +113,15 @@ function determineState(
 export default function ShiftStatusSummary({
   shifts,
   attendanceLogs,
+  onEmployeeSelect,
 }: {
   shifts: ShiftRow[];
   attendanceLogs: AttendanceRow[];
+  onEmployeeSelect?: (employeeId: string) => void;
 }) {
   if (shifts.length === 0) {
     return (
-      <div className="bg-white rounded-2xl border border-black/5 p-5 text-sm text-brand-ink/40">
+      <div className="bg-brand-nightSurface rounded-2xl border border-white/10 p-5 text-sm text-brand-nightText/40">
         No shifts assigned yet.
       </div>
     );
@@ -141,18 +148,21 @@ export default function ShiftStatusSummary({
       shift,
       ...determineState(shift, attendanceByEmployee),
     }))
-    .sort((a, b) =>
-      order[a.state] - order[b.state] ||
-      (a.shift.employees?.name ?? "").localeCompare(
-        b.shift.employees?.name ?? "",
-      ),
+    .sort(
+      (a, b) =>
+        order[a.state] - order[b.state] ||
+        (a.shift.employees?.name ?? "").localeCompare(
+          b.shift.employees?.name ?? "",
+        ),
     );
 
   return (
-    <div className="bg-white rounded-2xl border border-black/5 p-5">
+    <div className="bg-brand-nightSurface rounded-2xl border border-white/10 p-5">
       <div className="flex items-center justify-between mb-4">
-        <p className="font-semibold text-brand-ink">Who’s on duty today</p>
-        <p className="text-xs text-brand-ink/40">
+        <p className="font-semibold text-brand-nightText">
+          Who’s on duty today
+        </p>
+        <p className="text-xs text-brand-nightText/40">
           Present, left, absent, or upcoming
         </p>
       </div>
@@ -161,17 +171,19 @@ export default function ShiftStatusSummary({
           const meta = stateMeta(state);
 
           return (
-            <div
+            <button
               key={shift.id}
-              className="flex items-center justify-between gap-4 rounded-xl border border-black/5 px-4 py-3"
+              type="button"
+              onClick={() => onEmployeeSelect?.(shift.employee_id)}
+              className={`flex w-full items-center justify-between gap-4 rounded-xl border border-white/10 px-4 py-3 text-left transition-colors ${onEmployeeSelect ? "hover:border-brand-sky/30 hover:bg-white/[0.04]" : ""}`}
             >
               <div>
-                <p className="font-medium text-brand-ink">
+                <p className="font-medium text-brand-nightText">
                   {shift.employees?.name ?? "—"}
                 </p>
-                <p className="text-xs text-brand-ink/45">{detail}</p>
+                <p className="text-xs text-brand-nightText/45">{detail}</p>
                 {shift.notes && (
-                  <p className="text-xs text-brand-ink/40 mt-1">
+                  <p className="text-xs text-brand-nightText/40 mt-1">
                     {shift.notes}
                   </p>
                 )}
@@ -181,7 +193,7 @@ export default function ShiftStatusSummary({
               >
                 {meta.label}
               </span>
-            </div>
+            </button>
           );
         })}
       </div>

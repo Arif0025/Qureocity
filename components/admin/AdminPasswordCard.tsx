@@ -45,9 +45,9 @@ export default function AdminPasswordCard() {
   };
 
   return (
-    <div className="bg-white rounded-xl2 shadow-sm p-5">
-      <p className="font-semibold text-brand-ink mb-1">Password</p>
-      <p className="text-sm text-brand-ink/50 mb-4">
+    <div className="bg-brand-nightSurface rounded-xl2 shadow-sm p-5">
+      <p className="font-semibold text-brand-nightText mb-1">Password</p>
+      <p className="text-sm text-brand-nightText/50 mb-4">
         Change the password for your admin account after you sign in.
       </p>
 
@@ -66,14 +66,14 @@ export default function AdminPasswordCard() {
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder="New password"
-            className="w-full min-h-[44px] rounded-xl2 border-2 border-black/10 px-4 text-base"
+            className="w-full min-h-[44px] rounded-xl2 border-2 border-white/15 bg-brand-nightSurface2 text-brand-nightText px-4 text-base"
           />
           <input
             type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="Confirm password"
-            className="w-full min-h-[44px] rounded-xl2 border-2 border-black/10 px-4 text-base"
+            className="w-full min-h-[44px] rounded-xl2 border-2 border-white/15 bg-brand-nightSurface2 text-brand-nightText px-4 text-base"
           />
           <div className="flex gap-2">
             <button
@@ -92,7 +92,7 @@ export default function AdminPasswordCard() {
                 setNewPassword("");
                 setConfirmPassword("");
               }}
-              className="min-h-[36px] rounded-xl2 bg-black/5 px-3 py-2 text-sm font-semibold text-brand-ink"
+              className="min-h-[36px] rounded-xl2 bg-white/8 px-3 py-2 text-sm font-semibold text-brand-nightText"
             >
               Cancel
             </button>

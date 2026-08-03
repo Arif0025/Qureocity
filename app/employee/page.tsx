@@ -20,26 +20,19 @@ export default async function EmployeePage() {
   if (!employee) redirect("/employee/login");
   if (employee.role === "admin") redirect("/admin");
 
-  const [{ data: sessions }, { data: myShift }] = await Promise.all([
-    supabase
-      .from("play_sessions")
-      .select(
-        "id, start_time, end_time, status, children(name, customers(name))",
-      )
-      .eq("status", "active")
-      .order("end_time", { ascending: true, nullsFirst: false }),
-    supabase
-      .from("shifts")
-      .select("id, start_time, end_time, notes")
-      .eq("employee_id", user.id)
-      .maybeSingle(),
-  ]);
+  const { data: sessions } = await supabase
+    .from("play_sessions")
+    .select(
+      "id, start_time, end_time, status, children(name, customers(name, phone))",
+    )
+    .eq("status", "active")
+    .order("end_time", { ascending: true, nullsFirst: false });
 
   return (
     <EmployeePanel
+      employeeId={user.id}
       employeeName={employee.name}
       initialSessions={(sessions as any) ?? []}
-      myShift={(myShift as any) ?? null}
     />
   );
 }

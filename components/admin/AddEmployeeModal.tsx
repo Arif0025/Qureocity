@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createEmployee } from "@/app/admin/actions";
 
 export default function AddEmployeeModal({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"staff" | "admin">("staff");
@@ -31,13 +33,16 @@ export default function AddEmployeeModal({ onClose }: { onClose: () => void }) {
       return;
     }
     alert(`Employee created. Temporary password: ${tempPassword}`);
+    router.refresh();
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl2 p-6 w-full max-w-sm">
-        <h2 className="text-lg font-bold text-brand-ink mb-4">Add employee</h2>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+      <div className="bg-brand-nightSurface rounded-xl2 p-6 w-full max-w-sm">
+        <h2 className="text-lg font-bold text-brand-nightText mb-4">
+          Add employee
+        </h2>
 
         {error && <p className="text-brand-coral text-sm mb-3">{error}</p>}
 
@@ -45,19 +50,19 @@ export default function AddEmployeeModal({ onClose }: { onClose: () => void }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Full name"
-          className="w-full min-h-[48px] rounded-xl border border-brand-ink/10 px-3 mb-3"
+          className="w-full min-h-[48px] rounded-xl border border-white/15 bg-brand-nightSurface2 text-brand-nightText px-3 mb-3"
         />
         <input
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Email"
           type="email"
-          className="w-full min-h-[48px] rounded-xl border border-brand-ink/10 px-3 mb-3"
+          className="w-full min-h-[48px] rounded-xl border border-white/15 bg-brand-nightSurface2 text-brand-nightText px-3 mb-3"
         />
         <select
           value={role}
           onChange={(e) => setRole(e.target.value as "staff" | "admin")}
-          className="w-full min-h-[48px] rounded-xl border border-brand-ink/10 px-3 mb-4"
+          className="w-full min-h-[48px] rounded-xl border border-white/15 bg-brand-nightSurface2 text-brand-nightText px-3 mb-4"
         >
           <option value="staff">Staff</option>
           <option value="admin">Admin</option>
@@ -66,7 +71,7 @@ export default function AddEmployeeModal({ onClose }: { onClose: () => void }) {
         <div className="flex gap-2">
           <button
             onClick={onClose}
-            className="flex-1 min-h-[48px] rounded-xl border border-brand-ink/10 text-brand-ink/60 font-semibold"
+            className="flex-1 min-h-[48px] rounded-xl border border-white/15 text-brand-nightText/60 font-semibold"
           >
             Cancel
           </button>
