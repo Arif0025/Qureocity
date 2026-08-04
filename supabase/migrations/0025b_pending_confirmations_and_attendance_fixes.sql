@@ -100,6 +100,11 @@ $$;
 
 grant execute on function checkin_create_sessions(uuid, uuid[], int, text, session_status) to anon, authenticated;
 
+-- Remove the legacy 4-argument overload so 4-argument RPC calls keep
+-- resolving to the defaulted 5-argument version instead of becoming
+-- ambiguous.
+drop function if exists checkin_create_sessions(uuid, uuid[], int, text);
+
 -- checkin_lookup should treat a pending child as "already in the
 -- system" too, so the kiosk can't queue the same kid a second time
 -- while their first request is still awaiting confirmation.

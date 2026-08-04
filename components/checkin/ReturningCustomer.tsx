@@ -94,6 +94,7 @@ export default function ReturningCustomer({
         p_child_ids: Array.from(selected),
         p_duration_mins: duration,
         p_client_key: getClientKey(),
+        p_status: "pending_payment",
       });
       if (error) throw error;
       onConfirmed(data.sessions);
