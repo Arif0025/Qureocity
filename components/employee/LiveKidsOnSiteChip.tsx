@@ -5,8 +5,10 @@ import { createClient } from "@/lib/supabase/client";
 
 export default function LiveKidsOnSiteChip({
   initialCount,
+  onClick,
 }: {
   initialCount: number;
+  onClick?: () => void;
 }) {
   const supabase = createClient();
   const [count, setCount] = useState(initialCount);
@@ -39,9 +41,14 @@ export default function LiveKidsOnSiteChip({
   }, [supabase, refetch]);
 
   return (
-    <div className="bg-brand-nightSurface rounded-xl2 border border-white/10 px-4 py-3">
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      className="w-full text-left bg-brand-nightSurface rounded-xl2 border border-white/10 px-4 py-3 hover:border-brand-sky/30 transition-colors disabled:cursor-default disabled:hover:border-white/10"
+    >
       <p className="text-xs text-brand-nightText/40">Kids on site</p>
       <p className="text-2xl font-extrabold text-brand-nightText">{count}</p>
-    </div>
+    </button>
   );
 }

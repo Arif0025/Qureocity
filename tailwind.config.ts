@@ -18,14 +18,18 @@ const config: Config = {
           leaf: "#3DD68C", // success / active-and-fine
           ink: "#3A2E42", // body text — dark, purple-tinted rather than plain gray
           cloud: "#FFF9F0", // warm cream background instead of sterile white
-          // Dark theme, used only on the staff-facing side (Admin,
-          // Employee) — the parent-facing check-in kiosk and root page
-          // stay on the light/cream palette above.
-          nightBg: "#15111E", // page background
-          nightSurface: "#1E1929", // cards, sidebar, modals
-          nightSurface2: "#282232", // nested/expanded rows, inputs, chips
-          nightText: "#F3EFFA", // primary text — off-white, purple-tinted
-          skyLight: "#C79EDA", // brighter purple for links/active state on dark
+          // Staff-facing UI (Admin, Employee) tokens — CSS-variable-backed
+          // so the same `bg-brand-nightBg` / `text-brand-nightText` class
+          // names used everywhere automatically follow the light/dark
+          // toggle (see globals.css for the two value sets). The names
+          // keep the "night" prefix for backwards compatibility with the
+          // hundreds of existing usages, even though they now render
+          // light-theme values too when data-theme="light" is set.
+          nightBg: "rgb(var(--night-bg) / <alpha-value>)",
+          nightSurface: "rgb(var(--night-surface) / <alpha-value>)",
+          nightSurface2: "rgb(var(--night-surface-2) / <alpha-value>)",
+          nightText: "rgb(var(--night-text) / <alpha-value>)",
+          skyLight: "rgb(var(--sky-light) / <alpha-value>)",
         },
       },
       keyframes: {

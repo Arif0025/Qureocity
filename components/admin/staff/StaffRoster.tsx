@@ -1,14 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ChevronDown, Clock, KeyRound, Plus } from "lucide-react";
+import { ChevronDown, KeyRound, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { resetEmployeePassword } from "@/app/admin/actions";
 import EmployeeCalendar from "./EmployeeCalendar";
 import ShiftEditor from "./ShiftEditor";
 import AddEmployeeModal from "../AddEmployeeModal";
-
-const CLOSED_WEEKDAY = 2; // Tuesday
 
 type Staff = { id: string; name: string; role: string };
 type Shift = {
@@ -24,19 +22,24 @@ type Summary = {
   role: string;
   actual_working_days: number;
   total_hours_this_month: number;
+  scheduled_hours_this_month: number | null;
+  working_days_this_month: number;
 };
 type LogRow = { id: string; punch_in: string; punch_out: string | null };
 
-// Open days elapsed so far this month (venue is closed Tuesdays) — the
-// "total working days" half of the attendance glimpse.
-function openDaysElapsedThisMonth(): number {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  let count = 0;
-  for (let d = new Date(start); d <= now; d.setDate(d.getDate() + 1)) {
-    if (d.getDay() !== CLOSED_WEEKDAY) count++;
-  }
-  return count;
+// An employee is "falling behind" once actual hours drop meaningfully
+// under what their shift + days-open-so-far would predict. 80% gives
+// some slack for late starts/early leaves without flagging on every
+// minor variance.
+const BEHIND_SCHEDULE_THRESHOLD = 0.8;
+
+function isBehindSchedule(summary?: Summary): boolean {
+  if (!summary || summary.scheduled_hours_this_month == null) return false;
+  if (summary.scheduled_hours_this_month <= 0) return false;
+  return (
+    summary.total_hours_this_month <
+    summary.scheduled_hours_this_month * BEHIND_SCHEDULE_THRESHOLD
+  );
 }
 
 export default function StaffRoster({
@@ -62,8 +65,6 @@ export default function StaffRoster({
     Record<string, LogRow[]>
   >({});
   const [historyLoadingId, setHistoryLoadingId] = useState<string | null>(null);
-
-  const totalOpenDays = openDaysElapsedThisMonth();
 
   useEffect(() => {
     (async () => {
@@ -134,10 +135,15 @@ export default function StaffRoster({
         const summary = summaries[s.id];
         const shift = shiftFor(s.id);
         const isOpen = expandedId === s.id;
+        const behind = isBehindSchedule(summary);
         return (
           <div
             key={s.id}
-            className="bg-brand-nightSurface rounded-2xl border border-white/10 overflow-hidden"
+            className={`bg-brand-nightSurface rounded-2xl border overflow-hidden ${
+              behind
+                ? "border-white/10 border-l-4 border-l-brand-sun"
+                : "border-white/10"
+            }`}
           >
             <button
               onClick={() => toggleExpand(s.id)}
@@ -157,10 +163,12 @@ export default function StaffRoster({
                     <p className="text-sm font-medium text-brand-nightText">
                       {loadingSummary
                         ? "…"
-                        : `${summary?.actual_working_days ?? 0}/${totalOpenDays} days`}
+                        : `${summary?.actual_working_days ?? 0}/${summary?.working_days_this_month ?? 0} days`}
                     </p>
-                    <p className="text-xs text-brand-nightText/35">
-                      this month
+                    <p
+                      className={`text-xs ${behind ? "text-brand-sun" : "text-brand-nightText/35"}`}
+                    >
+                      {behind ? "Falling behind" : "this month"}
                     </p>
                   </>
                 ) : (
@@ -177,14 +185,27 @@ export default function StaffRoster({
 
             {isOpen && (
               <div className="px-5 pb-5 pt-1 border-t border-white/8 space-y-4">
-                <div className="grid grid-cols-3 gap-2 mt-3">
+                <div className="grid grid-cols-2 gap-2 mt-3">
                   <div className="rounded-xl border border-white/10 bg-brand-nightSurface2/60 px-3 py-3">
-                    <p className="text-[11px] text-brand-nightText/40">Hours</p>
+                    <p className="text-[11px] text-brand-nightText/40">
+                      Actual hours
+                    </p>
                     <p className="mt-1 text-lg font-bold text-brand-nightText">
                       {summary?.total_hours_this_month ?? 0}
                     </p>
                     <p className="text-[11px] text-brand-nightText/35">
                       this month
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-brand-nightSurface2/60 px-3 py-3">
+                    <p className="text-[11px] text-brand-nightText/40">
+                      Scheduled hours
+                    </p>
+                    <p className="mt-1 text-lg font-bold text-brand-nightText">
+                      {summary?.scheduled_hours_this_month ?? "—"}
+                    </p>
+                    <p className="text-[11px] text-brand-nightText/35">
+                      based on shift
                     </p>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-brand-nightSurface2/60 px-3 py-3">
@@ -203,24 +224,12 @@ export default function StaffRoster({
                       Working days
                     </p>
                     <p className="mt-1 text-lg font-bold text-brand-nightText">
-                      {totalOpenDays}
+                      {summary?.working_days_this_month ?? 0}
                     </p>
                     <p className="text-[11px] text-brand-nightText/35">
                       open this month
                     </p>
                   </div>
-                </div>
-
-                <div className="flex items-center gap-2 mt-3">
-                  <Clock size={16} className="text-brand-sky" />
-                  <p className="text-sm text-brand-nightText">
-                    <span className="text-lg font-bold text-brand-nightText">
-                      {summary?.total_hours_this_month ?? 0}
-                    </span>{" "}
-                    <span className="text-brand-nightText/50">
-                      hours worked this month
-                    </span>
-                  </p>
                 </div>
 
                 {historyLoadingId === s.id ? (

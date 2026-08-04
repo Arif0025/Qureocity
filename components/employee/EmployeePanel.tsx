@@ -3,12 +3,26 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import {
+  Fingerprint,
+  Zap,
+  Users,
+  Clock,
+  Search as SearchIcon,
+  BarChart3,
+} from "lucide-react";
 import PunchInFlow from "./PunchInFlow";
 import QuickCheckin from "./QuickCheckin";
 import LiveFloorView from "@/components/admin/LiveFloorView";
 import CustomerSearch from "@/components/shared/CustomerSearch";
 import PerformanceHeatmap from "./PerformanceHeatmap";
 import LiveKidsOnSiteChip from "./LiveKidsOnSiteChip";
+import MyPerformanceGlimpse from "./MyPerformanceGlimpse";
+import ShiftDetailsCard from "./ShiftDetailsCard";
+import PendingConfirmations from "@/components/shared/PendingConfirmations";
+import { usePendingCount } from "@/lib/hooks/usePendingCount";
+import { useTheme } from "@/lib/hooks/useTheme";
+import ThemeToggle from "@/components/shared/ThemeToggle";
 
 type SessionRow = {
   id: string;
@@ -127,11 +141,12 @@ function ChangePasswordCard() {
 }
 
 const TAB_META = [
-  { id: "punch", label: "Punch" },
-  { id: "quickcheckin", label: "Club check-in" },
-  { id: "floor", label: "On Site" },
-  { id: "search", label: "Search" },
-  { id: "performance", label: "Performance" },
+  { id: "floor", label: "On Site", icon: Users },
+  { id: "pending", label: "Pending", icon: Clock },
+  { id: "quickcheckin", label: "Club check-in", icon: Zap },
+  { id: "punch", label: "Punch", icon: Fingerprint },
+  { id: "search", label: "Search", icon: SearchIcon },
+  { id: "activity", label: "My Activity", icon: BarChart3 },
 ] as const;
 
 type Tab = (typeof TAB_META)[number]["id"];
@@ -152,8 +167,15 @@ function EmployeePanelInner({
   const VALID_TABS = TAB_META.map((t) => t.id);
   const tabFromUrl = searchParams.get("tab") as Tab | null;
   const [tab, setTabState] = useState<Tab>(
-    tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : "punch",
+    tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : "floor",
   );
+  const [focusPendingId, setFocusPendingId] = useState<string | null>(null);
+  const pendingCount = usePendingCount();
+  const { theme } = useTheme();
+  const logoClass =
+    theme === "light"
+      ? "opacity-90 hover:opacity-100 transition-opacity"
+      : "brightness-0 invert opacity-90 hover:opacity-100 transition-opacity";
 
   const setTab = (id: Tab) => {
     setTabState(id);
@@ -176,16 +198,32 @@ function EmployeePanelInner({
     router.push("/employee/login");
   };
 
+  const goToPending = (sessionId: string) => {
+    setFocusPendingId(sessionId);
+    setTab("pending");
+  };
+
   const renderActiveTab = () => {
     switch (tab) {
       case "quickcheckin":
         return <QuickCheckin key="quickcheckin" />;
       case "floor":
-        return <LiveFloorView key="floor" initialSessions={initialSessions} />;
-      case "performance":
+        return (
+          <LiveFloorView
+            key="floor"
+            initialSessions={initialSessions}
+            onPendingClick={goToPending}
+          />
+        );
+      case "pending":
+        return (
+          <PendingConfirmations key="pending" focusSessionId={focusPendingId} />
+        );
+      case "activity":
         return (
           <div className="space-y-4">
-            <PerformanceHeatmap key="performance" employeeId={employeeId} />
+            <PerformanceHeatmap key="activity" employeeId={employeeId} />
+            <ShiftDetailsCard employeeId={employeeId} />
             <ChangePasswordCard />
           </div>
         );
@@ -212,7 +250,7 @@ function EmployeePanelInner({
               <img
                 src="/logo-mark.png"
                 alt="QureoCity"
-                className="h-10 w-10 object-contain brightness-0 invert opacity-90 hover:opacity-100 transition-opacity"
+                className={`h-10 w-10 object-contain ${logoClass}`}
               />
             </button>
             <div className="min-w-0">
@@ -224,32 +262,57 @@ function EmployeePanelInner({
               </p>
             </div>
           </div>
-          <button
-            onClick={handleSignOut}
-            className="text-sm text-brand-nightText/40 hover:text-brand-coral font-medium shrink-0 whitespace-nowrap"
-          >
-            Sign out
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <ThemeToggle compact />
+            <button
+              onClick={handleSignOut}
+              className="text-sm text-brand-nightText/40 hover:text-brand-coral font-medium whitespace-nowrap px-1"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
 
-        <div className="mb-4">
-          <LiveKidsOnSiteChip initialCount={initialSessions.length} />
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <LiveKidsOnSiteChip
+            initialCount={initialSessions.length}
+            onClick={() => setTab("floor")}
+          />
+          <MyPerformanceGlimpse
+            employeeId={employeeId}
+            onClick={() => setTab("activity")}
+          />
         </div>
-        <div className="grid grid-cols-5 gap-1 mb-6 bg-brand-nightSurface rounded-2xl p-1 border border-white/10 shadow-sm">
-          {TAB_META.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={`flex items-center justify-center min-h-[52px] rounded-xl px-2 text-[11px] md:text-xs font-semibold tracking-wide transition-colors ${
-                tab === t.id
-                  ? "bg-brand-sky text-white shadow-sm"
-                  : "text-brand-nightText/50 hover:text-brand-nightText"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div className="grid grid-cols-6 gap-1 mb-6 bg-brand-nightSurface rounded-2xl p-1 border border-white/10 shadow-sm">
+          {TAB_META.map((t) => {
+            const Icon = t.icon;
+            const isActive = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => {
+                  if (t.id !== "pending") setFocusPendingId(null);
+                  setTab(t.id);
+                }}
+                className={`relative flex flex-col items-center justify-center gap-1 min-h-[52px] rounded-xl px-1 transition-colors ${
+                  isActive
+                    ? "bg-brand-sky text-white shadow-sm"
+                    : "text-brand-nightText/50 hover:text-brand-nightText"
+                }`}
+              >
+                <Icon size={16} strokeWidth={2.25} />
+                <span className="text-[9px] font-semibold tracking-wide leading-none text-center">
+                  {t.label}
+                </span>
+                {t.id === "pending" && pendingCount > 0 && (
+                  <span className="absolute top-1 right-1.5 min-w-[15px] h-[15px] px-[3px] rounded-full bg-brand-coral text-white text-[9px] font-bold flex items-center justify-center">
+                    {pendingCount > 9 ? "9+" : pendingCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {renderActiveTab()}

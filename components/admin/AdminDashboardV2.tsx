@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { Home as HomeIcon } from "lucide-react";
 import Sidebar, { AdminTabId } from "./Sidebar";
 import HomeOverview from "./home/HomeOverview";
 import StaffRoster from "./staff/StaffRoster";
@@ -11,7 +12,22 @@ import SubscriptionsManager from "./SubscriptionsManager";
 import AdminPasswordCard from "./AdminPasswordCard";
 import QuickCheckin from "@/components/employee/QuickCheckin";
 import CustomerSearch from "@/components/shared/CustomerSearch";
+import PendingConfirmations from "@/components/shared/PendingConfirmations";
 import { SessionRow } from "./home/KidsCheckedInCard";
+
+function BackToHomeButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Back to Home"
+      className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-nightText/50 hover:text-brand-skyLight border border-white/10 hover:border-brand-sky/40 rounded-lg px-2.5 py-1.5 transition-colors shrink-0"
+    >
+      <HomeIcon size={13} />
+      Home
+    </button>
+  );
+}
 
 type Staff = { id: string; name: string; role: string };
 type OnDutyLog = {
@@ -82,11 +98,13 @@ function AdminDashboardV2Inner({
     "customers",
     "staff",
     "clubcheckin",
+    "pending",
   ];
   const tabFromUrl = searchParams.get("tab") as AdminTabId | null;
   const [tab, setTabState] = useState<AdminTabId>(
     tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : "home",
   );
+  const [focusPendingId, setFocusPendingId] = useState<string | null>(null);
   const [customerSubtab, setCustomerSubtab] =
     useState<(typeof CUSTOMER_SUBTABS)[number]["id"]>("directory");
   const [customerSearchQuery, setCustomerSearchQuery] = useState(
@@ -127,6 +145,11 @@ function AdminDashboardV2Inner({
     setTab("staff");
   };
 
+  const goToPending = (sessionId: string) => {
+    setFocusPendingId(sessionId);
+    setTab("pending");
+  };
+
   const openCustomerDirectory = (customerKey: string) => {
     setCustomerSubtab("directory");
     setCustomerSearchQuery(customerKey);
@@ -164,7 +187,23 @@ function AdminDashboardV2Inner({
                 dailyCounts={dailyCounts}
                 onInspectStaffEmployee={openStaffEmployee}
                 onOpenCustomerDirectory={openCustomerDirectory}
+                onPendingClick={goToPending}
               />
+            </>
+          )}
+
+          {tab === "pending" && (
+            <>
+              <div className="flex items-start justify-between gap-3 mb-1">
+                <h1 className="text-lg font-bold text-brand-nightText">
+                  Pending confirmations
+                </h1>
+                <BackToHomeButton onClick={() => setTab("home")} />
+              </div>
+              <p className="text-brand-nightText/50 text-sm mb-6">
+                Kids checked in from the kiosk, awaiting payment confirmation.
+              </p>
+              <PendingConfirmations focusSessionId={focusPendingId} />
             </>
           )}
 
@@ -182,9 +221,12 @@ function AdminDashboardV2Inner({
 
           {tab === "customers" && (
             <>
-              <h1 className="text-lg font-bold text-brand-nightText mb-1">
-                Customers
-              </h1>
+              <div className="flex items-start justify-between gap-3 mb-1">
+                <h1 className="text-lg font-bold text-brand-nightText">
+                  Customers
+                </h1>
+                <BackToHomeButton onClick={() => setTab("home")} />
+              </div>
               <p className="text-brand-nightText/50 text-sm mb-5">
                 Registered families, their history, and subscriptions.
               </p>
@@ -216,9 +258,12 @@ function AdminDashboardV2Inner({
 
           {tab === "staff" && (
             <>
-              <h1 className="text-lg font-bold text-brand-nightText mb-1">
-                Staff
-              </h1>
+              <div className="flex items-start justify-between gap-3 mb-1">
+                <h1 className="text-lg font-bold text-brand-nightText">
+                  Staff
+                </h1>
+                <BackToHomeButton onClick={() => setTab("home")} />
+              </div>
               <p className="text-brand-nightText/50 text-sm mb-5">
                 {isAdmin
                   ? "Roles, shifts, and attendance for the team."

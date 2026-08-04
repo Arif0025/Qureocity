@@ -44,6 +44,7 @@ export default function HomeOverview({
   dailyCounts,
   onInspectStaffEmployee,
   onOpenCustomerDirectory,
+  onPendingClick,
 }: {
   initialSessions: SessionRow[];
   todayCheckinCount: number;
@@ -55,6 +56,7 @@ export default function HomeOverview({
   dailyCounts: { day: string; cnt: number }[];
   onInspectStaffEmployee: (employeeId: string) => void;
   onOpenCustomerDirectory: (customerKey: string) => void;
+  onPendingClick?: (sessionId: string) => void;
 }) {
   const [drill, setDrill] = useState<Drill>("none");
 
@@ -77,7 +79,10 @@ export default function HomeOverview({
           {titles[drill]}
         </h1>
         {drill === "kids" && (
-          <LiveFloorView initialSessions={initialSessions} />
+          <LiveFloorView
+            initialSessions={initialSessions}
+            onPendingClick={onPendingClick}
+          />
         )}
         {drill === "staff" && (
           <ShiftStatusSummary

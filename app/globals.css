@@ -14,12 +14,89 @@ html {
   display: none;
 }
 
-/* Staff-facing UI (Admin, Employee) runs dark — this makes native form
-   controls (date/time pickers, <select> dropdowns, scrollbars) render
-   with dark chrome instead of the browser's light-mode default, without
-   needing color-scheme set on every individual input. The parent-facing
-   check-in kiosk and root page never get this class, so they're
-   unaffected and stay on the light/cream palette. */
+/* Staff-facing UI (Admin, Employee) can run dark OR light, toggled by
+   the person via data-theme on <html> (see app/layout.tsx for the
+   FOUC-prevention script, and lib/hooks/useTheme.ts for the toggle
+   itself). The parent-facing check-in kiosk and root page never get the
+   .dark-ui wrapper class, so they're unaffected either way and always
+   stay on the light/cream palette regardless of this toggle. */
+
+:root {
+  /* Dark theme values (default) */
+  --night-bg: 21 17 30; /* #15111E */
+  --night-surface: 30 25 41; /* #1E1929 */
+  --night-surface-2: 40 34 50; /* #282232 */
+  --night-text: 243 239 250; /* #F3EFFA */
+  --sky-light: 199 158 218; /* #C79EDA */
+}
+
+[data-theme="light"] {
+  /* Light theme — white cards floating on a pale lavender canvas,
+     purple-ink text, a deeper purple for links/active states since the
+     pale #C79EDA used on dark doesn't have enough contrast on white. */
+  --night-bg: 247 243 251; /* #F7F3FB */
+  --night-surface: 255 255 255; /* #FFFFFF */
+  --night-surface-2: 241 234 247; /* #F1EAF7 */
+  --night-text: 58 46 66; /* #3A2E42 — brand.ink */
+  --sky-light: 122 74 148; /* #7A4A94 */
+}
+
 .dark-ui {
   color-scheme: dark;
+}
+[data-theme="light"] .dark-ui {
+  color-scheme: light;
+}
+
+/* The dark UI was built with literal white-opacity utilities for
+   borders/nested-surface tints (border-white/10, bg-white/[0.05], etc.)
+   — correct as-is on a dark canvas, but those need to become dark-tinted
+   instead of white-tinted on a light canvas, or they'd be invisible.
+   This is the exact, bounded set of white-opacity utilities used across
+   the staff UI — overriding them here (scoped to light + .dark-ui) means
+   none of the ~30 component files that use them needed to change. */
+[data-theme="light"] .dark-ui .bg-white\/8 {
+  background-color: rgb(58 46 66 / 0.06);
+}
+[data-theme="light"] .dark-ui .bg-white\/\[0\.035\] {
+  background-color: rgb(58 46 66 / 0.035);
+}
+[data-theme="light"] .dark-ui .bg-white\/\[0\.04\] {
+  background-color: rgb(58 46 66 / 0.045);
+}
+[data-theme="light"] .dark-ui .bg-white\/\[0\.05\] {
+  background-color: rgb(58 46 66 / 0.05);
+}
+[data-theme="light"] .dark-ui .bg-white\/\[0\.08\] {
+  background-color: rgb(58 46 66 / 0.08);
+}
+[data-theme="light"] .dark-ui .border-white\/8 {
+  border-color: rgb(58 46 66 / 0.1);
+}
+[data-theme="light"] .dark-ui .border-white\/10 {
+  border-color: rgb(58 46 66 / 0.12);
+}
+[data-theme="light"] .dark-ui .border-white\/15 {
+  border-color: rgb(58 46 66 / 0.16);
+}
+[data-theme="light"] .dark-ui .border-white\/20 {
+  border-color: rgb(58 46 66 / 0.2);
+}
+[data-theme="light"] .dark-ui .ring-white\/10 {
+  --tw-ring-color: rgb(58 46 66 / 0.12);
+}
+[data-theme="light"] .dark-ui .ring-white\/20 {
+  --tw-ring-color: rgb(58 46 66 / 0.2);
+}
+[data-theme="light"] .dark-ui .hover\:bg-white\/8:hover {
+  background-color: rgb(58 46 66 / 0.08);
+}
+[data-theme="light"] .dark-ui .hover\:bg-white\/\[0\.04\]:hover {
+  background-color: rgb(58 46 66 / 0.05);
+}
+[data-theme="light"] .dark-ui .hover\:bg-white\/\[0\.05\]:hover {
+  background-color: rgb(58 46 66 / 0.06);
+}
+[data-theme="light"] .dark-ui .hover\:border-white\/10:hover {
+  border-color: rgb(58 46 66 / 0.16);
 }

@@ -54,8 +54,14 @@ function timeStr(v: string) {
 
 export default function LiveFloorView({
   initialSessions,
+  onPendingClick,
 }: {
   initialSessions: SessionRow[];
+  // Pending rows aren't actionable from here — tapping one hands off to
+  // the Pending Confirmations tab instead of expanding a dropdown, since
+  // confirm/discard needs to be a deliberate action, not one tap away in
+  // a quick-glance row meant for calling a parent.
+  onPendingClick?: (sessionId: string) => void;
 }) {
   const supabase = createClient();
   const [sessions, setSessions] = useState<SessionRow[]>(initialSessions ?? []);
@@ -69,7 +75,7 @@ export default function LiveFloorView({
       .select(
         "id, start_time, end_time, status, children(name, customers(name, phone))",
       )
-      .eq("status", "active")
+      .in("status", ["active", "pending_payment"])
       .order("end_time", { ascending: true, nullsFirst: false });
     setSessions((data as any) ?? []);
   }, [supabase]);
@@ -126,8 +132,35 @@ export default function LiveFloorView({
   return (
     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
       {sessions.map((s) => {
+        const isPending = s.status === "pending_payment";
         const state = statusFor(s.end_time);
         const isOpen = expandedId === s.id;
+
+        if (isPending) {
+          return (
+            <button
+              key={s.id}
+              onClick={() => onPendingClick?.(s.id)}
+              className="w-full text-left bg-brand-nightSurface rounded-xl border border-white/10 border-l-4 border-l-brand-sun overflow-hidden"
+            >
+              <div className="flex items-center gap-2.5 px-4 py-3.5">
+                <span className="w-2 h-2 rounded-full shrink-0 bg-brand-sun" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-brand-nightText text-sm truncate">
+                    {s.children?.name ?? "—"}
+                  </p>
+                  <p className="text-xs text-brand-nightText/40 truncate">
+                    {s.children?.customers?.name}
+                  </p>
+                </div>
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-brand-sun bg-brand-sun/10 rounded-full px-2 py-0.5 shrink-0">
+                  Awaiting payment
+                </span>
+              </div>
+            </button>
+          );
+        }
+
         return (
           <div
             key={s.id}

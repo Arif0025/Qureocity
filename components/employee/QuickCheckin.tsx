@@ -80,6 +80,10 @@ export default function QuickCheckin() {
       p_child_ids: [r.child_id],
       p_duration_mins: durationMins,
       p_client_key: getClientKey(),
+      // Quick Check-In is staff-initiated and gated on an already-active
+      // subscription, so payment is already accounted for — skip the
+      // pending-confirmation queue and go straight to active.
+      p_status: "active",
     });
     setBusyChildId(null);
     if (error) return setError(error.message);

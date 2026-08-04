@@ -8,15 +8,25 @@ import {
   Zap,
   X,
   Menu,
+  Clock,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { usePendingCount } from "@/lib/hooks/usePendingCount";
+import { useTheme } from "@/lib/hooks/useTheme";
+import ThemeToggle from "@/components/shared/ThemeToggle";
 
-export type AdminTabId = "home" | "customers" | "staff" | "clubcheckin";
+export type AdminTabId =
+  | "home"
+  | "customers"
+  | "staff"
+  | "clubcheckin"
+  | "pending";
 
 const NAV_ITEMS: { id: AdminTabId; label: string; icon: typeof LayoutGrid }[] =
   [
     { id: "home", label: "Home", icon: LayoutGrid },
+    { id: "pending", label: "Pending", icon: Clock },
     { id: "customers", label: "Customers", icon: Users },
     { id: "staff", label: "Staff", icon: UserRound },
   ];
@@ -34,6 +44,14 @@ export default function Sidebar({
 }) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pendingCount = usePendingCount();
+  const { theme } = useTheme();
+  // logo-full.png is purple/gold on transparent — brightness-0 invert is
+  // a CSS trick to force it white for the dark canvas. On light theme
+  // the canvas is white/lavender, so the original purple/gold render is
+  // correct as-is and the filter needs to come off.
+  const logoClass =
+    theme === "light" ? "opacity-95" : "brightness-0 invert opacity-95";
 
   const initials = employeeName
     .split(" ")
@@ -49,7 +67,7 @@ export default function Sidebar({
           <img
             src="/logo-full.png"
             alt="QureoCity"
-            className="h-7 brightness-0 invert opacity-95"
+            className={`h-7 ${logoClass}`}
           />
         </button>
       </div>
@@ -65,7 +83,7 @@ export default function Sidebar({
                 onSelect(item.id);
                 setMobileOpen(false);
               }}
-              className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+              className={`relative w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
                 isActive
                   ? "bg-brand-sky/20 text-brand-skyLight"
                   : "text-brand-nightText/55 hover:bg-white/[0.04] hover:text-brand-nightText"
@@ -73,6 +91,11 @@ export default function Sidebar({
             >
               <Icon size={18} strokeWidth={2} />
               {item.label}
+              {item.id === "pending" && pendingCount > 0 && (
+                <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-brand-coral text-white text-[10px] font-bold flex items-center justify-center">
+                  {pendingCount > 9 ? "9+" : pendingCount}
+                </span>
+              )}
             </button>
           );
         })}
@@ -96,6 +119,9 @@ export default function Sidebar({
       </div>
 
       <div className="px-3 pb-5 pt-3 border-t border-white/8">
+        <div className="px-1 pb-2">
+          <ThemeToggle />
+        </div>
         <div className="flex items-center gap-3 px-2 py-1.5">
           <div className="w-8 h-8 rounded-full bg-brand-sky/20 text-brand-skyLight text-xs font-bold flex items-center justify-center shrink-0">
             {initials}
@@ -126,15 +152,18 @@ export default function Sidebar({
           <img
             src="/logo-full.png"
             alt="QureoCity"
-            className="h-6 brightness-0 invert opacity-95"
+            className={`h-6 ${logoClass}`}
           />
         </button>
-        <button
-          onClick={() => setMobileOpen(true)}
-          className="p-2 text-brand-nightText/60"
-        >
-          <Menu size={22} />
-        </button>
+        <div className="flex items-center gap-1">
+          <ThemeToggle compact />
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="p-2 text-brand-nightText/60"
+          >
+            <Menu size={22} />
+          </button>
+        </div>
       </div>
 
       {mobileOpen && (
