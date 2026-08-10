@@ -82,7 +82,7 @@ export default function MyPerformanceGlimpse({
       onClick={onClick}
       className="w-full text-left bg-brand-nightSurface rounded-xl2 border border-white/10 px-4 py-3 hover:border-brand-sky/30 transition-colors"
     >
-      <p className="text-xs text-brand-nightText/40 mb-1.5">My activity</p>
+      <p className="text-xs text-brand-nightText/40 mb-1.5">Attendance</p>
       <div className="flex items-end justify-between gap-3">
         <div>
           <p className="text-2xl font-extrabold text-brand-nightText leading-none">

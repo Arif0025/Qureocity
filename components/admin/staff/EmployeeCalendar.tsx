@@ -10,7 +10,11 @@ type LogRow = {
   punch_out: string | null;
 };
 
+type Shift = { start_time: string; end_time: string } | null;
+
 type DayParts = { year: number; month: number; date: number };
+
+const CLOSED_WEEKDAY = 2; // Tuesday
 
 // Pure calendar-day math using Date.UTC as a calculator only (never as a
 // real moment in time) — this is what keeps grid cells, month navigation,
@@ -39,8 +43,21 @@ function shiftMonth(parts: DayParts, delta: number): DayParts {
   return { year: utc.getUTCFullYear(), month: utc.getUTCMonth(), date: 1 };
 }
 
+function isAfter(a: DayParts, b: DayParts): boolean {
+  if (a.year !== b.year) return a.year > b.year;
+  if (a.month !== b.month) return a.month > b.month;
+  return a.date > b.date;
+}
+
 function timeStr(v: string) {
   return formatTimeIST(v);
+}
+
+function minutesBetween(start: string, end: string): number {
+  return Math.max(
+    0,
+    (new Date(end).getTime() - new Date(start).getTime()) / 60000,
+  );
 }
 
 function durationStr(punchIn: string, punchOut: string | null): string {
@@ -53,6 +70,40 @@ function durationStr(punchIn: string, punchOut: string | null): string {
   const m = mins % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
+
+function shiftMinutes(shift: Shift): number {
+  if (!shift) return 0;
+  const [sh, sm] = shift.start_time.split(":").map(Number);
+  const [eh, em] = shift.end_time.split(":").map(Number);
+  return eh * 60 + em - (sh * 60 + sm);
+}
+
+type DayStatus =
+  | "closed"
+  | "future"
+  | "no-data"
+  | "absent"
+  | "undertime"
+  | "present"
+  | "overtime";
+
+const STATUS_TONE: Record<DayStatus, string> = {
+  closed: "bg-white/[0.08] text-brand-nightText/35",
+  future: "bg-white/[0.05] text-brand-nightText/25",
+  "no-data": "bg-white/[0.05] text-brand-nightText/25",
+  absent: "bg-brand-coral/60 text-white",
+  undertime: "bg-brand-sun/70 text-brand-ink",
+  present: "bg-brand-leaf text-white",
+  overtime: "bg-brand-sky text-white",
+};
+
+const LEGEND: { status: DayStatus; label: string }[] = [
+  { status: "present", label: "Present" },
+  { status: "overtime", label: "Overtime" },
+  { status: "undertime", label: "Undertime" },
+  { status: "absent", label: "Absent" },
+  { status: "closed", label: "Closed" },
+];
 
 const MONTH_NAMES = [
   "January",
@@ -78,7 +129,21 @@ const WEEKDAY_NAMES = [
   "Saturday",
 ];
 
-export default function EmployeeCalendar({ logs }: { logs: LogRow[] }) {
+export default function EmployeeCalendar({
+  logs,
+  shift = null,
+  varianceThresholdMins = 30,
+  showLegend = false,
+}: {
+  logs: LogRow[];
+  // When provided, days get classified against the shift (present /
+  // overtime / undertime) instead of just showing whether a punch
+  // happened. Without a shift there's nothing to compare hours against,
+  // so days just show present/no-data.
+  shift?: Shift;
+  varianceThresholdMins?: number;
+  showLegend?: boolean;
+}) {
   const logsByDay = useMemo(() => {
     const map = new Map<string, LogRow[]>();
     logs.forEach((log) => {
@@ -87,6 +152,9 @@ export default function EmployeeCalendar({ logs }: { logs: LogRow[] }) {
     });
     return map;
   }, [logs]);
+
+  const today = useMemo(() => istDateParts(new Date().toISOString()), []);
+  const shiftMins = useMemo(() => shiftMinutes(shift), [shift]);
 
   const [cursor, setCursor] = useState<DayParts>(() => {
     const first = logs[0]
@@ -108,6 +176,22 @@ export default function EmployeeCalendar({ logs }: { logs: LogRow[] }) {
   const days: DayParts[] = Array.from({ length: 42 }, (_, i) =>
     addDays(calendarStart, i),
   );
+
+  const statusFor = (day: DayParts, records: LogRow[]): DayStatus => {
+    if (weekdayOf(day) === CLOSED_WEEKDAY) return "closed";
+    if (isAfter(day, today)) return "future";
+    if (records.length === 0) return shift ? "absent" : "no-data";
+    if (!shift) return "present";
+    const workedMins = records.reduce(
+      (sum, r) =>
+        sum +
+        minutesBetween(r.punch_in, r.punch_out ?? new Date().toISOString()),
+      0,
+    );
+    if (workedMins >= shiftMins + varianceThresholdMins) return "overtime";
+    if (workedMins <= shiftMins - varianceThresholdMins) return "undertime";
+    return "present";
+  };
 
   const selectedLogs = selectedDay ? (logsByDay.get(selectedDay) ?? []) : [];
   const selectedParts = selectedDay ? selectedDay.split("-").map(Number) : null;
@@ -150,18 +234,15 @@ export default function EmployeeCalendar({ logs }: { logs: LogRow[] }) {
             const key = dateKey(day);
             const records = logsByDay.get(key) ?? [];
             const inMonth = day.month === cursor.month;
-            const tone =
-              records.length > 1
-                ? "bg-brand-sky text-white"
-                : records.length === 1
-                  ? "bg-brand-sky/35 text-brand-nightText"
-                  : "bg-white/[0.05] text-brand-nightText/40";
+            const status = statusFor(day, records);
+            const tone = STATUS_TONE[status];
             return (
               <button
                 key={key}
                 type="button"
                 disabled={!inMonth}
                 onClick={() => setSelectedDay(key)}
+                title={status}
                 className={`aspect-square rounded-lg text-xs font-medium disabled:opacity-20 transition-colors ${tone} ${
                   selectedDay === key
                     ? "ring-2 ring-brand-skyLight ring-offset-1 ring-offset-brand-nightSurface"
@@ -173,10 +254,26 @@ export default function EmployeeCalendar({ logs }: { logs: LogRow[] }) {
             );
           })}
         </div>
+
+        {showLegend && (
+          <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-3">
+            {LEGEND.map((l) => (
+              <span
+                key={l.status}
+                className="flex items-center gap-1.5 text-[11px] text-brand-nightText/45"
+              >
+                <span
+                  className={`w-2.5 h-2.5 rounded-sm ${STATUS_TONE[l.status].split(" ")[0]}`}
+                />
+                {l.label}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Prominent side panel — this replaces the small bar that used to
-          sit under the calendar grid. */}
+      {/* Prominent side panel — shows punch-in/out times for whatever
+          day is selected, tapping any cell in the grid jumps here. */}
       <div className="rounded-xl border border-white/10 bg-brand-nightSurface2/50 p-4">
         {!selectedDay || !selectedParts ? (
           <p className="text-sm text-brand-nightText/35">

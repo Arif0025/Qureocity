@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { ChevronDown, Heart, School, Phone, MapPin } from "lucide-react";
 
 type ChildInfo = {
   id: string;
@@ -24,11 +25,25 @@ type SearchResult = {
 type SubscriberRow = {
   child_id: string;
   child_name: string;
+  date_of_birth: string | null;
+  gender: string | null;
+  school: string | null;
+  interests: string[] | null;
+  allergies: string | null;
+  medical_conditions: string | null;
+  special_instructions: string | null;
   parent_name: string;
   phone: string;
+  secondary_phone: string | null;
+  address: string | null;
+  how_heard: string | null;
+  photo_consent: boolean;
+  whatsapp_consent: boolean;
   active: boolean;
   started_on: string | null;
   expires_on: string | null;
+  plan_name: string | null;
+  receipt_number: string | null;
 };
 
 function addMonths(dateStr: string, months: number): string {
@@ -132,6 +147,7 @@ export default function SubscriptionsManager() {
     "all" | "active" | "expired"
   >("all");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [expandedChildId, setExpandedChildId] = useState<string | null>(null);
 
   const loadSubscribers = async () => {
     setLoadingList(true);
@@ -164,7 +180,7 @@ export default function SubscriptionsManager() {
     <div className="space-y-6">
       <div className="bg-brand-nightSurface rounded-2xl border border-white/10 p-5">
         <p className="font-semibold text-brand-nightText mb-1">
-          Add or renew a subscription
+          Add or renew a membership
         </p>
         <p className="text-xs text-brand-nightText/40 mb-4">
           For families already registered — search, pick the family, then the
@@ -349,7 +365,7 @@ export default function SubscriptionsManager() {
 
       <div className="bg-brand-nightSurface rounded-2xl border border-white/10 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <p className="font-semibold text-brand-nightText">All subscribers</p>
+          <p className="font-semibold text-brand-nightText">All members</p>
           <div className="flex items-center gap-2">
             <select
               value={statusFilter}
@@ -373,56 +389,159 @@ export default function SubscriptionsManager() {
         {loadingList ? (
           <p className="text-sm text-brand-nightText/40">Loading…</p>
         ) : filtered.length === 0 ? (
-          <p className="text-sm text-brand-nightText/40">No subscribers yet.</p>
+          <p className="text-sm text-brand-nightText/40">No members yet.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm min-w-[480px]">
-              <thead className="text-brand-nightText/40">
-                <tr>
-                  <th className="py-2 font-medium">Child</th>
-                  <th className="py-2 font-medium">Parent</th>
-                  <th className="py-2 font-medium">Mobile</th>
-                  <th className="py-2 font-medium">Started</th>
-                  <th className="py-2 font-medium">Expires</th>
-                  <th className="py-2 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((s) => {
-                  const expired = isExpired(s);
-                  return (
-                    <tr key={s.child_id} className="border-t border-white/10">
-                      <td className="py-2 font-medium text-brand-nightText whitespace-nowrap">
+          <div className="space-y-2">
+            {filtered.map((s) => {
+              const expired = isExpired(s);
+              const isOpen = expandedChildId === s.child_id;
+              const hasMedical =
+                s.allergies || s.medical_conditions || s.special_instructions;
+              return (
+                <div
+                  key={s.child_id}
+                  className="rounded-xl border border-white/10 overflow-hidden"
+                >
+                  <button
+                    onClick={() =>
+                      setExpandedChildId(isOpen ? null : s.child_id)
+                    }
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.04] transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="flex items-center gap-1.5 font-medium text-brand-nightText text-sm truncate">
                         {s.child_name}
-                      </td>
-                      <td className="py-2 text-brand-nightText/60 whitespace-nowrap">
+                        {hasMedical && (
+                          <Heart
+                            size={11}
+                            className="text-brand-coral shrink-0"
+                            fill="currentColor"
+                          />
+                        )}
+                      </p>
+                      <p className="text-xs text-brand-nightText/40 truncate">
                         {s.parent_name}
-                      </td>
-                      <td className="py-2 text-brand-nightText/60 whitespace-nowrap">
-                        {s.phone}
-                      </td>
-                      <td className="py-2 text-brand-nightText/60 whitespace-nowrap">
-                        {s.started_on ?? "—"}
-                      </td>
-                      <td className="py-2 text-brand-nightText/60 whitespace-nowrap">
-                        {s.expires_on ?? "—"}
-                      </td>
-                      <td className="py-2">
-                        <span
-                          className={`text-xs font-semibold px-2 py-1 rounded-full whitespace-nowrap ${
-                            expired
-                              ? "bg-brand-coral/10 text-brand-coral"
-                              : "bg-brand-leaf/10 text-brand-leaf"
-                          }`}
-                        >
-                          {expired ? "Expired" : "Active"}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        {s.plan_name && ` · ${s.plan_name}`}
+                      </p>
+                    </div>
+                    <span
+                      className={`text-xs font-semibold px-2 py-1 rounded-full whitespace-nowrap shrink-0 ${
+                        expired
+                          ? "bg-brand-coral/10 text-brand-coral"
+                          : "bg-brand-leaf/10 text-brand-leaf"
+                      }`}
+                    >
+                      {expired ? "Expired" : "Active"}
+                    </span>
+                    <ChevronDown
+                      size={14}
+                      className={`text-brand-nightText/25 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                    />
+                  </button>
+
+                  {isOpen && (
+                    <div className="px-4 pb-4 pt-1 border-t border-white/10 bg-white/[0.035] space-y-3">
+                      <div className="grid sm:grid-cols-2 gap-3 mt-3 text-sm">
+                        <div>
+                          <p className="text-xs font-semibold text-brand-nightText/40 uppercase tracking-wide mb-1">
+                            Child
+                          </p>
+                          <p className="text-brand-nightText">
+                            {s.child_name}
+                            {s.gender ? ` · ${s.gender}` : ""}
+                            {s.date_of_birth ? ` · ${s.date_of_birth}` : ""}
+                          </p>
+                          {s.school && (
+                            <p className="flex items-center gap-1 text-xs text-brand-nightText/50 mt-1">
+                              <School size={12} /> {s.school}
+                            </p>
+                          )}
+                          {s.interests && s.interests.length > 0 && (
+                            <p className="text-xs text-brand-nightText/50 mt-1">
+                              Interests: {s.interests.join(", ")}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-brand-nightText/40 uppercase tracking-wide mb-1">
+                            Guardian
+                          </p>
+                          <p className="text-brand-nightText">
+                            {s.parent_name}
+                          </p>
+                          <a
+                            href={`tel:${s.phone}`}
+                            className="flex items-center gap-1 text-xs text-brand-sky hover:underline mt-1 w-fit"
+                          >
+                            <Phone size={12} /> {s.phone}
+                            {s.secondary_phone ? ` / ${s.secondary_phone}` : ""}
+                          </a>
+                          {s.address && (
+                            <p className="flex items-center gap-1 text-xs text-brand-nightText/50 mt-1">
+                              <MapPin size={12} /> {s.address}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid sm:grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <p className="text-xs font-semibold text-brand-nightText/40 uppercase tracking-wide mb-1">
+                            Membership
+                          </p>
+                          <p className="text-brand-nightText">
+                            {s.plan_name ?? "No plan on file"}
+                          </p>
+                          <p className="text-xs text-brand-nightText/50 mt-1">
+                            {s.started_on ?? "—"} → {s.expires_on ?? "—"}
+                          </p>
+                          {s.receipt_number && (
+                            <p className="text-xs text-brand-nightText/35 font-mono mt-1">
+                              {s.receipt_number}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-brand-nightText/40 uppercase tracking-wide mb-1">
+                            Preferences
+                          </p>
+                          <p className="text-xs text-brand-nightText/50">
+                            Heard via: {s.how_heard ?? "—"}
+                          </p>
+                          <p className="text-xs text-brand-nightText/50">
+                            Photo consent: {s.photo_consent ? "Yes" : "No"} ·
+                            WhatsApp: {s.whatsapp_consent ? "Yes" : "No"}
+                          </p>
+                        </div>
+                      </div>
+
+                      {hasMedical && (
+                        <div className="rounded-lg bg-brand-coral/8 border border-brand-coral/20 px-3 py-2.5">
+                          <p className="flex items-center gap-1.5 text-xs font-semibold text-brand-coral uppercase tracking-wide mb-1.5">
+                            <Heart size={12} fill="currentColor" /> Medical
+                          </p>
+                          {s.allergies && (
+                            <p className="text-xs text-brand-nightText/70">
+                              Allergies: {s.allergies}
+                            </p>
+                          )}
+                          {s.medical_conditions && (
+                            <p className="text-xs text-brand-nightText/70">
+                              Conditions: {s.medical_conditions}
+                            </p>
+                          )}
+                          {s.special_instructions && (
+                            <p className="text-xs text-brand-nightText/70">
+                              Notes: {s.special_instructions}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

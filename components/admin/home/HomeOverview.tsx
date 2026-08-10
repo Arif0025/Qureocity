@@ -6,6 +6,7 @@ import KidsCheckedInCard, { SessionRow } from "./KidsCheckedInCard";
 import StaffOnSiteCard from "./StaffOnSiteCard";
 import CheckInActivityCard from "./CheckInActivityCard";
 import CheckinActivityFull from "./CheckinActivityFull";
+import MonthlyStatsCard from "./MonthlyStatsCard";
 import LiveFloorView from "../LiveFloorView";
 import ShiftStatusSummary from "../ShiftStatusSummary";
 
@@ -99,23 +100,26 @@ export default function HomeOverview({
   }
 
   return (
-    <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
-      <KidsCheckedInCard
-        initialSessions={initialSessions}
-        todayCheckinCount={todayCheckinCount}
-        venueCapacity={venueCapacity}
-        onViewAll={() => setDrill("kids")}
-        onOpenCustomerDirectory={onOpenCustomerDirectory}
-      />
-      <StaffOnSiteCard
-        initialOnDutyStaff={onDutyStaff}
-        totalStaff={totalStaff}
-        onViewAll={() => setDrill("staff")}
-      />
-      <CheckInActivityCard
-        dailyCounts={dailyCounts}
-        onViewFull={() => setDrill("activity")}
-      />
+    <div className="space-y-5">
+      <MonthlyStatsCard />
+      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
+        <KidsCheckedInCard
+          initialSessions={initialSessions}
+          todayCheckinCount={todayCheckinCount}
+          venueCapacity={venueCapacity}
+          onViewAll={() => setDrill("kids")}
+          onOpenCustomerDirectory={onOpenCustomerDirectory}
+        />
+        <StaffOnSiteCard
+          initialOnDutyStaff={onDutyStaff}
+          totalStaff={totalStaff}
+          onViewAll={() => setDrill("staff")}
+        />
+        <CheckInActivityCard
+          dailyCounts={dailyCounts}
+          onViewFull={() => setDrill("activity")}
+        />
+      </div>
     </div>
   );
 }

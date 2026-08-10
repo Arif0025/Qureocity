@@ -13,6 +13,11 @@ import AdminPasswordCard from "./AdminPasswordCard";
 import QuickCheckin from "@/components/employee/QuickCheckin";
 import CustomerSearch from "@/components/shared/CustomerSearch";
 import PendingConfirmations from "@/components/shared/PendingConfirmations";
+import MembershipRegistrations from "./MembershipRegistrations";
+import PlansManager from "./PlansManager";
+import BroadcastWhatsApp from "./BroadcastWhatsApp";
+import { usePendingCount } from "@/lib/hooks/usePendingCount";
+import { usePendingRegistrationsCount } from "@/lib/hooks/usePendingRegistrationsCount";
 import { SessionRow } from "./home/KidsCheckedInCard";
 
 function BackToHomeButton({ onClick }: { onClick: () => void }) {
@@ -46,7 +51,13 @@ type Shift = {
 
 const CUSTOMER_SUBTABS = [
   { id: "directory", label: "Directory" },
-  { id: "subscriptions", label: "Subscriptions" },
+  { id: "subscriptions", label: "Memberships" },
+  { id: "plans", label: "Plans" },
+] as const;
+
+const PENDING_SUBTABS = [
+  { id: "payments", label: "Payments" },
+  { id: "memberships", label: "Memberships" },
 ] as const;
 
 const STAFF_SUBTABS = [
@@ -99,12 +110,31 @@ function AdminDashboardV2Inner({
     "staff",
     "clubcheckin",
     "pending",
+    "broadcast",
   ];
   const tabFromUrl = searchParams.get("tab") as AdminTabId | null;
   const [tab, setTabState] = useState<AdminTabId>(
     tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : "home",
   );
   const [focusPendingId, setFocusPendingId] = useState<string | null>(null);
+  const [pendingSubtab, setPendingSubtab] =
+    useState<(typeof PENDING_SUBTABS)[number]["id"]>("payments");
+  const [pendingSubtabTouched, setPendingSubtabTouched] = useState(false);
+  const paymentsPendingCount = usePendingCount();
+  const membershipsPendingCount = usePendingRegistrationsCount();
+
+  // Land on whichever queue actually has something in it — badge said
+  // "1" but the tab defaulted to Payments regardless of where that 1
+  // actually was, which read as "the tab is broken." Only auto-picks
+  // once (pendingSubtabTouched), so it doesn't yank the admin back to
+  // Payments mid-review just because a membership got confirmed elsewhere.
+  useEffect(() => {
+    if (pendingSubtabTouched) return;
+    if (paymentsPendingCount === 0 && membershipsPendingCount > 0) {
+      setPendingSubtab("memberships");
+    }
+  }, [paymentsPendingCount, membershipsPendingCount, pendingSubtabTouched]);
+
   const [customerSubtab, setCustomerSubtab] =
     useState<(typeof CUSTOMER_SUBTABS)[number]["id"]>("directory");
   const [customerSearchQuery, setCustomerSearchQuery] = useState(
@@ -181,7 +211,7 @@ function AdminDashboardV2Inner({
                 todayCheckinCount={todayCheckinCount}
                 venueCapacity={venueCapacity}
                 onDutyStaff={onDutyStaff}
-                totalStaff={staff.length}
+                totalStaff={staff.filter((s) => s.role !== "admin").length}
                 shifts={shifts}
                 attendanceLogs={attendanceLogs}
                 dailyCounts={dailyCounts}
@@ -200,10 +230,60 @@ function AdminDashboardV2Inner({
                 </h1>
                 <BackToHomeButton onClick={() => setTab("home")} />
               </div>
-              <p className="text-brand-nightText/50 text-sm mb-6">
-                Kids checked in from the kiosk, awaiting payment confirmation.
+              <p className="text-brand-nightText/50 text-sm mb-5">
+                {pendingSubtab === "payments"
+                  ? "Kids checked in from the kiosk, awaiting payment confirmation."
+                  : "Membership sign-ups from the kiosk, awaiting review."}
               </p>
-              <PendingConfirmations focusSessionId={focusPendingId} />
+              <div className="flex gap-1 border-b border-white/8 mb-6">
+                {PENDING_SUBTABS.map((st) => {
+                  const count =
+                    st.id === "payments"
+                      ? paymentsPendingCount
+                      : membershipsPendingCount;
+                  return (
+                    <button
+                      key={st.id}
+                      onClick={() => {
+                        setPendingSubtab(st.id);
+                        setPendingSubtabTouched(true);
+                      }}
+                      className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+                        pendingSubtab === st.id
+                          ? "border-brand-skyLight text-brand-skyLight"
+                          : "border-transparent text-brand-nightText/50 hover:text-brand-nightText"
+                      }`}
+                    >
+                      {st.label}
+                      {count > 0 && (
+                        <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-brand-coral text-white text-[10px] font-bold flex items-center justify-center">
+                          {count > 9 ? "9+" : count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              {pendingSubtab === "payments" && (
+                <PendingConfirmations focusSessionId={focusPendingId} />
+              )}
+              {pendingSubtab === "memberships" && <MembershipRegistrations />}
+            </>
+          )}
+
+          {tab === "broadcast" && (
+            <>
+              <div className="flex items-start justify-between gap-3 mb-1">
+                <h1 className="text-lg font-bold text-brand-nightText">
+                  WhatsApp broadcast
+                </h1>
+                <BackToHomeButton onClick={() => setTab("home")} />
+              </div>
+              <p className="text-brand-nightText/50 text-sm mb-6">
+                Filter families and send personalized messages — opens WhatsApp
+                with the message ready, you tap send.
+              </p>
+              <BroadcastWhatsApp />
             </>
           )}
 
@@ -253,6 +333,7 @@ function AdminDashboardV2Inner({
                 />
               )}
               {customerSubtab === "subscriptions" && <SubscriptionsManager />}
+              {customerSubtab === "plans" && <PlansManager />}
             </>
           )}
 

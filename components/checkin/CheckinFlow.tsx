@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getClientKey } from "@/lib/clientKey";
+import { LogIn, UserPlus } from "lucide-react";
 import PhoneEntry from "./PhoneEntry";
 import ReturningCustomer from "./ReturningCustomer";
 import NewCustomerForm from "./NewCustomerForm";
@@ -23,11 +24,11 @@ type LookupResult =
       children: Child[];
     };
 
-type Step = "phone" | "returning" | "new" | "confirmed";
+type Step = "landing" | "phone" | "returning" | "new" | "confirmed";
 
 export default function CheckinFlow() {
   const supabase = createClient();
-  const [step, setStep] = useState<Step>("phone");
+  const [step, setStep] = useState<Step>("landing");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [phone, setPhone] = useState("");
@@ -86,7 +87,7 @@ export default function CheckinFlow() {
   );
 
   const handleStartOver = useCallback(() => {
-    setStep("phone");
+    setStep("landing");
     setPhone("");
     setLookup(null);
     setConfirmedSessions([]);
@@ -110,8 +111,59 @@ export default function CheckinFlow() {
         )}
 
         <div key={step} className="animate-popIn">
+          {step === "landing" && (
+            <div className="space-y-4">
+              <div className="text-center mb-2">
+                <h1 className="text-xl font-bold text-brand-ink mb-1">
+                  Welcome to QureoCity
+                </h1>
+                <p className="text-brand-ink/50 text-sm">
+                  Are you a member, or checking in for the day?
+                </p>
+              </div>
+              <button
+                onClick={() => setStep("phone")}
+                className="w-full rounded-xl2 bg-white border-2 border-brand-sky/20 hover:border-brand-sky p-5 text-left flex items-center gap-4 transition-colors"
+              >
+                <div className="w-12 h-12 rounded-full bg-brand-sky/10 flex items-center justify-center shrink-0">
+                  <LogIn size={22} className="text-brand-sky" />
+                </div>
+                <div>
+                  <p className="font-bold text-brand-ink">Walk-in check-in</p>
+                  <p className="text-xs text-brand-ink/50">
+                    For today's visit — pay-per-visit
+                  </p>
+                </div>
+              </button>
+              <a
+                href="/checkin/register"
+                className="w-full rounded-xl2 bg-white border-2 border-brand-sun/30 hover:border-brand-sun p-5 text-left flex items-center gap-4 transition-colors"
+              >
+                <div className="w-12 h-12 rounded-full bg-brand-sun/15 flex items-center justify-center shrink-0">
+                  <UserPlus size={22} className="text-brand-sun" />
+                </div>
+                <div>
+                  <p className="font-bold text-brand-ink">
+                    Register as a member
+                  </p>
+                  <p className="text-xs text-brand-ink/50">
+                    New here? Sign up for a membership plan
+                  </p>
+                </div>
+              </a>
+            </div>
+          )}
+
           {step === "phone" && (
-            <PhoneEntry onSubmit={handlePhoneSubmit} loading={loading} />
+            <>
+              <PhoneEntry onSubmit={handlePhoneSubmit} loading={loading} />
+              <button
+                onClick={() => setStep("landing")}
+                className="mt-4 block w-full text-center text-sm font-semibold text-brand-ink/40"
+              >
+                ← Back
+              </button>
+            </>
           )}
 
           {step === "returning" && lookup?.found && (

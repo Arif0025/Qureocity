@@ -9,10 +9,12 @@ import {
   X,
   Menu,
   Clock,
+  MessageCircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { usePendingCount } from "@/lib/hooks/usePendingCount";
+import { usePendingRegistrationsCount } from "@/lib/hooks/usePendingRegistrationsCount";
 import { useTheme } from "@/lib/hooks/useTheme";
 import ThemeToggle from "@/components/shared/ThemeToggle";
 
@@ -21,13 +23,15 @@ export type AdminTabId =
   | "customers"
   | "staff"
   | "clubcheckin"
-  | "pending";
+  | "pending"
+  | "broadcast";
 
 const NAV_ITEMS: { id: AdminTabId; label: string; icon: typeof LayoutGrid }[] =
   [
     { id: "home", label: "Home", icon: LayoutGrid },
     { id: "pending", label: "Pending", icon: Clock },
     { id: "customers", label: "Customers", icon: Users },
+    { id: "broadcast", label: "Broadcast", icon: MessageCircle },
     { id: "staff", label: "Staff", icon: UserRound },
   ];
 
@@ -44,7 +48,7 @@ export default function Sidebar({
 }) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const pendingCount = usePendingCount();
+  const pendingCount = usePendingCount() + usePendingRegistrationsCount();
   const { theme } = useTheme();
   // logo-full.png is purple/gold on transparent — brightness-0 invert is
   // a CSS trick to force it white for the dark canvas. On light theme

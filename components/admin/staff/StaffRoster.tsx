@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ChevronDown, KeyRound, Plus } from "lucide-react";
+import { ChevronDown, KeyRound, Plus, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { resetEmployeePassword } from "@/app/admin/actions";
 import EmployeeCalendar from "./EmployeeCalendar";
@@ -53,7 +53,7 @@ export default function StaffRoster({
   isAdmin: boolean;
   activeEmployeeId?: string | null;
 }) {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const [shifts, setShifts] = useState(initialShifts ?? []);
   const [summaries, setSummaries] = useState<Record<string, Summary>>({});
   const [loadingSummary, setLoadingSummary] = useState(true);
@@ -65,6 +65,79 @@ export default function StaffRoster({
     Record<string, LogRow[]>
   >({});
   const [historyLoadingId, setHistoryLoadingId] = useState<string | null>(null);
+  const [varianceThreshold, setVarianceThreshold] = useState(30);
+  const [editingThreshold, setEditingThreshold] = useState(false);
+  const [thresholdInput, setThresholdInput] = useState("30");
+  const [onDutyIds, setOnDutyIds] = useState<Set<string>>(new Set());
+  const [confirmingPunchOutId, setConfirmingPunchOutId] = useState<
+    string | null
+  >(null);
+  const [punchingOutId, setPunchingOutId] = useState<string | null>(null);
+
+  const refetchOnDuty = useCallback(async () => {
+    const { data } = await supabase
+      .from("attendance_logs")
+      .select("employee_id")
+      .is("punch_out", null);
+    setOnDutyIds(
+      new Set(
+        ((data as { employee_id: string }[]) ?? []).map((r) => r.employee_id),
+      ),
+    );
+  }, [supabase]);
+
+  useEffect(() => {
+    void refetchOnDuty();
+    const channel = supabase
+      .channel("attendance_logs_roster")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "attendance_logs" },
+        refetchOnDuty,
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, refetchOnDuty]);
+
+  const handleForcePunchOut = async (employeeId: string) => {
+    setPunchingOutId(employeeId);
+    setConfirmingPunchOutId(null);
+    const { error } = await supabase.rpc("admin_force_punch_out", {
+      p_employee_id: employeeId,
+    });
+    setPunchingOutId(null);
+    if (error) alert(error.message);
+    void refetchOnDuty();
+  };
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("app_settings")
+        .select("attendance_variance_threshold_mins")
+        .eq("id", true)
+        .single();
+      if (data?.attendance_variance_threshold_mins != null) {
+        setVarianceThreshold(data.attendance_variance_threshold_mins);
+        setThresholdInput(String(data.attendance_variance_threshold_mins));
+      }
+    })();
+  }, [supabase]);
+
+  const saveThreshold = async () => {
+    const mins = parseInt(thresholdInput, 10);
+    if (!Number.isFinite(mins) || mins < 0) return;
+    const { error } = await supabase
+      .from("app_settings")
+      .update({ attendance_variance_threshold_mins: mins })
+      .eq("id", true);
+    if (!error) {
+      setVarianceThreshold(mins);
+      setEditingThreshold(false);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -131,6 +204,44 @@ export default function StaffRoster({
 
   return (
     <div className="space-y-3">
+      {isAdmin && (
+        <div className="bg-brand-nightSurface rounded-xl border border-white/10 px-4 py-3 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-brand-nightText">
+              Overtime / undertime threshold
+            </p>
+            <p className="text-[11px] text-brand-nightText/40">
+              How far off a shift counts as over/under, on the calendars below
+              and the roster's behind-schedule flag.
+            </p>
+          </div>
+          {editingThreshold ? (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <input
+                type="number"
+                min={0}
+                value={thresholdInput}
+                onChange={(e) => setThresholdInput(e.target.value)}
+                className="w-16 min-h-[32px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-2"
+              />
+              <span className="text-xs text-brand-nightText/40">min</span>
+              <button
+                onClick={saveThreshold}
+                className="text-xs font-semibold text-brand-sky px-2"
+              >
+                Save
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setEditingThreshold(true)}
+              className="text-sm font-semibold text-brand-nightText shrink-0"
+            >
+              {varianceThreshold} min
+            </button>
+          )}
+        </div>
+      )}
       {staff.map((s) => {
         const summary = summaries[s.id];
         const shift = shiftFor(s.id);
@@ -141,7 +252,7 @@ export default function StaffRoster({
             key={s.id}
             className={`bg-brand-nightSurface rounded-2xl border overflow-hidden ${
               behind
-                ? "border-white/10 border-l-4 border-l-brand-sun"
+                ? "border-white/[0.1] border-l-4 border-l-brand-sun"
                 : "border-white/10"
             }`}
           >
@@ -150,7 +261,12 @@ export default function StaffRoster({
               className="w-full flex items-center gap-4 px-5 py-4 text-left"
             >
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-brand-nightText">{s.name}</p>
+                <p className="flex items-center gap-1.5 font-semibold text-brand-nightText">
+                  {s.name}
+                  {onDutyIds.has(s.id) && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-leaf shrink-0" />
+                  )}
+                </p>
                 <p className="text-xs text-brand-nightText/40 capitalize mt-0.5">
                   {s.role}
                   {shift &&
@@ -232,12 +348,50 @@ export default function StaffRoster({
                   </div>
                 </div>
 
+                {onDutyIds.has(s.id) && (
+                  <div className="rounded-xl border border-brand-leaf/30 bg-brand-leaf/8 px-3 py-2.5 flex items-center justify-between gap-3">
+                    <p className="text-xs text-brand-nightText/60">
+                      Currently punched in
+                    </p>
+                    {confirmingPunchOutId === s.id ? (
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => handleForcePunchOut(s.id)}
+                          disabled={punchingOutId === s.id}
+                          className="min-h-[30px] px-3 rounded-lg bg-brand-coral text-white text-xs font-semibold disabled:opacity-50"
+                        >
+                          {punchingOutId === s.id ? "Punching out…" : "Confirm"}
+                        </button>
+                        <button
+                          onClick={() => setConfirmingPunchOutId(null)}
+                          className="text-xs text-brand-nightText/40"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmingPunchOutId(s.id)}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-brand-nightText/60 hover:text-brand-coral border border-white/15 hover:border-brand-coral/40 rounded-lg px-2.5 py-1.5 shrink-0 transition-colors"
+                      >
+                        <LogOut size={12} />
+                        Punch out
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {historyLoadingId === s.id ? (
                   <p className="text-sm text-brand-nightText/40">
                     Loading calendar…
                   </p>
                 ) : (
-                  <EmployeeCalendar logs={historyByEmployee[s.id] ?? []} />
+                  <EmployeeCalendar
+                    logs={historyByEmployee[s.id] ?? []}
+                    shift={shift}
+                    varianceThresholdMins={varianceThreshold}
+                    showLegend
+                  />
                 )}
 
                 {isAdmin && (

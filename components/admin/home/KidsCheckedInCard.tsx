@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { ChevronRight, Phone, Clock, ChevronDown } from "lucide-react";
+import { ChevronRight, Phone, Clock, ChevronDown, Heart } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatTimeIST } from "@/lib/formatTime";
 
@@ -12,9 +12,16 @@ export type SessionRow = {
   status: string;
   children: {
     name: string;
+    allergies: string | null;
+    medical_conditions: string | null;
+    special_instructions: string | null;
     customers: { name: string; phone: string } | null;
   } | null;
 };
+
+function hasMedicalInfo(c: SessionRow["children"]): boolean {
+  return !!(c?.allergies || c?.medical_conditions || c?.special_instructions);
+}
 
 function statusFor(
   endTime: string | null,
@@ -50,7 +57,7 @@ export default function KidsCheckedInCard({
   onViewAll: () => void;
   onOpenCustomerDirectory: (customerKey: string) => void;
 }) {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const [sessions, setSessions] = useState(initialSessions ?? []);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [checkingOut, setCheckingOut] = useState<string | null>(null);
@@ -59,7 +66,7 @@ export default function KidsCheckedInCard({
     const { data } = await supabase
       .from("play_sessions")
       .select(
-        "id, start_time, end_time, status, children(name, customers(name, phone))",
+        "id, start_time, end_time, status, children(name, allergies, medical_conditions, special_instructions, customers(name, phone))",
       )
       .eq("status", "active")
       .order("end_time", { ascending: true, nullsFirst: false });
@@ -67,6 +74,7 @@ export default function KidsCheckedInCard({
   }, [supabase]);
 
   useEffect(() => {
+    void refetch();
     const channel = supabase
       .channel("play_sessions_home_card")
       .on(
@@ -140,6 +148,13 @@ export default function KidsCheckedInCard({
                     <span className="text-sm font-medium text-brand-nightText flex-1 truncate">
                       {s.children?.name ?? "—"}
                     </span>
+                    {hasMedicalInfo(s.children) && (
+                      <Heart
+                        size={12}
+                        className="text-brand-coral shrink-0"
+                        fill="currentColor"
+                      />
+                    )}
                     <span className="text-xs text-brand-nightText/35 shrink-0">
                       {state === "unlimited"
                         ? "Unlimited"
@@ -199,6 +214,28 @@ export default function KidsCheckedInCard({
                             ` · checkout by ${timeStr(s.end_time!)}`}
                         </p>
                       </div>
+                      {hasMedicalInfo(s.children) && (
+                        <div className="rounded-lg bg-brand-coral/8 border border-brand-coral/20 px-3 py-2 mb-3">
+                          <p className="flex items-center gap-1.5 text-[11px] font-semibold text-brand-coral uppercase tracking-wide mb-1">
+                            <Heart size={11} fill="currentColor" /> Medical
+                          </p>
+                          {s.children?.allergies && (
+                            <p className="text-xs text-brand-nightText/70">
+                              Allergies: {s.children.allergies}
+                            </p>
+                          )}
+                          {s.children?.medical_conditions && (
+                            <p className="text-xs text-brand-nightText/70">
+                              Conditions: {s.children.medical_conditions}
+                            </p>
+                          )}
+                          {s.children?.special_instructions && (
+                            <p className="text-xs text-brand-nightText/70">
+                              Notes: {s.children.special_instructions}
+                            </p>
+                          )}
+                        </div>
+                      )}
                       <button
                         onClick={() => handleCheckout(s.id)}
                         disabled={checkingOut === s.id}

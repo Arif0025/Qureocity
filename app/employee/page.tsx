@@ -2,6 +2,10 @@ import { redirect } from "next/navigation";
 import { createServerSupabase } from "@/lib/supabase/server";
 import EmployeePanel from "@/components/employee/EmployeePanel";
 
+// Same constant as app/admin/page.tsx — move both to app_settings later
+// if it needs to change without a redeploy.
+const VENUE_CAPACITY = 60;
+
 export default async function EmployeePage() {
   const supabase = createServerSupabase();
 
@@ -20,19 +24,30 @@ export default async function EmployeePage() {
   if (!employee) redirect("/employee/login");
   if (employee.role === "admin") redirect("/admin");
 
-  const { data: sessions } = await supabase
-    .from("play_sessions")
-    .select(
-      "id, start_time, end_time, status, children(name, customers(name, phone))",
-    )
-    .eq("status", "active")
-    .order("end_time", { ascending: true, nullsFirst: false });
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+
+  const [{ data: sessions }, { count: todayCheckinCount }] = await Promise.all([
+    supabase
+      .from("play_sessions")
+      .select(
+        "id, start_time, end_time, status, children(name, allergies, medical_conditions, special_instructions, customers(name, phone))",
+      )
+      .in("status", ["active", "pending_payment"])
+      .order("end_time", { ascending: true, nullsFirst: false }),
+    supabase
+      .from("play_sessions")
+      .select("id", { count: "exact", head: true })
+      .gte("start_time", startOfToday.toISOString()),
+  ]);
 
   return (
     <EmployeePanel
       employeeId={user.id}
       employeeName={employee.name}
       initialSessions={(sessions as any) ?? []}
+      todayCheckinCount={todayCheckinCount ?? 0}
+      venueCapacity={VENUE_CAPACITY}
     />
   );
 }

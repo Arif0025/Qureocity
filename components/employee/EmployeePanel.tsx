@@ -9,31 +9,22 @@ import {
   Users,
   Clock,
   Search as SearchIcon,
-  BarChart3,
+  CalendarClock,
 } from "lucide-react";
 import PunchInFlow from "./PunchInFlow";
 import QuickCheckin from "./QuickCheckin";
 import LiveFloorView from "@/components/admin/LiveFloorView";
+import KidsCheckedInCard, {
+  SessionRow,
+} from "@/components/admin/home/KidsCheckedInCard";
 import CustomerSearch from "@/components/shared/CustomerSearch";
-import PerformanceHeatmap from "./PerformanceHeatmap";
-import LiveKidsOnSiteChip from "./LiveKidsOnSiteChip";
+import AttendanceCalendarTab from "./AttendanceCalendarTab";
 import MyPerformanceGlimpse from "./MyPerformanceGlimpse";
 import ShiftDetailsCard from "./ShiftDetailsCard";
 import PendingConfirmations from "@/components/shared/PendingConfirmations";
 import { usePendingCount } from "@/lib/hooks/usePendingCount";
 import { useTheme } from "@/lib/hooks/useTheme";
 import ThemeToggle from "@/components/shared/ThemeToggle";
-
-type SessionRow = {
-  id: string;
-  start_time: string;
-  end_time: string | null;
-  status: string;
-  children: {
-    name: string;
-    customers: { name: string; phone: string } | null;
-  } | null;
-};
 
 function ChangePasswordCard() {
   const supabase = createClient();
@@ -146,7 +137,7 @@ const TAB_META = [
   { id: "quickcheckin", label: "Club check-in", icon: Zap },
   { id: "punch", label: "Punch", icon: Fingerprint },
   { id: "search", label: "Search", icon: SearchIcon },
-  { id: "activity", label: "My Activity", icon: BarChart3 },
+  { id: "activity", label: "Attendance", icon: CalendarClock },
 ] as const;
 
 type Tab = (typeof TAB_META)[number]["id"];
@@ -155,10 +146,14 @@ function EmployeePanelInner({
   employeeId,
   employeeName,
   initialSessions,
+  todayCheckinCount,
+  venueCapacity,
 }: {
   employeeId: string;
   employeeName: string;
   initialSessions: SessionRow[];
+  todayCheckinCount: number;
+  venueCapacity: number;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -170,6 +165,9 @@ function EmployeePanelInner({
     tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : "floor",
   );
   const [focusPendingId, setFocusPendingId] = useState<string | null>(null);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState(
+    searchParams.get("customer") ?? "",
+  );
   const pendingCount = usePendingCount();
   const { theme } = useTheme();
   const logoClass =
@@ -203,6 +201,11 @@ function EmployeePanelInner({
     setTab("pending");
   };
 
+  const openCustomerDirectory = (customerKey: string) => {
+    setCustomerSearchQuery(customerKey);
+    setTab("search");
+  };
+
   const renderActiveTab = () => {
     switch (tab) {
       case "quickcheckin":
@@ -222,13 +225,20 @@ function EmployeePanelInner({
       case "activity":
         return (
           <div className="space-y-4">
-            <PerformanceHeatmap key="activity" employeeId={employeeId} />
+            <AttendanceCalendarTab key="activity" employeeId={employeeId} />
             <ShiftDetailsCard employeeId={employeeId} />
             <ChangePasswordCard />
           </div>
         );
       case "search":
-        return <CustomerSearch key="search" isAdmin={false} />;
+        return (
+          <CustomerSearch
+            key="search"
+            isAdmin={false}
+            initialQuery={customerSearchQuery}
+            focusCustomerPhone={customerSearchQuery}
+          />
+        );
       case "punch":
       default:
         return <PunchInFlow key="punch" />;
@@ -248,9 +258,9 @@ function EmployeePanelInner({
               className="shrink-0"
             >
               <img
-                src="/logo-mark.png"
+                src="/logo-full.png"
                 alt="QureoCity"
-                className={`h-10 w-10 object-contain ${logoClass}`}
+                className={`h-9 w-auto object-contain ${logoClass}`}
               />
             </button>
             <div className="min-w-0">
@@ -273,11 +283,18 @@ function EmployeePanelInner({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          <LiveKidsOnSiteChip
-            initialCount={initialSessions.length}
-            onClick={() => setTab("floor")}
+        <div className="mb-4">
+          <KidsCheckedInCard
+            initialSessions={initialSessions.filter(
+              (s) => s.status === "active",
+            )}
+            todayCheckinCount={todayCheckinCount}
+            venueCapacity={venueCapacity}
+            onViewAll={() => setTab("floor")}
+            onOpenCustomerDirectory={openCustomerDirectory}
           />
+        </div>
+        <div className="mb-4">
           <MyPerformanceGlimpse
             employeeId={employeeId}
             onClick={() => setTab("activity")}

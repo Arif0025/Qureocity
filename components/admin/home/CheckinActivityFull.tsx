@@ -40,14 +40,15 @@ function dayKey(date: Date): string {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function intensityClass(count: number): string {
+function intensityClass(count: number, maxCount: number): string {
   if (count === 0)
     return "bg-white/[0.08] text-brand-nightText/40 ring-1 ring-inset ring-white/10";
-  if (count <= 5)
+  const ratio = count / maxCount;
+  if (ratio <= 0.25)
     return "bg-brand-sky/30 text-brand-nightText ring-1 ring-inset ring-brand-sky/20";
-  if (count <= 15)
+  if (ratio <= 0.5)
     return "bg-brand-sky/55 text-brand-nightText ring-1 ring-inset ring-brand-sky/25";
-  if (count <= 30)
+  if (ratio <= 0.75)
     return "bg-brand-sky/80 text-white ring-1 ring-inset ring-brand-sky/30";
   return "bg-brand-sky text-white ring-1 ring-inset ring-white/20";
 }
@@ -64,6 +65,10 @@ export default function CheckinActivityFull({
   const supabase = createClient();
   const countByDay = useMemo(
     () => new Map(dailyCounts.map((d) => [d.day, Number(d.cnt)])),
+    [dailyCounts],
+  );
+  const maxCount = useMemo(
+    () => Math.max(1, ...dailyCounts.map((d) => Number(d.cnt))),
     [dailyCounts],
   );
 
@@ -167,7 +172,7 @@ export default function CheckinActivityFull({
                 className={`aspect-square rounded-xl text-sm font-medium flex flex-col items-center justify-center gap-0.5 transition-all disabled:opacity-20 ${
                   isClosed
                     ? "bg-white/[0.08] text-brand-nightText/30 ring-1 ring-inset ring-white/10"
-                    : intensityClass(count)
+                    : intensityClass(count, maxCount)
                 } ${selectedDay === key ? "ring-2 ring-brand-ink ring-offset-1" : ""}`}
               >
                 <span>{day.getDate()}</span>

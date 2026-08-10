@@ -46,7 +46,7 @@ export default async function AdminPage() {
     supabase
       .from("play_sessions")
       .select(
-        "id, start_time, end_time, status, children(name, customers(name, phone))",
+        "id, start_time, end_time, status, children(name, allergies, medical_conditions, special_instructions, customers(name, phone))",
       )
       .eq("status", "active")
       .order("end_time", { ascending: true, nullsFirst: false }),
@@ -68,7 +68,7 @@ export default async function AdminPage() {
     supabase.rpc("checkin_age_buckets", {
       p_since: startOfToday.toISOString(),
     }),
-    supabase.rpc("checkin_daily_counts", { p_days: 110 }),
+    supabase.rpc("checkin_daily_counts", { p_days: 28 }),
     supabase
       .from("shifts")
       .select("id, employee_id, start_time, end_time, notes, employees(name)")

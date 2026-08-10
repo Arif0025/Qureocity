@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 // Lightweight count-only subscription for tab badges. Kept separate from
@@ -9,6 +9,15 @@ import { createClient } from "@/lib/supabase/client";
 export function usePendingCount() {
   const supabase = createClient();
   const [count, setCount] = useState(0);
+  // This hook is called from several components that all mount at once
+  // (Sidebar, AdminDashboardV2, EmployeePanel) — a shared, fixed channel
+  // name meant every instance after the first tried to attach a new
+  // .on() listener to a channel someone else had already called
+  // .subscribe() on, which Supabase's realtime client rejects outright.
+  // A per-instance name keeps every hook call on its own channel.
+  const channelName = useRef(
+    `play_sessions_pending_count_${Math.random().toString(36).slice(2)}`,
+  );
 
   const refetch = useCallback(async () => {
     const { count: c } = await supabase
@@ -21,7 +30,7 @@ export function usePendingCount() {
   useEffect(() => {
     void refetch();
     const channel = supabase
-      .channel("play_sessions_pending_count")
+      .channel(channelName.current)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "play_sessions" },
@@ -32,6 +41,5 @@ export function usePendingCount() {
       supabase.removeChannel(channel);
     };
   }, [supabase, refetch]);
-
   return count;
 }

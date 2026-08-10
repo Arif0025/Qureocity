@@ -24,7 +24,7 @@ export default function PendingConfirmations({
 }: {
   focusSessionId?: string | null;
 }) {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const [rows, setRows] = useState<PendingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -111,7 +111,7 @@ export default function PendingConfirmations({
           className={`bg-brand-nightSurface rounded-xl border overflow-hidden border-l-4 border-l-brand-sun ${
             r.session_id === focusSessionId
               ? "border-brand-sun/60"
-              : "border-white/10"
+              : "border-white/[0.1]"
           }`}
         >
           <div className="px-4 py-3.5">

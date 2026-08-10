@@ -126,7 +126,14 @@ export default function BroadcastWhatsApp() {
   const openWhatsApp = (c: Candidate) => {
     const text = encodeURIComponent(fillTemplate(template, c));
     const phone = toE164(c.phone);
-    window.open(`https://wa.me/${phone}?text=${text}`, "_blank");
+    // Named target instead of "_blank" — reuses the same tab across
+    // sends instead of spawning a new one every click. Doesn't change
+    // the Web-vs-Desktop behavior (that's WhatsApp's own link handling,
+    // not something a page can control), just stops the tab pile-up.
+    window.open(
+      `https://wa.me/${phone}?text=${text}`,
+      "qureocity-whatsapp-send",
+    );
     setSentIds((prev) => new Set(prev).add(rowKey(c)));
   };
 

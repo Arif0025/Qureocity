@@ -10,7 +10,7 @@ export default function LiveKidsOnSiteChip({
   initialCount: number;
   onClick?: () => void;
 }) {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const [count, setCount] = useState(initialCount);
 
   const refetch = useCallback(async () => {

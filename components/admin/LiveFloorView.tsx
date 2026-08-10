@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { ChevronDown, Phone, Clock } from "lucide-react";
+import { ChevronDown, Phone, Clock, Heart } from "lucide-react";
 import { formatTimeIST } from "@/lib/formatTime";
 
 type SessionRow = {
@@ -12,9 +12,16 @@ type SessionRow = {
   status: string;
   children: {
     name: string;
+    allergies: string | null;
+    medical_conditions: string | null;
+    special_instructions: string | null;
     customers: { name: string; phone: string } | null;
   } | null;
 };
+
+function hasMedicalInfo(c: SessionRow["children"]): boolean {
+  return !!(c?.allergies || c?.medical_conditions || c?.special_instructions);
+}
 
 function useTick(ms: number) {
   const [, setTick] = useState(0);
@@ -63,7 +70,7 @@ export default function LiveFloorView({
   // a quick-glance row meant for calling a parent.
   onPendingClick?: (sessionId: string) => void;
 }) {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const [sessions, setSessions] = useState<SessionRow[]>(initialSessions ?? []);
   const [checkingOut, setCheckingOut] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -73,7 +80,7 @@ export default function LiveFloorView({
     const { data } = await supabase
       .from("play_sessions")
       .select(
-        "id, start_time, end_time, status, children(name, customers(name, phone))",
+        "id, start_time, end_time, status, children(name, allergies, medical_conditions, special_instructions, customers(name, phone))",
       )
       .in("status", ["active", "pending_payment"])
       .order("end_time", { ascending: true, nullsFirst: false });
@@ -130,7 +137,7 @@ export default function LiveFloorView({
   }
 
   return (
-    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
       {sessions.map((s) => {
         const isPending = s.status === "pending_payment";
         const state = statusFor(s.end_time);
@@ -141,7 +148,7 @@ export default function LiveFloorView({
             <button
               key={s.id}
               onClick={() => onPendingClick?.(s.id)}
-              className="w-full text-left bg-brand-nightSurface rounded-xl border border-white/10 border-l-4 border-l-brand-sun overflow-hidden"
+              className="w-full text-left bg-brand-nightSurface rounded-xl border border-white/[0.1] border-l-4 border-l-brand-sun overflow-hidden"
             >
               <div className="flex items-center gap-2.5 px-4 py-3.5">
                 <span className="w-2 h-2 rounded-full shrink-0 bg-brand-sun" />
@@ -153,6 +160,13 @@ export default function LiveFloorView({
                     {s.children?.customers?.name}
                   </p>
                 </div>
+                {hasMedicalInfo(s.children) && (
+                  <Heart
+                    size={13}
+                    className="text-brand-coral shrink-0"
+                    fill="currentColor"
+                  />
+                )}
                 <span className="text-[10px] font-semibold uppercase tracking-wide text-brand-sun bg-brand-sun/10 rounded-full px-2 py-0.5 shrink-0">
                   Awaiting payment
                 </span>
@@ -164,7 +178,7 @@ export default function LiveFloorView({
         return (
           <div
             key={s.id}
-            className={`bg-brand-nightSurface rounded-xl border border-white/10 border-l-4 overflow-hidden ${borderStyles[state]}`}
+            className={`bg-brand-nightSurface rounded-xl border border-white/[0.1] border-l-4 overflow-hidden ${borderStyles[state]}`}
           >
             <button
               onClick={() => setExpandedId(isOpen ? null : s.id)}
@@ -181,6 +195,13 @@ export default function LiveFloorView({
                   {s.children?.customers?.name}
                 </p>
               </div>
+              {hasMedicalInfo(s.children) && (
+                <Heart
+                  size={13}
+                  className="text-brand-coral shrink-0"
+                  fill="currentColor"
+                />
+              )}
               <span className="text-xs font-medium text-brand-nightText/50 shrink-0">
                 {state === "unlimited" ? "Unlimited" : timeStr(s.end_time!)}
               </span>
@@ -209,6 +230,28 @@ export default function LiveFloorView({
                       ` · checkout by ${timeStr(s.end_time!)}`}
                   </p>
                 </div>
+                {hasMedicalInfo(s.children) && (
+                  <div className="rounded-lg bg-brand-coral/8 border border-brand-coral/20 px-3 py-2 mb-2.5">
+                    <p className="flex items-center gap-1.5 text-[11px] font-semibold text-brand-coral uppercase tracking-wide mb-1">
+                      <Heart size={11} fill="currentColor" /> Medical
+                    </p>
+                    {s.children?.allergies && (
+                      <p className="text-xs text-brand-nightText/70">
+                        Allergies: {s.children.allergies}
+                      </p>
+                    )}
+                    {s.children?.medical_conditions && (
+                      <p className="text-xs text-brand-nightText/70">
+                        Conditions: {s.children.medical_conditions}
+                      </p>
+                    )}
+                    {s.children?.special_instructions && (
+                      <p className="text-xs text-brand-nightText/70">
+                        Notes: {s.children.special_instructions}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <button
                   onClick={() => handleCheckout(s.id)}
                   disabled={checkingOut === s.id}
