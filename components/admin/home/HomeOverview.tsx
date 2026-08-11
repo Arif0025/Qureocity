@@ -46,6 +46,9 @@ export default function HomeOverview({
   onInspectStaffEmployee,
   onOpenCustomerDirectory,
   onPendingClick,
+  onNewFamiliesClick,
+  onNewMembershipsClick,
+  onExpiringClick,
 }: {
   initialSessions: SessionRow[];
   todayCheckinCount: number;
@@ -58,6 +61,9 @@ export default function HomeOverview({
   onInspectStaffEmployee: (employeeId: string) => void;
   onOpenCustomerDirectory: (customerKey: string) => void;
   onPendingClick?: (sessionId: string) => void;
+  onNewFamiliesClick?: () => void;
+  onNewMembershipsClick?: () => void;
+  onExpiringClick?: () => void;
 }) {
   const [drill, setDrill] = useState<Drill>("none");
 
@@ -101,7 +107,12 @@ export default function HomeOverview({
 
   return (
     <div className="space-y-5">
-      <MonthlyStatsCard />
+      <MonthlyStatsCard
+        onWalkInsClick={() => setDrill("activity")}
+        onNewFamiliesClick={onNewFamiliesClick}
+        onNewMembershipsClick={onNewMembershipsClick}
+        onExpiringClick={onExpiringClick}
+      />
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
         <KidsCheckedInCard
           initialSessions={initialSessions}

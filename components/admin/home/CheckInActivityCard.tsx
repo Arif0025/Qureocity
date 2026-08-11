@@ -6,7 +6,7 @@ import { ChevronRight } from "lucide-react";
 type DailyCount = { day: string; cnt: number };
 
 const CLOSED_WEEKDAY = 2; // Tuesday
-const WEEKS_SHOWN = 12;
+const WEEKS_SHOWN = 4;
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 type Cell = {
@@ -31,11 +31,15 @@ function dayKey(date: Date): string {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function intensityClass(count: number): string {
+function intensityClass(count: number, maxCount: number): string {
   if (count === 0) return "bg-brand-nightBg/60 ring-1 ring-inset ring-white/10";
-  if (count <= 5) return "bg-brand-sky/30 ring-1 ring-inset ring-brand-sky/20";
-  if (count <= 15) return "bg-brand-sky/55 ring-1 ring-inset ring-brand-sky/25";
-  if (count <= 30) return "bg-brand-sky/80 ring-1 ring-inset ring-brand-sky/30";
+  const ratio = count / maxCount;
+  if (ratio <= 0.25)
+    return "bg-brand-sky/30 ring-1 ring-inset ring-brand-sky/20";
+  if (ratio <= 0.5)
+    return "bg-brand-sky/55 ring-1 ring-inset ring-brand-sky/25";
+  if (ratio <= 0.75)
+    return "bg-brand-sky/80 ring-1 ring-inset ring-brand-sky/30";
   return "bg-brand-sky ring-1 ring-inset ring-white/20";
 }
 
@@ -48,6 +52,7 @@ export default function CheckInActivityCard({
 }) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const countByDay = new Map(dailyCounts.map((d) => [d.day, Number(d.cnt)]));
+  const maxCount = Math.max(1, ...dailyCounts.map((d) => Number(d.cnt)));
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -112,37 +117,37 @@ export default function CheckInActivityCard({
         />
       </button>
 
-      <div className="flex-1 flex flex-col justify-center px-5 pb-5 overflow-x-auto">
-        <div className="inline-block">
-          <div className="flex gap-[4px] mb-1.5 pl-7">
+      <div className="flex-1 flex flex-col justify-center px-5 pb-5">
+        <div className="w-full">
+          <div className="flex gap-2 mb-1.5 pl-8">
             {weeks.map((_, wi) => (
               <div
                 key={wi}
-                className="w-[18px] text-[10px] text-brand-nightText/40 shrink-0"
+                className="flex-1 text-[10px] text-brand-nightText/40 text-center"
               >
                 {monthLabelForWeek.get(wi) ?? ""}
               </div>
             ))}
           </div>
 
-          <div className="flex gap-[4px]">
-            <div className="flex flex-col gap-[4px] mr-1 w-6 shrink-0">
+          <div className="flex gap-2">
+            <div className="flex flex-col gap-2 mr-1 w-6 shrink-0">
               {WEEKDAY_LABELS.map((label, i) => (
                 <div
                   key={i}
-                  className="h-[18px] text-[10px] text-brand-nightText/40 leading-[18px]"
+                  className="flex-1 text-[10px] text-brand-nightText/40 flex items-center"
                 >
                   {label}
                 </div>
               ))}
             </div>
 
-            <div className="flex gap-[4px]">
+            <div className="flex flex-1 gap-2">
               {weeks.map((week, wi) => (
-                <div key={wi} className="flex flex-col gap-[4px]">
+                <div key={wi} className="flex-1 flex flex-col gap-2">
                   {week.map((cell, ri) =>
                     cell === null ? (
-                      <div key={ri} className="w-[18px] h-[18px]" />
+                      <div key={ri} className="w-full aspect-[5/3]" />
                     ) : (
                       <button
                         key={ri}
@@ -153,7 +158,7 @@ export default function CheckInActivityCard({
                             ? `${cell.date}: Closed`
                             : `${cell.date}: ${cell.count} check-in${cell.count === 1 ? "" : "s"}`
                         }
-                        className={`w-[18px] h-[18px] rounded-[4px] hover:ring-2 hover:ring-brand-sky focus:outline-none focus:ring-2 focus:ring-brand-sky ${cell.isClosed ? "bg-brand-coral/20 ring-1 ring-inset ring-brand-coral/55" : intensityClass(cell.count)}`}
+                        className={`w-full aspect-[5/3] rounded-md hover:ring-2 hover:ring-brand-sky focus:outline-none focus:ring-2 focus:ring-brand-sky ${cell.isClosed ? "bg-brand-coral/20 ring-1 ring-inset ring-brand-coral/55" : intensityClass(cell.count, maxCount)}`}
                         style={
                           cell.isClosed
                             ? {

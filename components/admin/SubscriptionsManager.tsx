@@ -52,7 +52,11 @@ function addMonths(dateStr: string, months: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-export default function SubscriptionsManager() {
+export default function SubscriptionsManager({
+  initialFilter,
+}: {
+  initialFilter?: "expiring_soon" | "new_this_month";
+} = {}) {
   const supabase = createClient();
 
   // --- Add / renew ---
@@ -144,8 +148,8 @@ export default function SubscriptionsManager() {
   const [subscribers, setSubscribers] = useState<SubscriberRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [statusFilter, setStatusFilter] = useState<
-    "all" | "active" | "expired"
-  >("all");
+    "all" | "active" | "expired" | "expiring_soon" | "new_this_month"
+  >(initialFilter ?? "all");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [expandedChildId, setExpandedChildId] = useState<string | null>(null);
 
@@ -162,6 +166,10 @@ export default function SubscriptionsManager() {
   }, []);
 
   const todayStr = new Date().toISOString().slice(0, 10);
+  const sevenDaysOutStr = new Date(Date.now() + 7 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const monthStartStr = `${todayStr.slice(0, 7)}-01`;
   const isExpired = (s: SubscriberRow) =>
     !s.active || (s.expires_on ?? "") < todayStr;
 
@@ -169,6 +177,15 @@ export default function SubscriptionsManager() {
     .filter((s) => {
       if (statusFilter === "active") return !isExpired(s);
       if (statusFilter === "expired") return isExpired(s);
+      if (statusFilter === "expiring_soon")
+        return (
+          s.active &&
+          !!s.expires_on &&
+          s.expires_on >= todayStr &&
+          s.expires_on <= sevenDaysOutStr
+        );
+      if (statusFilter === "new_this_month")
+        return !!s.started_on && s.started_on >= monthStartStr;
       return true;
     })
     .sort((a, b) => {
@@ -375,6 +392,8 @@ export default function SubscriptionsManager() {
               <option value="all">All</option>
               <option value="active">Active</option>
               <option value="expired">Expired</option>
+              <option value="expiring_soon">Expiring in 7 days</option>
+              <option value="new_this_month">New this month</option>
             </select>
             <button
               type="button"

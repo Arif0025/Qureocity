@@ -140,6 +140,10 @@ function AdminDashboardV2Inner({
   const [customerSearchQuery, setCustomerSearchQuery] = useState(
     searchParams.get("customer") ?? "",
   );
+  const [directoryNewOnly, setDirectoryNewOnly] = useState(false);
+  const [membershipsFilter, setMembershipsFilter] = useState<
+    "expiring_soon" | "new_this_month" | undefined
+  >(undefined);
   const [staffSubtab, setStaffSubtab] =
     useState<(typeof STAFF_SUBTABS)[number]["id"]>("team");
   const [staffFocusEmployeeId, setStaffFocusEmployeeId] = useState<
@@ -180,6 +184,22 @@ function AdminDashboardV2Inner({
     setTab("pending");
   };
 
+  const goToNewFamilies = () => {
+    setDirectoryNewOnly(true);
+    setCustomerSubtab("directory");
+    setTab("customers");
+  };
+  const goToNewMemberships = () => {
+    setMembershipsFilter("new_this_month");
+    setCustomerSubtab("subscriptions");
+    setTab("customers");
+  };
+  const goToExpiring = () => {
+    setMembershipsFilter("expiring_soon");
+    setCustomerSubtab("subscriptions");
+    setTab("customers");
+  };
+
   const openCustomerDirectory = (customerKey: string) => {
     setCustomerSubtab("directory");
     setCustomerSearchQuery(customerKey);
@@ -218,6 +238,9 @@ function AdminDashboardV2Inner({
                 onInspectStaffEmployee={openStaffEmployee}
                 onOpenCustomerDirectory={openCustomerDirectory}
                 onPendingClick={goToPending}
+                onNewFamiliesClick={goToNewFamilies}
+                onNewMembershipsClick={goToNewMemberships}
+                onExpiringClick={goToExpiring}
               />
             </>
           )}
@@ -330,9 +353,12 @@ function AdminDashboardV2Inner({
                   isAdmin={true}
                   initialQuery={customerSearchQuery}
                   focusCustomerPhone={customerSearchQuery}
+                  filterNewThisMonth={directoryNewOnly}
                 />
               )}
-              {customerSubtab === "subscriptions" && <SubscriptionsManager />}
+              {customerSubtab === "subscriptions" && (
+                <SubscriptionsManager initialFilter={membershipsFilter} />
+              )}
               {customerSubtab === "plans" && <PlansManager />}
             </>
           )}

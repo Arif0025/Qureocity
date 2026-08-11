@@ -15,6 +15,7 @@ type Candidate = {
   subscription_expires_on: string | null;
   last_visit_date: string | null;
   visit_count: number;
+  days_until_birthday: number | null;
 };
 
 type Filters = {
@@ -26,6 +27,7 @@ type Filters = {
   maxAge: string;
   minVisits: string;
   maxVisits: string;
+  birthdayWithinDays: string;
 };
 
 const EMPTY_FILTERS: Filters = {
@@ -37,6 +39,7 @@ const EMPTY_FILTERS: Filters = {
   maxAge: "",
   minVisits: "",
   maxVisits: "",
+  birthdayWithinDays: "",
 };
 
 function fmtDate(d: string | null) {
@@ -100,6 +103,9 @@ export default function BroadcastWhatsApp() {
       p_max_age: filters.maxAge ? parseInt(filters.maxAge, 10) : null,
       p_min_visits: filters.minVisits ? parseInt(filters.minVisits, 10) : null,
       p_max_visits: filters.maxVisits ? parseInt(filters.maxVisits, 10) : null,
+      p_birthday_within_days: filters.birthdayWithinDays
+        ? parseInt(filters.birthdayWithinDays, 10)
+        : null,
     });
     setLoading(false);
     if (!error) setCandidates((data as Candidate[]) ?? []);
@@ -291,6 +297,30 @@ export default function BroadcastWhatsApp() {
               />
             </div>
           </div>
+
+          <div>
+            <label className="text-xs text-brand-nightText/50 block mb-1">
+              Birthday coming up within
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                placeholder="e.g. 7"
+                value={filters.birthdayWithinDays}
+                onChange={(e) =>
+                  setFilters((f) => ({
+                    ...f,
+                    birthdayWithinDays: e.target.value,
+                  }))
+                }
+                className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
+              />
+              <span className="text-brand-nightText/30 text-xs shrink-0">
+                days
+              </span>
+            </div>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -370,6 +400,8 @@ export default function BroadcastWhatsApp() {
                       {c.phone}
                       {c.subscription_expires_on &&
                         ` · expires ${fmtDate(c.subscription_expires_on)}`}
+                      {c.days_until_birthday != null &&
+                        ` · birthday in ${c.days_until_birthday}d`}
                     </p>
                   </div>
                   {isSent && (

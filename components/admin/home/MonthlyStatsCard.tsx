@@ -20,7 +20,17 @@ type Stats = {
   expiringSoon: number;
 };
 
-export default function MonthlyStatsCard() {
+export default function MonthlyStatsCard({
+  onWalkInsClick,
+  onNewFamiliesClick,
+  onNewMembershipsClick,
+  onExpiringClick,
+}: {
+  onWalkInsClick?: () => void;
+  onNewFamiliesClick?: () => void;
+  onNewMembershipsClick?: () => void;
+  onExpiringClick?: () => void;
+}) {
   const supabase = createClient();
   const [stats, setStats] = useState<Stats | null>(null);
 
@@ -120,26 +130,30 @@ export default function MonthlyStatsCard() {
         <Tile
           icon={<Footprints size={16} className="text-brand-sky" />}
           value={stats?.walkIns ?? "—"}
-          label="Check-ins this month"
+          label="Walk-ins this month"
           tone="sky"
+          onClick={onWalkInsClick}
         />
         <Tile
           icon={<UserPlus size={16} className="text-brand-skyLight" />}
           value={stats?.newCustomers ?? "—"}
           label="New families"
           tone="sky"
+          onClick={onNewFamiliesClick}
         />
         <Tile
           icon={<Sparkles size={16} className="text-brand-sun" />}
           value={stats?.newSubscriptions ?? "—"}
           label="New memberships"
           tone="sun"
+          onClick={onNewMembershipsClick}
         />
         <Tile
           icon={<AlertCircle size={16} className="text-brand-coral" />}
           value={stats?.expiringSoon ?? "—"}
           label="Memberships expiring in 7 days"
           tone="coral"
+          onClick={onExpiringClick}
         />
       </div>
 
@@ -174,11 +188,13 @@ function Tile({
   value,
   label,
   tone,
+  onClick,
 }: {
   icon: React.ReactNode;
   value: number | string;
   label: string;
   tone: "sky" | "sun" | "coral";
+  onClick?: () => void;
 }) {
   const bg =
     tone === "sky"
@@ -187,7 +203,12 @@ function Tile({
         ? "bg-brand-sun/10"
         : "bg-brand-coral/10";
   return (
-    <div className={`rounded-xl ${bg} border border-white/8 px-3 py-3`}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      className={`text-left rounded-xl ${bg} border border-white/8 px-3 py-3 transition-transform ${onClick ? "hover:border-white/20 hover:-translate-y-0.5" : ""}`}
+    >
       <div className="mb-1.5">{icon}</div>
       <p className="text-xl font-extrabold text-brand-nightText leading-none">
         {value}
@@ -195,6 +216,6 @@ function Tile({
       <p className="text-[11px] text-brand-nightText/45 mt-1 leading-tight">
         {label}
       </p>
-    </div>
+    </button>
   );
 }

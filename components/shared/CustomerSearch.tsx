@@ -25,6 +25,7 @@ type Result = {
   customer_id: string;
   parent_name: string;
   phone: string;
+  created_at?: string;
   any_active_subscription: boolean;
   children: ChildInfo[] | null;
   currently_checked_in: boolean;
@@ -44,16 +45,19 @@ export default function CustomerSearch({
   isAdmin = false,
   initialQuery = "",
   focusCustomerPhone,
+  filterNewThisMonth = false,
 }: {
   isAdmin?: boolean;
   initialQuery?: string;
   focusCustomerPhone?: string | null;
+  filterNewThisMonth?: boolean;
 }) {
   const supabase = createClient();
   const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<Result[]>([]);
   const [loadingGlimpse, setLoadingGlimpse] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [newOnly, setNewOnly] = useState(filterNewThisMonth);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedChildByCustomer, setSelectedChildByCustomer] = useState<
     Record<string, string | null> // customer_id -> child_id | null (null = "all children")
@@ -162,12 +166,16 @@ export default function CustomerSearch({
 
   const loading = query.trim().length >= 2 ? searching : loadingGlimpse;
   const [onSiteFirst, setOnSiteFirst] = useState(false);
+  const monthStartStr = `${new Date().toISOString().slice(0, 7)}-01`;
+  const baseResults = newOnly
+    ? results.filter((r) => (r.created_at ?? "") >= monthStartStr)
+    : results;
   const displayedResults = onSiteFirst
-    ? [...results].sort(
+    ? [...baseResults].sort(
         (a, b) =>
           Number(b.currently_checked_in) - Number(a.currently_checked_in),
       )
-    : results;
+    : baseResults;
 
   return (
     <div>
@@ -193,17 +201,30 @@ export default function CustomerSearch({
         ) : (
           <span />
         )}
-        <button
-          type="button"
-          onClick={() => setOnSiteFirst((v) => !v)}
-          className={`shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
-            onSiteFirst
-              ? "border-brand-leaf/40 bg-brand-leaf/10 text-brand-leaf"
-              : "border-white/15 text-brand-nightText/50"
-          }`}
-        >
-          On site first
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setNewOnly((v) => !v)}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+              newOnly
+                ? "border-brand-sky/40 bg-brand-sky/10 text-brand-skyLight"
+                : "border-white/15 text-brand-nightText/50"
+            }`}
+          >
+            New this month
+          </button>
+          <button
+            type="button"
+            onClick={() => setOnSiteFirst((v) => !v)}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+              onSiteFirst
+                ? "border-brand-leaf/40 bg-brand-leaf/10 text-brand-leaf"
+                : "border-white/15 text-brand-nightText/50"
+            }`}
+          >
+            On site first
+          </button>
+        </div>
       </div>
 
       {loading && <p className="text-sm text-brand-nightText/40">Loading…</p>}
