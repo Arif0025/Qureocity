@@ -66,31 +66,33 @@ export default function StaffOnSiteCard({
       setAbsentCount(0);
       return;
     }
-    // Plain embed + client-side role filter here on purpose — the
-    // `!inner` embedded-filter syntax (`.eq("employees.role", ...)`)
-    // silently returns zero rows instead of erroring if the FK
-    // relationship name Supabase infers doesn't match exactly what's
-    // expected, which was quietly making this always show 0 absent.
-    // Filtering in JS after a plain fetch can't fail silently that way.
-    const [{ data: shiftEmployees }, { data: todaysLogs }] = await Promise.all([
-      supabase.from("shifts").select("employee_id, employees(role)"),
-      supabase
-        .from("attendance_logs")
-        .select("employee_id")
-        .gte("punch_in", istStartOfTodayISO()),
-    ]);
+    // "Absent" is measured against the full employee roster, not against
+    // who happens to have a standing shift assigned in the shifts table.
+    // It used to compare against shifts, which meant any employee without
+    // a shift row yet (the common case while shifts are still being set
+    // up) was silently excluded from both sides of the count — so absent
+    // stayed at 0 no matter who was actually missing. Comparing against
+    // every role='employee' row (the same set the "Roster" stat already
+    // counts) is the number this card is actually promising to show.
+    const [{ data: rosterEmployees }, { data: todaysLogs }] = await Promise.all(
+      [
+        supabase.from("employees").select("id, role").eq("role", "employee"),
+        supabase
+          .from("attendance_logs")
+          .select("employee_id")
+          .gte("punch_in", istStartOfTodayISO()),
+      ],
+    );
     const presentIds = new Set(
       ((todaysLogs as { employee_id: string }[]) ?? []).map(
         (l) => l.employee_id,
       ),
     );
-    const scheduledIds = new Set(
-      ((shiftEmployees as any[]) ?? [])
-        .filter((s) => s.employees?.role === "employee")
-        .map((s) => s.employee_id),
+    const rosterIds = new Set(
+      ((rosterEmployees as { id: string }[]) ?? []).map((e) => e.id),
     );
     let absent = 0;
-    scheduledIds.forEach((id) => {
+    rosterIds.forEach((id) => {
       if (!presentIds.has(id)) absent += 1;
     });
     setAbsentCount(absent);

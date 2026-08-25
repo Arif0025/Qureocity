@@ -6,10 +6,11 @@ import { createClient } from "@/lib/supabase/client";
 import {
   Fingerprint,
   Zap,
-  Users,
+  Home as HomeIcon,
   Clock,
   Search as SearchIcon,
   CalendarClock,
+  LogOut,
 } from "lucide-react";
 import PunchInFlow from "./PunchInFlow";
 import QuickCheckin from "./QuickCheckin";
@@ -19,7 +20,7 @@ import KidsCheckedInCard, {
 } from "@/components/admin/home/KidsCheckedInCard";
 import CustomerSearch from "@/components/shared/CustomerSearch";
 import AttendanceCalendarTab from "./AttendanceCalendarTab";
-import MyPerformanceGlimpse from "./MyPerformanceGlimpse";
+import AttendanceSummaryCard from "./AttendanceSummaryCard";
 import ShiftDetailsCard from "./ShiftDetailsCard";
 import PendingConfirmations from "@/components/shared/PendingConfirmations";
 import { usePendingCount } from "@/lib/hooks/usePendingCount";
@@ -131,8 +132,11 @@ function ChangePasswordCard() {
   );
 }
 
+// Shown in the bottom tab bar. "floor" (the full On Site list) is reached
+// via the Kids-on-site card's "View all" / pending drilldown rather than
+// its own bar button, so Home can show just that card as requested.
 const TAB_META = [
-  { id: "floor", label: "On Site", icon: Users },
+  { id: "home", label: "Home", icon: HomeIcon },
   { id: "pending", label: "Pending", icon: Clock },
   { id: "quickcheckin", label: "Club check-in", icon: Zap },
   { id: "punch", label: "Punch", icon: Fingerprint },
@@ -140,7 +144,7 @@ const TAB_META = [
   { id: "activity", label: "Attendance", icon: CalendarClock },
 ] as const;
 
-type Tab = (typeof TAB_META)[number]["id"];
+type Tab = (typeof TAB_META)[number]["id"] | "floor";
 
 function EmployeePanelInner({
   employeeId,
@@ -159,10 +163,10 @@ function EmployeePanelInner({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const VALID_TABS = TAB_META.map((t) => t.id);
+  const VALID_TABS = TAB_META.map((t) => t.id) as Tab[];
   const tabFromUrl = searchParams.get("tab") as Tab | null;
   const [tab, setTabState] = useState<Tab>(
-    tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : "floor",
+    tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : "home",
   );
   const [focusPendingId, setFocusPendingId] = useState<string | null>(null);
   const [customerSearchQuery, setCustomerSearchQuery] = useState(
@@ -174,6 +178,12 @@ function EmployeePanelInner({
     theme === "light"
       ? "opacity-90 hover:opacity-100 transition-opacity"
       : "brightness-0 invert opacity-90 hover:opacity-100 transition-opacity";
+  const initials = employeeName
+    .split(" ")
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 
   const setTab = (id: Tab) => {
     setTabState(id);
@@ -208,6 +218,21 @@ function EmployeePanelInner({
 
   const renderActiveTab = () => {
     switch (tab) {
+      case "home":
+        return (
+          <KidsCheckedInCard
+            key="home"
+            initialSessions={initialSessions.filter(
+              (s) => s.status === "active",
+            )}
+            todayCheckinCount={todayCheckinCount}
+            venueCapacity={venueCapacity}
+            onViewAll={() => setTab("floor")}
+            onOpenCustomerDirectory={openCustomerDirectory}
+            pendingCount={pendingCount}
+            onPendingClick={() => setTab("pending")}
+          />
+        );
       case "quickcheckin":
         return <QuickCheckin key="quickcheckin" />;
       case "floor":
@@ -225,7 +250,8 @@ function EmployeePanelInner({
       case "activity":
         return (
           <div className="space-y-4">
-            <AttendanceCalendarTab key="activity" employeeId={employeeId} />
+            <AttendanceSummaryCard key="activity" employeeId={employeeId} />
+            <AttendanceCalendarTab employeeId={employeeId} />
             <ShiftDetailsCard employeeId={employeeId} />
             <ChangePasswordCard />
           </div>
@@ -247,9 +273,11 @@ function EmployeePanelInner({
 
   return (
     <div className="dark-ui min-h-screen bg-brand-nightBg">
-      <div className="max-w-2xl mx-auto px-4 pt-5 pb-10">
-        {/* Header: compact logo, greeting, sign out */}
-        <div className="flex items-center justify-between gap-3 mb-4">
+      {/* Header — mirrors the admin panel's top bar: logo, identity block,
+          theme toggle, sign out. Sticky so it stays put while a tab's
+          content scrolls underneath it. */}
+      <div className="sticky top-0 z-30 bg-brand-nightSurface border-b border-white/8">
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
@@ -260,47 +288,60 @@ function EmployeePanelInner({
               <img
                 src="/logo-full.png"
                 alt="QureoCity"
-                className={`h-9 w-auto object-contain ${logoClass}`}
+                className={`h-7 w-auto object-contain ${logoClass}`}
               />
             </button>
-            <div className="min-w-0">
-              <p className="text-xs text-brand-nightText/40 leading-none">
-                Welcome
-              </p>
-              <p className="font-bold text-brand-nightText leading-tight truncate">
-                {employeeName}
-              </p>
+            <div className="w-px h-6 bg-white/10 shrink-0" />
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-brand-sky/20 text-brand-skyLight text-xs font-bold flex items-center justify-center shrink-0">
+                {initials}
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] text-brand-nightText/40 leading-none mb-0.5">
+                  Welcome back
+                </p>
+                <p className="text-sm font-bold text-brand-nightText leading-tight truncate">
+                  {employeeName}
+                </p>
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <ThemeToggle compact />
             <button
               onClick={handleSignOut}
-              className="text-sm text-brand-nightText/40 hover:text-brand-coral font-medium whitespace-nowrap px-1"
+              title="Sign out"
+              className="text-brand-nightText/40 hover:text-brand-coral p-2 rounded-lg transition-colors"
             >
-              Sign out
+              <LogOut size={16} />
             </button>
           </div>
         </div>
+      </div>
 
-        <div className="mb-4">
-          <KidsCheckedInCard
-            initialSessions={initialSessions.filter(
-              (s) => s.status === "active",
-            )}
-            todayCheckinCount={todayCheckinCount}
-            venueCapacity={venueCapacity}
-            onViewAll={() => setTab("floor")}
-            onOpenCustomerDirectory={openCustomerDirectory}
-          />
-        </div>
-        <div className="mb-4">
-          <MyPerformanceGlimpse
-            employeeId={employeeId}
-            onClick={() => setTab("activity")}
-          />
-        </div>
-        <div className="grid grid-cols-6 gap-1 mb-6 bg-brand-nightSurface rounded-2xl p-1 border border-white/10 shadow-sm">
+      {/* Content — Home shows only the Kids-on-site card; every other tab,
+          including the full On Site list (reached via "View all" on that
+          card), renders its own view. Bottom padding clears the tab bar. */}
+      <div className="max-w-2xl mx-auto px-4 pt-5 pb-28">
+        {tab === "floor" && (
+          <button
+            type="button"
+            onClick={() => setTab("home")}
+            className="mb-3 text-xs font-semibold text-brand-nightText/45 hover:text-brand-skyLight transition-colors"
+          >
+            ← Back to Home
+          </button>
+        )}
+        {renderActiveTab()}
+      </div>
+
+      {/* Real bottom tab bar — fixed, thumb-reachable, same active/badge
+          language as the admin sidebar's nav items. */}
+      <nav
+        className="fixed bottom-0 inset-x-0 z-30 bg-brand-nightSurface border-t border-white/10 pb-[env(safe-area-inset-bottom)]"
+        aria-label="Employee panel navigation"
+      >
+        <div className="max-w-2xl mx-auto px-2 py-1.5 grid grid-cols-6 gap-1">
           {TAB_META.map((t) => {
             const Icon = t.icon;
             const isActive = tab === t.id;
@@ -312,18 +353,19 @@ function EmployeePanelInner({
                   if (t.id !== "pending") setFocusPendingId(null);
                   setTab(t.id);
                 }}
+                aria-current={isActive ? "page" : undefined}
                 className={`relative flex flex-col items-center justify-center gap-1 min-h-[52px] rounded-xl px-1 transition-colors ${
                   isActive
-                    ? "bg-brand-sky text-white shadow-sm"
-                    : "text-brand-nightText/50 hover:text-brand-nightText"
+                    ? "bg-brand-sky/20 text-brand-skyLight"
+                    : "text-brand-nightText/45 hover:bg-white/[0.04] hover:text-brand-nightText"
                 }`}
               >
-                <Icon size={16} strokeWidth={2.25} />
-                <span className="text-[9px] font-semibold tracking-wide leading-none text-center">
+                <Icon size={17} strokeWidth={2.25} />
+                <span className="text-[9.5px] font-semibold tracking-wide leading-none text-center">
                   {t.label}
                 </span>
                 {t.id === "pending" && pendingCount > 0 && (
-                  <span className="absolute top-1 right-1.5 min-w-[15px] h-[15px] px-[3px] rounded-full bg-brand-coral text-white text-[9px] font-bold flex items-center justify-center">
+                  <span className="absolute top-0.5 right-1.5 min-w-[15px] h-[15px] px-[3px] rounded-full bg-brand-coral text-white text-[9px] font-bold flex items-center justify-center">
                     {pendingCount > 9 ? "9+" : pendingCount}
                   </span>
                 )}
@@ -331,9 +373,7 @@ function EmployeePanelInner({
             );
           })}
         </div>
-
-        {renderActiveTab()}
-      </div>
+      </nav>
     </div>
   );
 }

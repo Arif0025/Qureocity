@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { ChevronRight, Phone, Clock, ChevronDown, Heart } from "lucide-react";
+import {
+  ChevronRight,
+  Phone,
+  Clock,
+  ChevronDown,
+  Heart,
+  Hourglass,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatTimeIST } from "@/lib/formatTime";
 
@@ -50,12 +57,18 @@ export default function KidsCheckedInCard({
   venueCapacity,
   onViewAll,
   onOpenCustomerDirectory,
+  pendingCount,
+  onPendingClick,
 }: {
   initialSessions: SessionRow[];
   todayCheckinCount: number;
   venueCapacity: number;
   onViewAll: () => void;
   onOpenCustomerDirectory: (customerKey: string) => void;
+  // Optional — when provided, a "pending" pill shows alongside the header
+  // and routes to the Pending tab instead of the default view-all action.
+  pendingCount?: number;
+  onPendingClick?: () => void;
 }) {
   const [supabase] = useState(() => createClient());
   const [sessions, setSessions] = useState(initialSessions ?? []);
@@ -104,11 +117,8 @@ export default function KidsCheckedInCard({
 
   return (
     <div className="bg-brand-nightSurface rounded-2xl border border-white/10 flex flex-col h-[420px]">
-      <button
-        onClick={onViewAll}
-        className="flex items-center justify-between px-5 pt-5 pb-4 text-left group"
-      >
-        <div>
+      <div className="flex items-start justify-between gap-2 px-5 pt-5 pb-4">
+        <button onClick={onViewAll} className="flex-1 min-w-0 text-left group">
           <p className="font-semibold text-brand-nightText group-hover:text-brand-sky transition-colors">
             Kids checked in
           </p>
@@ -116,12 +126,28 @@ export default function KidsCheckedInCard({
             {sessions.length} of {venueCapacity} capacity · {todayCheckinCount}{" "}
             check-ins today
           </p>
+        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {typeof pendingCount === "number" && pendingCount > 0 && (
+            <button
+              type="button"
+              onClick={onPendingClick}
+              className="flex items-center gap-1.5 rounded-full border border-brand-coral/30 bg-brand-coral/10 pl-2 pr-2.5 py-1 text-[11px] font-bold text-brand-coral hover:bg-brand-coral/15 transition-colors"
+            >
+              <Hourglass size={11} />
+              {pendingCount} pending
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onViewAll}
+            aria-label="View all checked-in kids"
+            className="text-brand-nightText/25 hover:text-brand-sky transition-colors p-0.5"
+          >
+            <ChevronRight size={18} />
+          </button>
         </div>
-        <ChevronRight
-          size={18}
-          className="text-brand-nightText/25 group-hover:text-brand-sky transition-colors shrink-0"
-        />
-      </button>
+      </div>
 
       <div className="flex-1 overflow-y-auto px-3 pb-3">
         {sessions.length === 0 ? (

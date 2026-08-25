@@ -59,7 +59,8 @@ export default async function AdminPage() {
     supabase
       .from("play_sessions")
       .select("id", { count: "exact", head: true })
-      .gte("start_time", startOfToday.toISOString()),
+      .gte("start_time", startOfToday.toISOString())
+      .in("status", ["active", "completed", "expired"]),
     supabase
       .from("play_sessions")
       .select("duration_mins")
