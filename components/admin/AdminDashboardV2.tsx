@@ -144,6 +144,10 @@ function AdminDashboardV2Inner({
   const [membershipsFilter, setMembershipsFilter] = useState<
     "expiring_soon" | "new_this_month" | undefined
   >(undefined);
+  const [plansTypeFilter, setPlansTypeFilter] = useState<
+    "recurring" | "special"
+  >("recurring");
+  const [plansFocusId, setPlansFocusId] = useState<string | null>(null);
   const [staffSubtab, setStaffSubtab] =
     useState<(typeof STAFF_SUBTABS)[number]["id"]>("team");
   const [staffFocusEmployeeId, setStaffFocusEmployeeId] = useState<
@@ -199,6 +203,15 @@ function AdminDashboardV2Inner({
     setCustomerSubtab("subscriptions");
     setTab("customers");
   };
+  const goToPlan = (
+    planId: string | null,
+    planType: "recurring" | "special",
+  ) => {
+    setPlansTypeFilter(planType);
+    setPlansFocusId(planId);
+    setCustomerSubtab("plans");
+    setTab("customers");
+  };
 
   const openCustomerDirectory = (customerKey: string) => {
     setCustomerSubtab("directory");
@@ -241,6 +254,7 @@ function AdminDashboardV2Inner({
                 onNewFamiliesClick={goToNewFamilies}
                 onNewMembershipsClick={goToNewMemberships}
                 onExpiringClick={goToExpiring}
+                onOpenPlan={goToPlan}
               />
             </>
           )}
@@ -359,7 +373,13 @@ function AdminDashboardV2Inner({
               {customerSubtab === "subscriptions" && (
                 <SubscriptionsManager initialFilter={membershipsFilter} />
               )}
-              {customerSubtab === "plans" && <PlansManager />}
+              {customerSubtab === "plans" && (
+                <PlansManager
+                  key={`${plansTypeFilter}:${plansFocusId ?? "none"}`}
+                  initialTypeFilter={plansTypeFilter}
+                  initialExpandedPlanId={plansFocusId}
+                />
+              )}
             </>
           )}
 

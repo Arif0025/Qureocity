@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ChevronDown, KeyRound, Plus, LogOut } from "lucide-react";
+import { ChevronDown, KeyRound, Plus, LogIn, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { resetEmployeePassword } from "@/app/admin/actions";
 import EmployeeCalendar from "./EmployeeCalendar";
@@ -73,6 +73,10 @@ export default function StaffRoster({
     string | null
   >(null);
   const [punchingOutId, setPunchingOutId] = useState<string | null>(null);
+  const [confirmingPunchInId, setConfirmingPunchInId] = useState<string | null>(
+    null,
+  );
+  const [punchingInId, setPunchingInId] = useState<string | null>(null);
 
   const refetchOnDuty = useCallback(async () => {
     const { data } = await supabase
@@ -109,6 +113,21 @@ export default function StaffRoster({
     });
     setPunchingOutId(null);
     if (error) alert(error.message);
+    void refetchOnDuty();
+  };
+
+  const handleForcePunchIn = async (employeeId: string) => {
+    setPunchingInId(employeeId);
+    setConfirmingPunchInId(null);
+    const { data, error } = await supabase.rpc("admin_force_punch_in", {
+      p_employee_id: employeeId,
+    });
+    setPunchingInId(null);
+    if (error) {
+      alert(error.message);
+    } else if (data && !data.success && data.reason !== "already_on_duty") {
+      alert("Could not punch in this employee.");
+    }
     void refetchOnDuty();
   };
 
@@ -348,12 +367,20 @@ export default function StaffRoster({
                   </div>
                 </div>
 
-                {onDutyIds.has(s.id) && (
-                  <div className="rounded-xl border border-brand-leaf/30 bg-brand-leaf/8 px-3 py-2.5 flex items-center justify-between gap-3">
-                    <p className="text-xs text-brand-nightText/60">
-                      Currently punched in
-                    </p>
-                    {confirmingPunchOutId === s.id ? (
+                <div
+                  className={`rounded-xl px-3 py-2.5 flex items-center justify-between gap-3 border ${
+                    onDutyIds.has(s.id)
+                      ? "border-brand-leaf/30 bg-brand-leaf/8"
+                      : "border-white/10 bg-brand-nightSurface2/60"
+                  }`}
+                >
+                  <p className="text-xs text-brand-nightText/60">
+                    {onDutyIds.has(s.id)
+                      ? "Currently punched in"
+                      : "Not punched in"}
+                  </p>
+                  {onDutyIds.has(s.id) ? (
+                    confirmingPunchOutId === s.id ? (
                       <div className="flex items-center gap-2 shrink-0">
                         <button
                           onClick={() => handleForcePunchOut(s.id)}
@@ -377,9 +404,33 @@ export default function StaffRoster({
                         <LogOut size={12} />
                         Punch out
                       </button>
-                    )}
-                  </div>
-                )}
+                    )
+                  ) : confirmingPunchInId === s.id ? (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => handleForcePunchIn(s.id)}
+                        disabled={punchingInId === s.id}
+                        className="min-h-[30px] px-3 rounded-lg bg-brand-leaf text-white text-xs font-semibold disabled:opacity-50"
+                      >
+                        {punchingInId === s.id ? "Punching in…" : "Confirm"}
+                      </button>
+                      <button
+                        onClick={() => setConfirmingPunchInId(null)}
+                        className="text-xs text-brand-nightText/40"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmingPunchInId(s.id)}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-brand-nightText/60 hover:text-brand-leaf border border-white/15 hover:border-brand-leaf/40 rounded-lg px-2.5 py-1.5 shrink-0 transition-colors"
+                    >
+                      <LogIn size={12} />
+                      Punch in
+                    </button>
+                  )}
+                </div>
 
                 {historyLoadingId === s.id ? (
                   <p className="text-sm text-brand-nightText/40">

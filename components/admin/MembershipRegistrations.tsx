@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Check, X, Phone, MapPin, School, Heart } from "lucide-react";
 
 type Registration = {
   id: string;
   receipt_number: string;
+  registration_type: "new" | "renewal" | "special";
   child_name: string;
   date_of_birth: string;
   gender: string | null;
@@ -21,6 +22,8 @@ type Registration = {
   address: string | null;
   plan_id: string | null;
   plan_name: string | null;
+  plan_type: "recurring" | "special" | null;
+  plan_event_date: string | null;
   how_heard: string | null;
   photo_consent: boolean;
   whatsapp_consent: boolean;
@@ -43,6 +46,11 @@ export default function MembershipRegistrations() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Per-instance channel name — a hardcoded shared name means the
+  // second mount's .subscribe() silently fails (see usePendingCount.ts).
+  const channelName = useRef(
+    `membership_registrations_pending_${Math.random().toString(36).slice(2)}`,
+  );
 
   const refetch = useCallback(async () => {
     const { data } = await supabase.rpc("list_pending_registrations");
@@ -53,7 +61,7 @@ export default function MembershipRegistrations() {
   useEffect(() => {
     void refetch();
     const channel = supabase
-      .channel("membership_registrations_pending")
+      .channel(channelName.current)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "membership_registrations" },
@@ -122,14 +130,31 @@ export default function MembershipRegistrations() {
               className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
             >
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-brand-nightText text-sm truncate">
-                  {r.child_name}{" "}
-                  <span className="text-brand-nightText/40">
-                    · {ageFromDob(r.date_of_birth)}y
-                  </span>
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="font-medium text-brand-nightText text-sm truncate">
+                    {r.child_name}
+                    {r.date_of_birth && (
+                      <span className="text-brand-nightText/40">
+                        {" "}
+                        · {ageFromDob(r.date_of_birth)}y
+                      </span>
+                    )}
+                  </p>
+                  {r.registration_type === "renewal" && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-brand-leaf bg-brand-leaf/10 rounded-full px-2 py-0.5 shrink-0">
+                      Renewal
+                    </span>
+                  )}
+                  {r.registration_type === "special" && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-brand-sun bg-brand-sun/10 rounded-full px-2 py-0.5 shrink-0">
+                      Special day
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-brand-nightText/40 truncate">
                   {r.parent_name} · {r.plan_name ?? "No plan selected"}
+                  {r.plan_event_date &&
+                    ` · ${new Date(r.plan_event_date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`}
                 </p>
               </div>
               <span className="text-[11px] font-mono text-brand-nightText/35 shrink-0">
@@ -201,11 +226,13 @@ export default function MembershipRegistrations() {
                   </div>
                 )}
 
-                <p className="text-xs text-brand-nightText/35">
-                  Heard about us via {r.how_heard ?? "—"} · Photo consent:{" "}
-                  {r.photo_consent ? "Yes" : "No"} · WhatsApp updates:{" "}
-                  {r.whatsapp_consent ? "Yes" : "No"}
-                </p>
+                {r.registration_type !== "renewal" && r.how_heard && (
+                  <p className="text-xs text-brand-nightText/35">
+                    Heard about us via {r.how_heard ?? "—"} · Photo consent:{" "}
+                    {r.photo_consent ? "Yes" : "No"} · WhatsApp updates:{" "}
+                    {r.whatsapp_consent ? "Yes" : "No"}
+                  </p>
+                )}
 
                 <div className="flex gap-2">
                   <button
@@ -214,7 +241,13 @@ export default function MembershipRegistrations() {
                     className="flex-1 min-h-[36px] flex items-center justify-center gap-1.5 rounded-lg bg-brand-leaf text-white text-xs font-semibold hover:bg-brand-leaf/85 disabled:opacity-50"
                   >
                     <Check size={14} />
-                    {busyId === r.id ? "Confirming…" : "Confirm membership"}
+                    {busyId === r.id
+                      ? "Confirming…"
+                      : r.registration_type === "renewal"
+                        ? "Confirm renewal"
+                        : r.registration_type === "special"
+                          ? "Confirm special day"
+                          : "Confirm membership"}
                   </button>
                   <button
                     onClick={() => handle(r.id, "discard")}

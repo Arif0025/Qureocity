@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getClientKey } from "@/lib/clientKey";
-import { LogIn, UserPlus } from "lucide-react";
+import { LogIn, UserPlus, RefreshCw, PartyPopper } from "lucide-react";
 import PhoneEntry from "./PhoneEntry";
 import ReturningCustomer from "./ReturningCustomer";
 import NewCustomerForm from "./NewCustomerForm";
@@ -148,6 +148,34 @@ export default function CheckinFlow() {
                   </p>
                   <p className="text-xs text-brand-ink/50">
                     New here? Sign up for a membership plan
+                  </p>
+                </div>
+              </a>
+              <a
+                href="/checkin/renew"
+                className="w-full rounded-xl2 bg-white border-2 border-brand-leaf/30 hover:border-brand-leaf p-5 text-left flex items-center gap-4 transition-colors"
+              >
+                <div className="w-12 h-12 rounded-full bg-brand-leaf/15 flex items-center justify-center shrink-0">
+                  <RefreshCw size={22} className="text-brand-leaf" />
+                </div>
+                <div>
+                  <p className="font-bold text-brand-ink">Renew membership</p>
+                  <p className="text-xs text-brand-ink/50">
+                    Already a member? Renew with just your phone number
+                  </p>
+                </div>
+              </a>
+              <a
+                href="/checkin/special"
+                className="w-full rounded-xl2 bg-white border-2 border-brand-coral/30 hover:border-brand-coral p-5 text-left flex items-center gap-4 transition-colors"
+              >
+                <div className="w-12 h-12 rounded-full bg-brand-coral/15 flex items-center justify-center shrink-0">
+                  <PartyPopper size={22} className="text-brand-coral" />
+                </div>
+                <div>
+                  <p className="font-bold text-brand-ink">Special days</p>
+                  <p className="text-xs text-brand-ink/50">
+                    See upcoming events and register your kids
                   </p>
                 </div>
               </a>

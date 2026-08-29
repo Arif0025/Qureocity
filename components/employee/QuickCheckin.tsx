@@ -13,6 +13,8 @@ type Result = {
   phone_last4: string;
   currently_checked_in: boolean;
   active_session_id: string | null;
+  is_special_today?: boolean;
+  special_payment_pending?: boolean;
 };
 
 export default function QuickCheckin() {
@@ -105,7 +107,8 @@ export default function QuickCheckin() {
   return (
     <div>
       <div className="bg-brand-sun/10 border border-brand-sun/30 rounded-xl2 px-4 py-3 mb-4 text-sm text-brand-nightText/70">
-        Members only — only children with an active subscription show up here.
+        Members only — children with an active subscription, or a special-day
+        pass valid today, show up here.
       </div>
 
       <input
@@ -133,9 +136,21 @@ export default function QuickCheckin() {
                 className="rounded-xl bg-brand-nightSurface2 px-3 py-2 flex items-center justify-between gap-2"
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-brand-nightText truncate">
-                    {r.child_name}
-                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-semibold text-brand-nightText truncate">
+                      {r.child_name}
+                    </p>
+                    {r.is_special_today && (
+                      <span className="text-[9px] font-semibold uppercase tracking-wide text-brand-sun bg-brand-sun/10 rounded-full px-1.5 py-0.5 shrink-0">
+                        Special
+                      </span>
+                    )}
+                    {r.special_payment_pending && (
+                      <span className="text-[9px] font-semibold uppercase tracking-wide text-brand-coral bg-brand-coral/10 rounded-full px-1.5 py-0.5 shrink-0">
+                        Payment due
+                      </span>
+                    )}
+                  </div>
                   <p className="text-[11px] text-brand-nightText/40 truncate">
                     {r.parent_name}
                   </p>
@@ -178,12 +193,24 @@ export default function QuickCheckin() {
             className="bg-brand-nightSurface rounded-2xl border border-white/10 p-4 flex items-center justify-between gap-3"
           >
             <div className="min-w-0">
-              <p className="font-bold text-brand-nightText truncate">
-                {r.child_name}{" "}
-                <span className="text-brand-nightText/40 font-normal">
-                  · {r.age}y
-                </span>
-              </p>
+              <div className="flex items-center gap-1.5">
+                <p className="font-bold text-brand-nightText truncate">
+                  {r.child_name}{" "}
+                  <span className="text-brand-nightText/40 font-normal">
+                    · {r.age}y
+                  </span>
+                </p>
+                {r.is_special_today && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-brand-sun bg-brand-sun/10 rounded-full px-2 py-0.5 shrink-0">
+                    Special today
+                  </span>
+                )}
+                {r.special_payment_pending && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-brand-coral bg-brand-coral/10 rounded-full px-2 py-0.5 shrink-0">
+                    Payment due
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-brand-nightText/40 truncate">
                 {r.parent_name} · ···{r.phone_last4}
               </p>

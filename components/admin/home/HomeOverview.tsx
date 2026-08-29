@@ -7,6 +7,7 @@ import StaffOnSiteCard from "./StaffOnSiteCard";
 import CheckInActivityCard from "./CheckInActivityCard";
 import CheckinActivityFull from "./CheckinActivityFull";
 import MonthlyStatsCard from "./MonthlyStatsCard";
+import SpecialDaysCard from "./SpecialDaysCard";
 import LiveFloorView from "../LiveFloorView";
 import ShiftStatusSummary from "../ShiftStatusSummary";
 
@@ -49,6 +50,7 @@ export default function HomeOverview({
   onNewFamiliesClick,
   onNewMembershipsClick,
   onExpiringClick,
+  onOpenPlan,
 }: {
   initialSessions: SessionRow[];
   todayCheckinCount: number;
@@ -64,6 +66,10 @@ export default function HomeOverview({
   onNewFamiliesClick?: () => void;
   onNewMembershipsClick?: () => void;
   onExpiringClick?: () => void;
+  onOpenPlan?: (
+    planId: string | null,
+    planType: "recurring" | "special",
+  ) => void;
 }) {
   const [drill, setDrill] = useState<Drill>("none");
 
@@ -112,6 +118,10 @@ export default function HomeOverview({
         onNewFamiliesClick={onNewFamiliesClick}
         onNewMembershipsClick={onNewMembershipsClick}
         onExpiringClick={onExpiringClick}
+      />
+      <SpecialDaysCard
+        onOpenDay={(planId) => onOpenPlan?.(planId, "special")}
+        onOpenPlans={() => onOpenPlan?.(null, "special")}
       />
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
         <KidsCheckedInCard

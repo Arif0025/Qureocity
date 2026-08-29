@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Send, Image as ImageIcon, X, Check, ChevronRight } from "lucide-react";
+import PillSelect from "@/components/shared/PillSelect";
 
 type Candidate = {
   customer_id: string;
@@ -28,6 +29,7 @@ type Filters = {
   minVisits: string;
   maxVisits: string;
   birthdayWithinDays: string;
+  planId: string;
 };
 
 const EMPTY_FILTERS: Filters = {
@@ -40,6 +42,13 @@ const EMPTY_FILTERS: Filters = {
   minVisits: "",
   maxVisits: "",
   birthdayWithinDays: "",
+  planId: "",
+};
+
+type PlanOption = {
+  id: string;
+  name: string;
+  plan_type: "recurring" | "special";
 };
 
 function fmtDate(d: string | null) {
@@ -76,6 +85,7 @@ export default function BroadcastWhatsApp() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [planOptions, setPlanOptions] = useState<PlanOption[]>([]);
   const [template, setTemplate] = useState(
     "Hi {parent_name}! Just a heads up that {child_name}'s membership at QureoCity expires on {expiry_date}. Renew anytime at the front desk to keep the fun going! 🎉",
   );
@@ -84,6 +94,18 @@ export default function BroadcastWhatsApp() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const rowKey = (c: Candidate) => `${c.customer_id}:${c.child_id}`;
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("membership_plans")
+        .select("id, name, plan_type")
+        .order("plan_type", { ascending: true })
+        .order("name", { ascending: true });
+      setPlanOptions((data as PlanOption[]) ?? []);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const applyFilters = async () => {
     setLoading(true);
@@ -106,6 +128,7 @@ export default function BroadcastWhatsApp() {
       p_birthday_within_days: filters.birthdayWithinDays
         ? parseInt(filters.birthdayWithinDays, 10)
         : null,
+      p_plan_id: filters.planId || null,
     });
     setLoading(false);
     if (!error) setCandidates((data as Candidate[]) ?? []);
@@ -159,6 +182,25 @@ export default function BroadcastWhatsApp() {
       <div className="bg-brand-nightSurface rounded-2xl border border-white/10 p-4 space-y-4">
         <p className="text-sm font-semibold text-brand-nightText">Filters</p>
         <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-brand-nightText/50 block mb-1">
+              Plan
+            </label>
+            <PillSelect
+              value={filters.planId}
+              onChange={(v) => setFilters((f) => ({ ...f, planId: v }))}
+              placeholder="Any"
+              triggerClassName="w-full min-h-[40px] flex items-center gap-1.5 rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
+              options={planOptions.map((p) => ({
+                value: p.id,
+                label: p.name,
+                group:
+                  p.plan_type === "recurring"
+                    ? "Monthly plans"
+                    : "Special days",
+              }))}
+            />
+          </div>
           <div>
             <label className="text-xs text-brand-nightText/50 block mb-1">
               Subscription status

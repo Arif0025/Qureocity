@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { ChevronDown, Search, Heart } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatTimeIST } from "@/lib/formatTime";
+import PillSelect from "./PillSelect";
 
 type ChildInfo = {
   id: string;
@@ -70,6 +71,22 @@ export default function CustomerSearch({
   );
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const today = new Date().toISOString().slice(0, 10);
+  const [planFilter, setPlanFilter] = useState("");
+  const [planOptions, setPlanOptions] = useState<
+    { id: string; name: string; plan_type: "recurring" | "special" }[]
+  >([]);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("membership_plans")
+        .select("id, name, plan_type")
+        .order("plan_type", { ascending: true })
+        .order("name", { ascending: true });
+      setPlanOptions(data ?? []);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     setQuery(initialQuery);
@@ -81,10 +98,11 @@ export default function CustomerSearch({
     setLoadingGlimpse(true);
     const { data, error } = await supabase.rpc("staff_list_customers", {
       p_limit: 30,
+      p_plan_id: planFilter || null,
     });
     setLoadingGlimpse(false);
     if (!error) setResults((data as Result[]) ?? []);
-  }, [supabase]);
+  }, [supabase, planFilter]);
 
   useEffect(() => {
     void loadGlimpse();
@@ -104,6 +122,7 @@ export default function CustomerSearch({
       setSearching(true);
       const { data, error } = await supabase.rpc("staff_search_customers", {
         p_query: query.trim(),
+        p_plan_id: planFilter || null,
       });
       setSearching(false);
       if (!error) setResults((data as Result[]) ?? []);
@@ -113,7 +132,7 @@ export default function CustomerSearch({
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, supabase]);
+  }, [query, supabase, planFilter]);
 
   const loadHistory = useCallback(
     async (customerId: string, childId: string | null) => {
@@ -201,7 +220,18 @@ export default function CustomerSearch({
         ) : (
           <span />
         )}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <PillSelect
+            value={planFilter}
+            onChange={setPlanFilter}
+            placeholder="All plans"
+            options={planOptions.map((p) => ({
+              value: p.id,
+              label: p.name,
+              group:
+                p.plan_type === "recurring" ? "Monthly plans" : "Special days",
+            }))}
+          />
           <button
             type="button"
             onClick={() => setNewOnly((v) => !v)}

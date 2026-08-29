@@ -31,6 +31,8 @@ type Plan = {
   id: string;
   name: string;
   description: string | null;
+  plan_type: "recurring" | "special";
+  event_date: string | null;
   validity_value: number;
   validity_unit: "weeks" | "months";
   hours_per_visit: number;
@@ -39,6 +41,14 @@ type Plan = {
   min_age: number | null;
   max_age: number | null;
 };
+
+function formatEventDate(d: string): string {
+  return new Date(d + "T00:00:00").toLocaleDateString("en-IN", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
 
 type FormState = {
   child_name: string;
@@ -119,6 +129,7 @@ export default function RegistrationFlow() {
         .from("membership_plans")
         .select("*")
         .eq("active", true)
+        .eq("plan_type", "recurring")
         .order("price", { ascending: true });
       setPlans((data as Plan[]) ?? []);
     })();
@@ -470,9 +481,18 @@ export default function RegistrationFlow() {
                         >
                           <div className="flex items-start justify-between gap-3 mb-2">
                             <div>
-                              <p className="font-bold text-brand-ink">
-                                {p.name}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-bold text-brand-ink">
+                                  {p.name}
+                                </p>
+                                {p.plan_type === "special" && (
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-brand-coral bg-brand-coral/10 rounded-full px-2 py-0.5 shrink-0">
+                                    {p.event_date
+                                      ? formatEventDate(p.event_date)
+                                      : "Special day"}
+                                  </span>
+                                )}
+                              </div>
                               {p.description && (
                                 <p className="text-xs text-brand-ink/50 mt-0.5">
                                   {p.description}
@@ -495,25 +515,36 @@ export default function RegistrationFlow() {
                               <Clock size={12} />
                               {p.hours_per_visit} hrs/visit
                             </span>
-                            <span className="flex items-center gap-1">
-                              <Calendar size={12} />
-                              {p.validity_value} {p.validity_unit} validity
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {WEEKDAY_LABELS.map((label, day) => (
-                              <span
-                                key={day}
-                                className={`text-[10px] font-semibold w-6 h-6 rounded-full flex items-center justify-center ${
-                                  p.allowed_weekdays.includes(day)
-                                    ? "bg-brand-leaf/15 text-brand-leaf"
-                                    : "bg-brand-ink/5 text-brand-ink/25"
-                                }`}
-                              >
-                                {label[0]}
+                            {p.plan_type === "special" ? (
+                              p.event_date && (
+                                <span className="flex items-center gap-1">
+                                  <Calendar size={12} />
+                                  One day only · {formatEventDate(p.event_date)}
+                                </span>
+                              )
+                            ) : (
+                              <span className="flex items-center gap-1">
+                                <Calendar size={12} />
+                                {p.validity_value} {p.validity_unit} validity
                               </span>
-                            ))}
+                            )}
                           </div>
+                          {p.plan_type !== "special" && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {WEEKDAY_LABELS.map((label, day) => (
+                                <span
+                                  key={day}
+                                  className={`text-[10px] font-semibold w-6 h-6 rounded-full flex items-center justify-center ${
+                                    p.allowed_weekdays.includes(day)
+                                      ? "bg-brand-leaf/15 text-brand-leaf"
+                                      : "bg-brand-ink/5 text-brand-ink/25"
+                                  }`}
+                                >
+                                  {label[0]}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                           {isSelected && (
                             <div className="flex items-center gap-1.5 mt-3 text-xs font-semibold text-brand-sky">
                               <Check size={14} /> Selected

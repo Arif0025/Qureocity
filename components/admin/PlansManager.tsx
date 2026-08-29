@@ -2,12 +2,24 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Pencil, Trash2, X } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  Users,
+  ChevronDown,
+  Phone,
+  Link as LinkIcon,
+} from "lucide-react";
 
 type Plan = {
   id: string;
   name: string;
   description: string | null;
+  plan_type: "recurring" | "special";
+  event_date: string | null;
+  code: string | null;
   validity_value: number;
   validity_unit: "weeks" | "months";
   hours_per_visit: number;
@@ -23,6 +35,9 @@ const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 type FormState = {
   name: string;
   description: string;
+  plan_type: "recurring" | "special";
+  event_date: string;
+  code: string;
   validity_value: string;
   validity_unit: "weeks" | "months";
   hours_per_visit: string;
@@ -36,6 +51,9 @@ type FormState = {
 const EMPTY_FORM: FormState = {
   name: "",
   description: "",
+  plan_type: "recurring",
+  event_date: "",
+  code: "",
   validity_value: "1",
   validity_unit: "months",
   hours_per_visit: "2",
@@ -50,6 +68,9 @@ function planToForm(p: Plan): FormState {
   return {
     name: p.name,
     description: p.description ?? "",
+    plan_type: p.plan_type ?? "recurring",
+    event_date: p.event_date ?? "",
+    code: p.code ?? "",
     validity_value: String(p.validity_value),
     validity_unit: p.validity_unit,
     hours_per_visit: String(p.hours_per_visit),
@@ -61,7 +82,47 @@ function planToForm(p: Plan): FormState {
   };
 }
 
-export default function PlansManager() {
+type PlanMember = {
+  pass_id?: string;
+  child_id: string;
+  child_name: string;
+  age: number;
+  parent_name: string;
+  phone: string;
+  started_on?: string | null;
+  expires_on?: string | null;
+  currently_active?: boolean;
+  event_date?: string;
+  purchased_at?: string;
+  payment_status?: "pending" | "paid";
+};
+
+type PlanRoster = {
+  plan_id: string;
+  plan_name: string;
+  plan_type: "recurring" | "special";
+  event_date: string | null;
+  price: number;
+  active: boolean;
+  member_count: number;
+  members: PlanMember[];
+};
+
+function formatDate(d: string): string {
+  return new Date(d + "T00:00:00").toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+export default function PlansManager({
+  initialTypeFilter,
+  initialExpandedPlanId,
+}: {
+  initialTypeFilter?: "recurring" | "special";
+  initialExpandedPlanId?: string | null;
+} = {}) {
   const supabase = createClient();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,6 +131,16 @@ export default function PlansManager() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [roster, setRoster] = useState<Record<string, PlanRoster>>({});
+  const [rosterLoading, setRosterLoading] = useState(true);
+  const [expandedRosterId, setExpandedRosterId] = useState<string | null>(
+    initialExpandedPlanId ?? null,
+  );
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [togglingPassId, setTogglingPassId] = useState<string | null>(null);
+  const [viewType, setViewType] = useState<"recurring" | "special">(
+    initialTypeFilter ?? "recurring",
+  );
 
   const load = async () => {
     setLoading(true);
@@ -81,13 +152,39 @@ export default function PlansManager() {
     setLoading(false);
   };
 
+  const loadRoster = async () => {
+    setRosterLoading(true);
+    const { data } = await supabase.rpc("admin_list_plan_members");
+    const byId: Record<string, PlanRoster> = {};
+    for (const row of (data as PlanRoster[]) ?? []) byId[row.plan_id] = row;
+    setRoster(byId);
+    setRosterLoading(false);
+  };
+
+  const togglePaymentStatus = async (
+    passId: string,
+    current: PlanMember["payment_status"],
+  ) => {
+    setTogglingPassId(passId);
+    const next = current === "paid" ? "pending" : "paid";
+    await supabase.rpc("admin_set_special_pass_payment_status", {
+      p_pass_id: passId,
+      p_status: next,
+    });
+    await loadRoster();
+    setTogglingPassId(null);
+  };
+
   useEffect(() => {
     void load();
+    void loadRoster();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const visiblePlans = plans.filter((p) => p.plan_type === viewType);
+
   const startCreate = () => {
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, plan_type: viewType });
     setCreating(true);
     setEditingId(null);
   };
@@ -116,15 +213,38 @@ export default function PlansManager() {
   const save = async () => {
     setError(null);
     if (!form.name.trim()) return setError("Name is required.");
-    if (form.allowed_weekdays.length === 0)
+    if (form.plan_type === "special") {
+      if (!form.event_date) return setError("Pick the special day's date.");
+      if (!form.code.trim())
+        return setError(
+          "Give this special day a short code (e.g. HAL) — it's used for receipt numbers and its sign-up link.",
+        );
+      if (!/^[A-Za-z0-9]{2,10}$/.test(form.code.trim()))
+        return setError("Code must be 2–10 letters/numbers, no spaces.");
+    } else if (form.allowed_weekdays.length === 0) {
       return setError("Select at least one allowed day.");
+    }
+    const eventWeekday = form.event_date
+      ? new Date(form.event_date + "T00:00:00").getDay()
+      : null;
     const payload = {
       name: form.name.trim(),
       description: form.description.trim() || null,
-      validity_value: parseInt(form.validity_value, 10) || 1,
-      validity_unit: form.validity_unit,
+      plan_type: form.plan_type,
+      event_date: form.plan_type === "special" ? form.event_date : null,
+      code:
+        form.plan_type === "special" ? form.code.trim().toUpperCase() : null,
+      validity_value:
+        form.plan_type === "special"
+          ? 1
+          : parseInt(form.validity_value, 10) || 1,
+      validity_unit:
+        form.plan_type === "special" ? "weeks" : form.validity_unit,
       hours_per_visit: parseFloat(form.hours_per_visit) || 1,
-      allowed_weekdays: form.allowed_weekdays,
+      allowed_weekdays:
+        form.plan_type === "special" && eventWeekday != null
+          ? [eventWeekday]
+          : form.allowed_weekdays,
       min_age: form.min_age ? parseInt(form.min_age, 10) : null,
       max_age: form.max_age ? parseInt(form.max_age, 10) : null,
       price: parseFloat(form.price) || 0,
@@ -174,13 +294,35 @@ export default function PlansManager() {
   return (
     <div className="space-y-4">
       {!isFormOpen && (
-        <button
-          onClick={startCreate}
-          className="flex items-center gap-1.5 min-h-[40px] px-4 rounded-xl2 bg-brand-sky text-white text-sm font-semibold hover:bg-brand-sky/90"
-        >
-          <Plus size={16} />
-          New plan
-        </button>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex gap-1 rounded-xl2 bg-brand-nightSurface2 p-1">
+            {(
+              [
+                { value: "recurring", label: "Monthly plans" },
+                { value: "special", label: "Special days" },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setViewType(opt.value)}
+                className={`text-sm font-semibold px-3.5 py-2 rounded-lg transition-colors ${
+                  viewType === opt.value
+                    ? "bg-brand-sky text-white"
+                    : "text-brand-nightText/50 hover:text-brand-nightText"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={startCreate}
+            className="flex items-center gap-1.5 min-h-[40px] px-4 rounded-xl2 bg-brand-sky text-white text-sm font-semibold hover:bg-brand-sky/90"
+          >
+            <Plus size={16} />
+            New {viewType === "special" ? "special day" : "plan"}
+          </button>
+        </div>
       )}
 
       {isFormOpen && (
@@ -210,36 +352,116 @@ export default function PlansManager() {
             className="w-full rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm p-3 resize-none"
           />
 
-          <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-brand-nightText/50 block mb-1.5">
+              Plan type
+            </label>
+            <div className="flex gap-1.5">
+              {(
+                [
+                  { value: "recurring", label: "Recurring membership" },
+                  { value: "special", label: "Special day (one-off)" },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() =>
+                    setForm((f) => ({ ...f, plan_type: opt.value }))
+                  }
+                  className={`flex-1 text-xs font-semibold px-2.5 py-2 rounded-lg border transition-colors ${
+                    form.plan_type === opt.value
+                      ? "bg-brand-sky text-white border-brand-sky"
+                      : "bg-brand-nightSurface2 text-brand-nightText/50 border-white/15"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {form.plan_type === "special" && (
             <div>
               <label className="text-xs text-brand-nightText/50 block mb-1">
-                Validity
+                Event date
               </label>
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  min={1}
-                  value={form.validity_value}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, validity_value: e.target.value }))
-                  }
-                  className="w-16 min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-2"
-                />
-                <select
-                  value={form.validity_unit}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      validity_unit: e.target.value as "weeks" | "months",
-                    }))
-                  }
-                  className="flex-1 min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-2"
-                >
-                  <option value="weeks">weeks</option>
-                  <option value="months">months</option>
-                </select>
-              </div>
+              <input
+                type="date"
+                value={form.event_date}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, event_date: e.target.value }))
+                }
+                className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
+              />
+              <p className="text-[11px] text-brand-nightText/35 mt-1">
+                Anyone who registers or renews with this plan will show up in
+                Quick Check-In automatically on this date.
+              </p>
             </div>
+          )}
+
+          {form.plan_type === "special" && (
+            <div>
+              <label className="text-xs text-brand-nightText/50 block mb-1">
+                Short code
+              </label>
+              <input
+                type="text"
+                value={form.code}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    code: e.target.value
+                      .toUpperCase()
+                      .replace(/[^A-Z0-9]/g, ""),
+                  }))
+                }
+                placeholder="e.g. HAL"
+                maxLength={10}
+                className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3 uppercase tracking-wide"
+              />
+              <p className="text-[11px] text-brand-nightText/35 mt-1">
+                Used for this plan's receipt numbers ({form.code || "HAL"}-001,{" "}
+                {form.code || "HAL"}-002…) instead of the regular Q- series, and
+                as its sign-up link: qureocity.vercel.app/checkin/special/
+                {form.code.toLowerCase() || "hal"}
+              </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            {form.plan_type === "recurring" && (
+              <div>
+                <label className="text-xs text-brand-nightText/50 block mb-1">
+                  Validity
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.validity_value}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, validity_value: e.target.value }))
+                    }
+                    className="w-16 min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-2"
+                  />
+                  <select
+                    value={form.validity_unit}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        validity_unit: e.target.value as "weeks" | "months",
+                      }))
+                    }
+                    className="flex-1 min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-2"
+                  >
+                    <option value="weeks">weeks</option>
+                    <option value="months">months</option>
+                  </select>
+                </div>
+              </div>
+            )}
             <div>
               <label className="text-xs text-brand-nightText/50 block mb-1">
                 Hours per visit
@@ -299,29 +521,31 @@ export default function PlansManager() {
             </div>
           </div>
 
-          <div>
-            <label className="text-xs text-brand-nightText/50 block mb-1.5">
-              Allowed days — any combination
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {WEEKDAY_LABELS.map((label, day) => (
-                <button
-                  key={day}
-                  type="button"
-                  onClick={() => toggleWeekday(day)}
-                  disabled={day === 2}
-                  title={day === 2 ? "Closed Tuesdays" : undefined}
-                  className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors disabled:opacity-25 ${
-                    form.allowed_weekdays.includes(day)
-                      ? "bg-brand-sky text-white border-brand-sky"
-                      : "bg-brand-nightSurface2 text-brand-nightText/50 border-white/15"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+          {form.plan_type === "recurring" && (
+            <div>
+              <label className="text-xs text-brand-nightText/50 block mb-1.5">
+                Allowed days — any combination
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {WEEKDAY_LABELS.map((label, day) => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => toggleWeekday(day)}
+                    disabled={day === 2}
+                    title={day === 2 ? "Closed Tuesdays" : undefined}
+                    className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors disabled:opacity-25 ${
+                      form.allowed_weekdays.includes(day)
+                        ? "bg-brand-sky text-white border-brand-sky"
+                        : "bg-brand-nightSurface2 text-brand-nightText/50 border-white/15"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           <label className="flex items-center gap-2 text-sm text-brand-nightText/60">
             <input
@@ -357,40 +581,108 @@ export default function PlansManager() {
 
       {loading ? (
         <p className="text-sm text-brand-nightText/40">Loading…</p>
-      ) : plans.length === 0 ? (
+      ) : visiblePlans.length === 0 ? (
         <p className="text-sm text-brand-nightText/40">
-          No plans yet — create one to make it available on the registration
-          form.
+          {viewType === "special"
+            ? "No special days yet — create one to get its sign-up link and receipt codes."
+            : "No monthly plans yet — create one to make it available on the registration form."}
         </p>
       ) : (
         <div className="space-y-2">
-          {plans.map((p) => (
+          {visiblePlans.map((p) => (
             <div
               key={p.id}
               className={`bg-brand-nightSurface rounded-xl border border-white/10 p-4 ${!p.active ? "opacity-50" : ""}`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-semibold text-brand-nightText">{p.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-brand-nightText">
+                      {p.name}
+                    </p>
+                    {p.plan_type === "special" && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-brand-sun bg-brand-sun/10 rounded-full px-2 py-0.5 shrink-0">
+                        Special day
+                      </span>
+                    )}
+                  </div>
                   {p.description && (
                     <p className="text-xs text-brand-nightText/45 mt-0.5">
                       {p.description}
                     </p>
                   )}
-                  <p className="text-xs text-brand-nightText/40 mt-1.5">
-                    {p.validity_value} {p.validity_unit} · {p.hours_per_visit}
-                    hrs/visit · ₹{p.price}
-                    {(p.min_age != null || p.max_age != null) &&
-                      ` · Age ${p.min_age ?? "0"}–${p.max_age ?? "∞"}`}
-                  </p>
-                  <p className="text-xs text-brand-nightText/35 mt-1">
-                    {p.allowed_weekdays
-                      .sort()
-                      .map((d) => WEEKDAY_LABELS[d])
-                      .join(", ")}
-                  </p>
+                  {p.plan_type === "special" ? (
+                    <>
+                      <p className="text-xs text-brand-nightText/40 mt-1.5">
+                        {p.event_date
+                          ? new Date(
+                              p.event_date + "T00:00:00",
+                            ).toLocaleDateString("en-IN", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })
+                          : "No date set"}{" "}
+                        · {p.hours_per_visit} hrs · ₹{p.price}
+                        {(p.min_age != null || p.max_age != null) &&
+                          ` · Age ${p.min_age ?? "0"}–${p.max_age ?? "∞"}`}
+                      </p>
+                      {p.code && (
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <code className="text-[11px] font-mono text-brand-sky bg-brand-sky/10 rounded px-1.5 py-0.5">
+                            {p.code}-###
+                          </code>
+                          <button
+                            onClick={() => {
+                              const url = `${window.location.origin}/checkin/special/${p.code!.toLowerCase()}`;
+                              navigator.clipboard?.writeText(url);
+                              setCopiedId(p.id);
+                              setTimeout(() => setCopiedId(null), 1500);
+                            }}
+                            className="text-[11px] font-semibold text-brand-nightText/40 hover:text-brand-sky flex items-center gap-1"
+                          >
+                            <LinkIcon size={11} />
+                            {copiedId === p.id
+                              ? "Link copied!"
+                              : "Copy sign-up link"}
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs text-brand-nightText/40 mt-1.5">
+                        {p.validity_value} {p.validity_unit} ·{" "}
+                        {p.hours_per_visit}
+                        hrs/visit · ₹{p.price}
+                        {(p.min_age != null || p.max_age != null) &&
+                          ` · Age ${p.min_age ?? "0"}–${p.max_age ?? "∞"}`}
+                      </p>
+                      <p className="text-xs text-brand-nightText/35 mt-1">
+                        {p.allowed_weekdays
+                          .sort()
+                          .map((d) => WEEKDAY_LABELS[d])
+                          .join(", ")}
+                      </p>
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() =>
+                      setExpandedRosterId(
+                        expandedRosterId === p.id ? null : p.id,
+                      )
+                    }
+                    className="flex items-center gap-1 text-[11px] font-semibold text-brand-nightText/40 hover:text-brand-sky px-2 py-1"
+                  >
+                    <Users size={13} />
+                    {roster[p.id]?.member_count ?? 0}
+                    <ChevronDown
+                      size={12}
+                      className={`transition-transform ${expandedRosterId === p.id ? "rotate-180" : ""}`}
+                    />
+                  </button>
                   <button
                     onClick={() => toggleActive(p)}
                     className="text-[11px] font-semibold text-brand-nightText/40 hover:text-brand-nightText px-2 py-1"
@@ -411,6 +703,90 @@ export default function PlansManager() {
                   </button>
                 </div>
               </div>
+
+              {expandedRosterId === p.id && (
+                <div className="mt-3 pt-3 border-t border-white/10">
+                  {rosterLoading ? (
+                    <p className="text-xs text-brand-nightText/35">
+                      Loading members…
+                    </p>
+                  ) : !roster[p.id] || roster[p.id].members.length === 0 ? (
+                    <p className="text-xs text-brand-nightText/35">
+                      No one is registered on this plan yet.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {roster[p.id].members.map((m) => (
+                        <div
+                          key={m.child_id}
+                          className="flex items-center justify-between gap-2 rounded-lg bg-brand-nightSurface2 px-3 py-2"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-brand-nightText truncate">
+                              {m.child_name}{" "}
+                              <span className="font-normal text-brand-nightText/40">
+                                · {m.age}y
+                              </span>
+                            </p>
+                            <p className="text-[11px] text-brand-nightText/40 truncate flex items-center gap-1">
+                              {m.parent_name}
+                              <span className="text-brand-nightText/25">·</span>
+                              <Phone size={10} /> {m.phone}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right space-y-1">
+                            {p.plan_type === "special" ? (
+                              <>
+                                <span className="block text-[10px] font-semibold text-brand-sun bg-brand-sun/10 rounded-full px-2 py-0.5">
+                                  {m.event_date
+                                    ? formatDate(m.event_date)
+                                    : "Registered"}
+                                </span>
+                                {m.pass_id && (
+                                  <button
+                                    onClick={() =>
+                                      togglePaymentStatus(
+                                        m.pass_id!,
+                                        m.payment_status,
+                                      )
+                                    }
+                                    disabled={togglingPassId === m.pass_id}
+                                    className={`text-[10px] font-semibold rounded-full px-2 py-0.5 transition-colors disabled:opacity-50 ${
+                                      m.payment_status === "paid"
+                                        ? "text-brand-leaf bg-brand-leaf/10 hover:bg-brand-leaf/20"
+                                        : "text-brand-coral bg-brand-coral/10 hover:bg-brand-coral/20"
+                                    }`}
+                                  >
+                                    {togglingPassId === m.pass_id
+                                      ? "…"
+                                      : m.payment_status === "paid"
+                                        ? "Paid ✓"
+                                        : "Payment pending"}
+                                  </button>
+                                )}
+                              </>
+                            ) : (
+                              <span
+                                className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${
+                                  m.currently_active
+                                    ? "text-brand-leaf bg-brand-leaf/10"
+                                    : "text-brand-nightText/40 bg-white/5"
+                                }`}
+                              >
+                                {m.currently_active
+                                  ? m.expires_on
+                                    ? `Until ${formatDate(m.expires_on)}`
+                                    : "Active"
+                                  : "Expired"}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
