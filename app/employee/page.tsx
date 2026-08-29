@@ -33,7 +33,7 @@ export default async function EmployeePage() {
       .select(
         "id, start_time, end_time, status, children(name, allergies, medical_conditions, special_instructions, customers(name, phone))",
       )
-      .in("status", ["active", "pending_payment"])
+      .eq("status", "active")
       .order("end_time", { ascending: true, nullsFirst: false }),
     supabase
       .from("play_sessions")

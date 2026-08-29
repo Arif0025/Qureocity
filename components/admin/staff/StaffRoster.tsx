@@ -158,18 +158,20 @@ export default function StaffRoster({
     }
   };
 
-  useEffect(() => {
-    (async () => {
-      setLoadingSummary(true);
-      const { data } = await supabase.rpc("admin_staff_attendance_summary");
-      const map: Record<string, Summary> = {};
-      ((data as Summary[]) ?? []).forEach((row) => {
-        map[row.employee_id] = row;
-      });
-      setSummaries(map);
-      setLoadingSummary(false);
-    })();
+  const refreshSummaries = useCallback(async () => {
+    setLoadingSummary(true);
+    const { data } = await supabase.rpc("admin_staff_attendance_summary");
+    const map: Record<string, Summary> = {};
+    ((data as Summary[]) ?? []).forEach((row) => {
+      map[row.employee_id] = row;
+    });
+    setSummaries(map);
+    setLoadingSummary(false);
   }, [supabase]);
+
+  useEffect(() => {
+    void refreshSummaries();
+  }, [refreshSummaries]);
 
   useEffect(() => {
     if (!activeEmployeeId) return;
@@ -190,9 +192,9 @@ export default function StaffRoster({
       const { data } = await supabase
         .from("attendance_logs")
         .select("id, punch_in, punch_out")
-        .eq("employee_id", employeeId)
-        .order("punch_in", { ascending: false })
-        .limit(200);
+      .eq("employee_id", employeeId)
+      .order("punch_in", { ascending: false })
+        .limit(1000);
       setHistoryLoadingId(null);
       setHistoryByEmployee((prev) => ({
         ...prev,
@@ -201,6 +203,21 @@ export default function StaffRoster({
     },
     [supabase],
   );
+
+  const handleSaveAttendance = async (
+    employeeId: string,
+    input: { logId: string | null; punchIn: string; punchOut: string | null },
+  ): Promise<string | null> => {
+    const { error } = await supabase.rpc("admin_save_attendance_log", {
+      p_employee_id: employeeId,
+      p_log_id: input.logId,
+      p_punch_in: input.punchIn,
+      p_punch_out: input.punchOut,
+    });
+    if (error) return error.message;
+    await Promise.all([loadHistory(employeeId), refreshSummaries(), refetchOnDuty()]);
+    return null;
+  };
 
   const toggleExpand = (employeeId: string) => {
     if (expandedId === employeeId) {
@@ -442,6 +459,8 @@ export default function StaffRoster({
                     shift={shift}
                     varianceThresholdMins={varianceThreshold}
                     showLegend
+                    editable={isAdmin}
+                    onSaveAttendance={(input) => handleSaveAttendance(s.id, input)}
                   />
                 )}
 

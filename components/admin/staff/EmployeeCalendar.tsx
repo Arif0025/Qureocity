@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Clock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, Pencil, Plus } from "lucide-react";
 import { formatTimeIST, istDateParts, dateKey } from "@/lib/formatTime";
 
 type LogRow = {
@@ -71,6 +71,18 @@ function durationStr(punchIn: string, punchOut: string | null): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
+function toDateTimeLocalIST(iso: string): string {
+  return new Date(new Date(iso).getTime() + 330 * 60_000)
+    .toISOString()
+    .slice(0, 16);
+}
+
+function toIsoFromIST(value: string): string | null {
+  if (!value) return null;
+  const parsed = new Date(`${value}:00+05:30`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 function shiftMinutes(shift: Shift): number {
   if (!shift) return 0;
   const [sh, sm] = shift.start_time.split(":").map(Number);
@@ -134,6 +146,8 @@ export default function EmployeeCalendar({
   shift = null,
   varianceThresholdMins = 30,
   showLegend = false,
+  editable = false,
+  onSaveAttendance,
 }: {
   logs: LogRow[];
   // When provided, days get classified against the shift (present /
@@ -143,6 +157,12 @@ export default function EmployeeCalendar({
   shift?: Shift;
   varianceThresholdMins?: number;
   showLegend?: boolean;
+  editable?: boolean;
+  onSaveAttendance?: (input: {
+    logId: string | null;
+    punchIn: string;
+    punchOut: string | null;
+  }) => Promise<string | null>;
 }) {
   const logsByDay = useMemo(() => {
     const map = new Map<string, LogRow[]>();
@@ -165,6 +185,13 @@ export default function EmployeeCalendar({
   const [selectedDay, setSelectedDay] = useState<string | null>(
     logs[0] ? dateKey(istDateParts(logs[0].punch_in)) : null,
   );
+  const [editingLog, setEditingLog] = useState<LogRow | null | undefined>(
+    undefined,
+  );
+  const [punchInInput, setPunchInInput] = useState("");
+  const [punchOutInput, setPunchOutInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const firstOfMonth: DayParts = {
     year: cursor.year,
@@ -195,6 +222,37 @@ export default function EmployeeCalendar({
 
   const selectedLogs = selectedDay ? (logsByDay.get(selectedDay) ?? []) : [];
   const selectedParts = selectedDay ? selectedDay.split("-").map(Number) : null;
+
+  const startEdit = (log: LogRow | null) => {
+    if (!selectedDay) return;
+    setEditingLog(log);
+    setPunchInInput(
+      log
+        ? toDateTimeLocalIST(log.punch_in)
+        : `${selectedDay}T09:00`,
+    );
+    setPunchOutInput(log?.punch_out ? toDateTimeLocalIST(log.punch_out) : `${selectedDay}T18:00`);
+    setEditError(null);
+  };
+
+  const saveEdit = async () => {
+    if (!onSaveAttendance) return;
+    const punchIn = toIsoFromIST(punchInInput);
+    const punchOut = toIsoFromIST(punchOutInput);
+    if (!punchIn) return setEditError("Enter a valid punch-in time.");
+    if (punchOut && new Date(punchOut) < new Date(punchIn)) {
+      return setEditError("Punch-out cannot be earlier than punch-in.");
+    }
+    setSaving(true);
+    const error = await onSaveAttendance({
+      logId: editingLog?.id ?? null,
+      punchIn,
+      punchOut,
+    });
+    setSaving(false);
+    if (error) return setEditError(error);
+    setEditingLog(undefined);
+  };
 
   return (
     <div className="grid md:grid-cols-[1fr_260px] gap-4">
@@ -297,9 +355,20 @@ export default function EmployeeCalendar({
               {selectedParts[0]}
             </p>
             {selectedLogs.length === 0 ? (
-              <p className="text-sm text-brand-nightText/35">
-                No attendance record.
-              </p>
+              <>
+                <p className="text-sm text-brand-nightText/35">
+                  No attendance record.
+                </p>
+                {editable && !isAfter({ year: selectedParts[0], month: selectedParts[1] - 1, date: selectedParts[2] }, today) && (
+                  <button
+                    type="button"
+                    onClick={() => startEdit(null)}
+                    className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-sky hover:text-brand-skyLight"
+                  >
+                    <Plus size={13} /> Add attendance
+                  </button>
+                )}
+              </>
             ) : (
               <div className="space-y-3">
                 {selectedLogs.map((log) => (
@@ -320,8 +389,60 @@ export default function EmployeeCalendar({
                     <p className="text-xs text-brand-nightText/40 mt-1">
                       {durationStr(log.punch_in, log.punch_out)}
                     </p>
+                    {editable && (
+                      <button
+                        type="button"
+                        onClick={() => startEdit(log)}
+                        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-brand-sky hover:text-brand-skyLight"
+                      >
+                        <Pencil size={12} /> Edit times
+                      </button>
+                    )}
                   </div>
                 ))}
+              </div>
+            )}
+            {editingLog !== undefined && (
+              <div className="mt-4 border-t border-white/10 pt-4 space-y-3">
+                <p className="text-xs font-semibold text-brand-nightText">
+                  {editingLog ? "Edit attendance" : "Add attendance"}
+                </p>
+                <label className="block text-xs text-brand-nightText/50">
+                  Punch in
+                  <input
+                    type="datetime-local"
+                    value={punchInInput}
+                    onChange={(event) => setPunchInInput(event.target.value)}
+                    className="mt-1 w-full min-h-[38px] rounded-lg border border-white/15 bg-brand-nightSurface text-brand-nightText px-2 text-xs"
+                  />
+                </label>
+                <label className="block text-xs text-brand-nightText/50">
+                  Punch out
+                  <input
+                    type="datetime-local"
+                    value={punchOutInput}
+                    onChange={(event) => setPunchOutInput(event.target.value)}
+                    className="mt-1 w-full min-h-[38px] rounded-lg border border-white/15 bg-brand-nightSurface text-brand-nightText px-2 text-xs"
+                  />
+                </label>
+                {editError && <p className="text-xs text-brand-coral">{editError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void saveEdit()}
+                    disabled={saving}
+                    className="min-h-[34px] rounded-lg bg-brand-sky px-3 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    {saving ? "Saving…" : "Save times"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingLog(undefined)}
+                    className="min-h-[34px] rounded-lg border border-white/15 px-3 text-xs font-semibold text-brand-nightText/55"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             )}
           </>

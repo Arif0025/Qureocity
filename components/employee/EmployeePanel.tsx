@@ -7,7 +7,6 @@ import {
   Fingerprint,
   Zap,
   Home as HomeIcon,
-  Clock,
   Search as SearchIcon,
   CalendarClock,
   LogOut,
@@ -22,8 +21,6 @@ import CustomerSearch from "@/components/shared/CustomerSearch";
 import AttendanceCalendarTab from "./AttendanceCalendarTab";
 import AttendanceSummaryCard from "./AttendanceSummaryCard";
 import ShiftDetailsCard from "./ShiftDetailsCard";
-import PendingConfirmations from "@/components/shared/PendingConfirmations";
-import { usePendingCount } from "@/lib/hooks/usePendingCount";
 import { useTheme } from "@/lib/hooks/useTheme";
 import ThemeToggle from "@/components/shared/ThemeToggle";
 
@@ -137,7 +134,6 @@ function ChangePasswordCard() {
 // its own bar button, so Home can show just that card as requested.
 const TAB_META = [
   { id: "home", label: "Home", icon: HomeIcon },
-  { id: "pending", label: "Pending", icon: Clock },
   { id: "quickcheckin", label: "Club check-in", icon: Zap },
   { id: "punch", label: "Punch", icon: Fingerprint },
   { id: "search", label: "Search", icon: SearchIcon },
@@ -168,11 +164,9 @@ function EmployeePanelInner({
   const [tab, setTabState] = useState<Tab>(
     tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : "home",
   );
-  const [focusPendingId, setFocusPendingId] = useState<string | null>(null);
   const [customerSearchQuery, setCustomerSearchQuery] = useState(
     searchParams.get("customer") ?? "",
   );
-  const pendingCount = usePendingCount();
   const { theme } = useTheme();
   const logoClass =
     theme === "light"
@@ -206,11 +200,6 @@ function EmployeePanelInner({
     router.push("/employee/login");
   };
 
-  const goToPending = (sessionId: string) => {
-    setFocusPendingId(sessionId);
-    setTab("pending");
-  };
-
   const openCustomerDirectory = (customerKey: string) => {
     setCustomerSearchQuery(customerKey);
     setTab("search");
@@ -229,8 +218,6 @@ function EmployeePanelInner({
             venueCapacity={venueCapacity}
             onViewAll={() => setTab("floor")}
             onOpenCustomerDirectory={openCustomerDirectory}
-            pendingCount={pendingCount}
-            onPendingClick={() => setTab("pending")}
           />
         );
       case "quickcheckin":
@@ -240,12 +227,7 @@ function EmployeePanelInner({
           <LiveFloorView
             key="floor"
             initialSessions={initialSessions}
-            onPendingClick={goToPending}
           />
-        );
-      case "pending":
-        return (
-          <PendingConfirmations key="pending" focusSessionId={focusPendingId} />
         );
       case "activity":
         return (
@@ -350,7 +332,6 @@ function EmployeePanelInner({
                 key={t.id}
                 type="button"
                 onClick={() => {
-                  if (t.id !== "pending") setFocusPendingId(null);
                   setTab(t.id);
                 }}
                 aria-current={isActive ? "page" : undefined}
@@ -364,11 +345,6 @@ function EmployeePanelInner({
                 <span className="text-[9.5px] font-semibold tracking-wide leading-none text-center">
                   {t.label}
                 </span>
-                {t.id === "pending" && pendingCount > 0 && (
-                  <span className="absolute top-0.5 right-1.5 min-w-[15px] h-[15px] px-[3px] rounded-full bg-brand-coral text-white text-[9px] font-bold flex items-center justify-center">
-                    {pendingCount > 9 ? "9+" : pendingCount}
-                  </span>
-                )}
               </button>
             );
           })}

@@ -7,8 +7,7 @@ import {
   Pencil,
   Trash2,
   X,
-  Users,
-  ChevronDown,
+  ArrowLeft,
   Phone,
   Link as LinkIcon,
 } from "lucide-react";
@@ -95,6 +94,9 @@ type PlanMember = {
   event_date?: string;
   purchased_at?: string;
   payment_status?: "pending" | "paid";
+  attendance_status?: "not_attended" | "on_site" | "attended";
+  checked_in_at?: string | null;
+  checked_out_at?: string | null;
 };
 
 type PlanRoster = {
@@ -133,7 +135,7 @@ export default function PlansManager({
   const [error, setError] = useState<string | null>(null);
   const [roster, setRoster] = useState<Record<string, PlanRoster>>({});
   const [rosterLoading, setRosterLoading] = useState(true);
-  const [expandedRosterId, setExpandedRosterId] = useState<string | null>(
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(
     initialExpandedPlanId ?? null,
   );
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -290,6 +292,104 @@ export default function PlansManager({
   };
 
   const isFormOpen = creating || editingId !== null;
+  const selectedPlan = selectedPlanId
+    ? plans.find((plan) => plan.id === selectedPlanId) ?? null
+    : null;
+
+  if (selectedPlan) {
+    const members = roster[selectedPlan.id]?.members ?? [];
+    return (
+      <div className="space-y-4">
+        <button
+          type="button"
+          onClick={() => setSelectedPlanId(null)}
+          className="flex items-center gap-1.5 text-sm font-semibold text-brand-nightText/55 hover:text-brand-sky transition-colors"
+        >
+          <ArrowLeft size={16} /> Back to plans
+        </button>
+        <div className="bg-brand-nightSurface rounded-2xl border border-white/10 p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-lg font-bold text-brand-nightText">
+                {selectedPlan.name}
+              </p>
+              <p className="text-sm text-brand-nightText/45 mt-1">
+                {selectedPlan.plan_type === "special"
+                  ? `Special day · ${selectedPlan.event_date ? formatDate(selectedPlan.event_date) : "Date not set"}`
+                  : "Monthly membership roster"}
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full bg-brand-sky/10 px-2.5 py-1 text-xs font-semibold text-brand-skyLight">
+              {roster[selectedPlan.id]?.member_count ?? 0} registered
+            </span>
+          </div>
+        </div>
+
+        {rosterLoading ? (
+          <p className="text-sm text-brand-nightText/40">Loading roster…</p>
+        ) : members.length === 0 ? (
+          <div className="rounded-2xl border border-white/10 bg-brand-nightSurface p-8 text-center text-sm text-brand-nightText/40">
+            No one is registered on this plan yet.
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-2xl border border-white/10 bg-brand-nightSurface">
+            <div className="hidden sm:grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] gap-4 border-b border-white/10 px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-brand-nightText/40">
+              <span>Child</span><span>Parent</span><span>Status</span>
+            </div>
+            <div className="divide-y divide-white/8">
+              {members.map((member) => {
+                const isSpecial = selectedPlan.plan_type === "special";
+                const attendance = member.attendance_status ?? "not_attended";
+                return (
+                  <div key={member.pass_id ?? member.child_id} className="grid gap-2 px-5 py-4 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-brand-nightText">
+                        {member.child_name} <span className="font-normal text-brand-nightText/40">· {member.age}y</span>
+                      </p>
+                      {isSpecial && member.checked_in_at && (
+                        <p className="mt-0.5 text-xs text-brand-nightText/40">
+                          Checked in {new Date(member.checked_in_at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}
+                        </p>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm text-brand-nightText/70 truncate">{member.parent_name}</p>
+                      <a href={`tel:${member.phone}`} className="inline-flex items-center gap-1 text-xs text-brand-sky hover:underline">
+                        <Phone size={11} /> {member.phone}
+                      </a>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
+                      {isSpecial ? (
+                        <>
+                          <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${attendance === "on_site" ? "bg-brand-leaf/15 text-brand-leaf" : attendance === "attended" ? "bg-brand-sky/15 text-brand-skyLight" : "bg-white/5 text-brand-nightText/45"}`}>
+                            {attendance === "on_site" ? "On site" : attendance === "attended" ? "Attended" : "Not attended"}
+                          </span>
+                          {member.pass_id && (
+                            <button
+                              type="button"
+                              onClick={() => togglePaymentStatus(member.pass_id!, member.payment_status)}
+                              disabled={togglingPassId === member.pass_id}
+                              className={`rounded-full px-2 py-1 text-[11px] font-semibold disabled:opacity-50 ${member.payment_status === "paid" ? "bg-brand-leaf/10 text-brand-leaf" : "bg-brand-coral/10 text-brand-coral"}`}
+                            >
+                              {togglingPassId === member.pass_id ? "…" : member.payment_status === "paid" ? "Paid" : "Payment pending"}
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${member.currently_active ? "bg-brand-leaf/10 text-brand-leaf" : "bg-white/5 text-brand-nightText/45"}`}>
+                          {member.currently_active ? (member.expires_on ? `Active until ${formatDate(member.expires_on)}` : "Active") : "Expired"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -592,6 +692,12 @@ export default function PlansManager({
           {visiblePlans.map((p) => (
             <div
               key={p.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedPlanId(p.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") setSelectedPlanId(p.id);
+              }}
               className={`bg-brand-nightSurface rounded-xl border border-white/10 p-4 ${!p.active ? "opacity-50" : ""}`}
             >
               <div className="flex items-start justify-between gap-3">
@@ -633,7 +739,8 @@ export default function PlansManager({
                             {p.code}-###
                           </code>
                           <button
-                            onClick={() => {
+                            onClick={(event) => {
+                              event.stopPropagation();
                               const url = `${window.location.origin}/checkin/special/${p.code!.toLowerCase()}`;
                               navigator.clipboard?.writeText(url);
                               setCopiedId(p.id);
@@ -669,34 +776,28 @@ export default function PlansManager({
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
-                    onClick={() =>
-                      setExpandedRosterId(
-                        expandedRosterId === p.id ? null : p.id,
-                      )
-                    }
-                    className="flex items-center gap-1 text-[11px] font-semibold text-brand-nightText/40 hover:text-brand-sky px-2 py-1"
-                  >
-                    <Users size={13} />
-                    {roster[p.id]?.member_count ?? 0}
-                    <ChevronDown
-                      size={12}
-                      className={`transition-transform ${expandedRosterId === p.id ? "rotate-180" : ""}`}
-                    />
-                  </button>
-                  <button
-                    onClick={() => toggleActive(p)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleActive(p);
+                    }}
                     className="text-[11px] font-semibold text-brand-nightText/40 hover:text-brand-nightText px-2 py-1"
                   >
                     {p.active ? "Deactivate" : "Activate"}
                   </button>
                   <button
-                    onClick={() => startEdit(p)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      startEdit(p);
+                    }}
                     className="p-1.5 text-brand-nightText/40 hover:text-brand-sky"
                   >
                     <Pencil size={14} />
                   </button>
                   <button
-                    onClick={() => remove(p.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      remove(p.id);
+                    }}
                     className="p-1.5 text-brand-nightText/40 hover:text-brand-coral"
                   >
                     <Trash2 size={14} />
@@ -704,89 +805,6 @@ export default function PlansManager({
                 </div>
               </div>
 
-              {expandedRosterId === p.id && (
-                <div className="mt-3 pt-3 border-t border-white/10">
-                  {rosterLoading ? (
-                    <p className="text-xs text-brand-nightText/35">
-                      Loading members…
-                    </p>
-                  ) : !roster[p.id] || roster[p.id].members.length === 0 ? (
-                    <p className="text-xs text-brand-nightText/35">
-                      No one is registered on this plan yet.
-                    </p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {roster[p.id].members.map((m) => (
-                        <div
-                          key={m.child_id}
-                          className="flex items-center justify-between gap-2 rounded-lg bg-brand-nightSurface2 px-3 py-2"
-                        >
-                          <div className="min-w-0">
-                            <p className="text-xs font-semibold text-brand-nightText truncate">
-                              {m.child_name}{" "}
-                              <span className="font-normal text-brand-nightText/40">
-                                · {m.age}y
-                              </span>
-                            </p>
-                            <p className="text-[11px] text-brand-nightText/40 truncate flex items-center gap-1">
-                              {m.parent_name}
-                              <span className="text-brand-nightText/25">·</span>
-                              <Phone size={10} /> {m.phone}
-                            </p>
-                          </div>
-                          <div className="shrink-0 text-right space-y-1">
-                            {p.plan_type === "special" ? (
-                              <>
-                                <span className="block text-[10px] font-semibold text-brand-sun bg-brand-sun/10 rounded-full px-2 py-0.5">
-                                  {m.event_date
-                                    ? formatDate(m.event_date)
-                                    : "Registered"}
-                                </span>
-                                {m.pass_id && (
-                                  <button
-                                    onClick={() =>
-                                      togglePaymentStatus(
-                                        m.pass_id!,
-                                        m.payment_status,
-                                      )
-                                    }
-                                    disabled={togglingPassId === m.pass_id}
-                                    className={`text-[10px] font-semibold rounded-full px-2 py-0.5 transition-colors disabled:opacity-50 ${
-                                      m.payment_status === "paid"
-                                        ? "text-brand-leaf bg-brand-leaf/10 hover:bg-brand-leaf/20"
-                                        : "text-brand-coral bg-brand-coral/10 hover:bg-brand-coral/20"
-                                    }`}
-                                  >
-                                    {togglingPassId === m.pass_id
-                                      ? "…"
-                                      : m.payment_status === "paid"
-                                        ? "Paid ✓"
-                                        : "Payment pending"}
-                                  </button>
-                                )}
-                              </>
-                            ) : (
-                              <span
-                                className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${
-                                  m.currently_active
-                                    ? "text-brand-leaf bg-brand-leaf/10"
-                                    : "text-brand-nightText/40 bg-white/5"
-                                }`}
-                              >
-                                {m.currently_active
-                                  ? m.expires_on
-                                    ? `Until ${formatDate(m.expires_on)}`
-                                    : "Active"
-                                  : "Expired"}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           ))}
         </div>

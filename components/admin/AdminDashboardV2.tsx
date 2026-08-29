@@ -12,12 +12,9 @@ import SubscriptionsManager from "./SubscriptionsManager";
 import AdminPasswordCard from "./AdminPasswordCard";
 import QuickCheckin from "@/components/employee/QuickCheckin";
 import CustomerSearch from "@/components/shared/CustomerSearch";
-import PendingConfirmations from "@/components/shared/PendingConfirmations";
 import MembershipRegistrations from "./MembershipRegistrations";
 import PlansManager from "./PlansManager";
 import BroadcastWhatsApp from "./BroadcastWhatsApp";
-import { usePendingCount } from "@/lib/hooks/usePendingCount";
-import { usePendingRegistrationsCount } from "@/lib/hooks/usePendingRegistrationsCount";
 import { SessionRow } from "./home/KidsCheckedInCard";
 
 function BackToHomeButton({ onClick }: { onClick: () => void }) {
@@ -53,16 +50,6 @@ const CUSTOMER_SUBTABS = [
   { id: "directory", label: "Directory" },
   { id: "subscriptions", label: "Memberships" },
   { id: "plans", label: "Plans" },
-] as const;
-
-const PENDING_SUBTABS = [
-  { id: "payments", label: "Payments" },
-  { id: "memberships", label: "Memberships" },
-] as const;
-
-const STAFF_SUBTABS = [
-  { id: "team", label: "Team" },
-  { id: "settings", label: "Settings" },
 ] as const;
 
 function AdminDashboardV2Inner({
@@ -111,29 +98,12 @@ function AdminDashboardV2Inner({
     "clubcheckin",
     "pending",
     "broadcast",
+    "settings",
   ];
   const tabFromUrl = searchParams.get("tab") as AdminTabId | null;
   const [tab, setTabState] = useState<AdminTabId>(
     tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : "home",
   );
-  const [focusPendingId, setFocusPendingId] = useState<string | null>(null);
-  const [pendingSubtab, setPendingSubtab] =
-    useState<(typeof PENDING_SUBTABS)[number]["id"]>("payments");
-  const [pendingSubtabTouched, setPendingSubtabTouched] = useState(false);
-  const paymentsPendingCount = usePendingCount();
-  const membershipsPendingCount = usePendingRegistrationsCount();
-
-  // Land on whichever queue actually has something in it — badge said
-  // "1" but the tab defaulted to Payments regardless of where that 1
-  // actually was, which read as "the tab is broken." Only auto-picks
-  // once (pendingSubtabTouched), so it doesn't yank the admin back to
-  // Payments mid-review just because a membership got confirmed elsewhere.
-  useEffect(() => {
-    if (pendingSubtabTouched) return;
-    if (paymentsPendingCount === 0 && membershipsPendingCount > 0) {
-      setPendingSubtab("memberships");
-    }
-  }, [paymentsPendingCount, membershipsPendingCount, pendingSubtabTouched]);
 
   const [customerSubtab, setCustomerSubtab] =
     useState<(typeof CUSTOMER_SUBTABS)[number]["id"]>("directory");
@@ -148,8 +118,6 @@ function AdminDashboardV2Inner({
     "recurring" | "special"
   >("recurring");
   const [plansFocusId, setPlansFocusId] = useState<string | null>(null);
-  const [staffSubtab, setStaffSubtab] =
-    useState<(typeof STAFF_SUBTABS)[number]["id"]>("team");
   const [staffFocusEmployeeId, setStaffFocusEmployeeId] = useState<
     string | null
   >(null);
@@ -179,12 +147,10 @@ function AdminDashboardV2Inner({
 
   const openStaffEmployee = (employeeId: string) => {
     setStaffFocusEmployeeId(employeeId);
-    setStaffSubtab("team");
     setTab("staff");
   };
 
-  const goToPending = (sessionId: string) => {
-    setFocusPendingId(sessionId);
+  const goToPending = () => {
     setTab("pending");
   };
 
@@ -262,49 +228,13 @@ function AdminDashboardV2Inner({
           {tab === "pending" && (
             <>
               <div className="flex items-start justify-between gap-3 mb-1">
-                <h1 className="text-lg font-bold text-brand-nightText">
-                  Pending confirmations
-                </h1>
+                <h1 className="text-lg font-bold text-brand-nightText">Pending memberships</h1>
                 <BackToHomeButton onClick={() => setTab("home")} />
               </div>
               <p className="text-brand-nightText/50 text-sm mb-5">
-                {pendingSubtab === "payments"
-                  ? "Kids checked in from the kiosk, awaiting payment confirmation."
-                  : "Membership sign-ups from the kiosk, awaiting review."}
+                Membership sign-ups and renewals awaiting review.
               </p>
-              <div className="flex gap-1 border-b border-white/8 mb-6">
-                {PENDING_SUBTABS.map((st) => {
-                  const count =
-                    st.id === "payments"
-                      ? paymentsPendingCount
-                      : membershipsPendingCount;
-                  return (
-                    <button
-                      key={st.id}
-                      onClick={() => {
-                        setPendingSubtab(st.id);
-                        setPendingSubtabTouched(true);
-                      }}
-                      className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
-                        pendingSubtab === st.id
-                          ? "border-brand-skyLight text-brand-skyLight"
-                          : "border-transparent text-brand-nightText/50 hover:text-brand-nightText"
-                      }`}
-                    >
-                      {st.label}
-                      {count > 0 && (
-                        <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-brand-coral text-white text-[10px] font-bold flex items-center justify-center">
-                          {count > 9 ? "9+" : count}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              {pendingSubtab === "payments" && (
-                <PendingConfirmations focusSessionId={focusPendingId} />
-              )}
-              {pendingSubtab === "memberships" && <MembershipRegistrations />}
+              <MembershipRegistrations />
             </>
           )}
 
@@ -396,45 +326,28 @@ function AdminDashboardV2Inner({
                   ? "Roles, shifts, and attendance for the team."
                   : "Everyone currently on the roster."}
               </p>
-              {isAdmin ? (
-                <>
-                  <div className="flex gap-1 border-b border-white/8 mb-6 overflow-x-auto no-scrollbar">
-                    {STAFF_SUBTABS.map((st) => (
-                      <button
-                        key={st.id}
-                        onClick={() => setStaffSubtab(st.id)}
-                        className={`shrink-0 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
-                          staffSubtab === st.id
-                            ? "border-brand-skyLight text-brand-skyLight"
-                            : "border-transparent text-brand-nightText/50 hover:text-brand-nightText"
-                        }`}
-                      >
-                        {st.label}
-                      </button>
-                    ))}
-                  </div>
-                  {staffSubtab === "team" && (
-                    <StaffRoster
-                      staff={staff}
-                      initialShifts={shifts}
-                      isAdmin={isAdmin}
-                      activeEmployeeId={staffFocusEmployeeId}
-                    />
-                  )}
-                  {staffSubtab === "settings" && (
-                    <div className="max-w-sm space-y-4">
-                      <QrModeToggle initialMode={qrMode} />
-                      <AdminPasswordCard />
-                    </div>
-                  )}
-                </>
-              ) : (
-                <StaffRoster
-                  staff={staff}
-                  initialShifts={shifts}
-                  isAdmin={isAdmin}
-                />
-              )}
+              <StaffRoster
+                staff={staff}
+                initialShifts={shifts}
+                isAdmin={isAdmin}
+                activeEmployeeId={staffFocusEmployeeId}
+              />
+            </>
+          )}
+
+          {tab === "settings" && (
+            <>
+              <div className="flex items-start justify-between gap-3 mb-1">
+                <h1 className="text-lg font-bold text-brand-nightText">Settings</h1>
+                <BackToHomeButton onClick={() => setTab("home")} />
+              </div>
+              <p className="text-brand-nightText/50 text-sm mb-6">
+                Configure administrative and check-in options.
+              </p>
+              <div className="max-w-sm space-y-4">
+                <QrModeToggle initialMode={qrMode} />
+                <AdminPasswordCard />
+              </div>
             </>
           )}
         </div>
