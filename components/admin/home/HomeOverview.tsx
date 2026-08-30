@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import KidsCheckedInCard, { SessionRow } from "./KidsCheckedInCard";
 import StaffOnSiteCard from "./StaffOnSiteCard";
+import TeamTodayCard from "./TeamTodayCard";
 import CheckInActivityCard from "./CheckInActivityCard";
 import CheckinActivityFull from "./CheckinActivityFull";
 import MonthlyStatsCard from "./MonthlyStatsCard";
@@ -131,11 +132,7 @@ export default function HomeOverview({
           onViewAll={() => setDrill("kids")}
           onOpenCustomerDirectory={onOpenCustomerDirectory}
         />
-        <StaffOnSiteCard
-          initialOnDutyStaff={onDutyStaff}
-          totalStaff={totalStaff}
-          onViewAll={() => setDrill("staff")}
-        />
+        <TeamTodayCard onViewAll={() => setDrill("staff")} />
         <CheckInActivityCard
           dailyCounts={dailyCounts}
           onViewFull={() => setDrill("activity")}

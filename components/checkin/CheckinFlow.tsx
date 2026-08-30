@@ -98,11 +98,13 @@ export default function CheckinFlow() {
   return (
     <div className="min-h-screen bg-brand-cloud flex flex-col items-center justify-center px-4 py-8">
       <div className="w-full max-w-md">
-        <img
-          src="/logo-full.png"
-          alt="QureoCity"
-          className="h-16 mx-auto mb-6"
-        />
+        <a href="/" className="block w-fit mx-auto mb-6">
+          <img
+            src="/logo-full.png"
+            alt="QureoCity — back to home"
+            className="h-16"
+          />
+        </a>
 
         {error && (
           <div className="mb-4 rounded-xl2 bg-brand-coral/10 border border-brand-coral text-brand-coral px-4 py-3 text-sm font-medium animate-popIn">

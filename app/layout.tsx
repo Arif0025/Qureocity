@@ -13,7 +13,7 @@ const THEME_INIT_SCRIPT = `
 (function () {
   try {
     var saved = localStorage.getItem("qureocity-theme");
-    var theme = saved === "light" || saved === "dark" ? saved : "dark";
+    var theme = saved === "light" || saved === "dark" ? saved : "light";
     document.documentElement.setAttribute("data-theme", theme);
   } catch (e) {}
 })();

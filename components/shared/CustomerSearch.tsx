@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChevronDown, Search, Heart } from "lucide-react";
+import { Search, Heart, Phone, BadgeCheck, LogIn, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatTimeIST } from "@/lib/formatTime";
+import { getClientKey } from "@/lib/clientKey";
 import PillSelect from "./PillSelect";
+import ListRow from "./ListRow";
 
 type ChildInfo = {
   id: string;
@@ -13,9 +15,12 @@ type ChildInfo = {
   subscription_active: boolean;
   subscription_started_on: string | null;
   subscription_expires_on: string | null;
+  plan_name: string | null;
   allergies: string | null;
   medical_conditions: string | null;
   special_instructions: string | null;
+  currently_checked_in: boolean;
+  active_session_id: string | null;
 };
 
 function hasMedicalInfo(c: ChildInfo): boolean {
@@ -59,14 +64,11 @@ export default function CustomerSearch({
   const [loadingGlimpse, setLoadingGlimpse] = useState(true);
   const [searching, setSearching] = useState(false);
   const [newOnly, setNewOnly] = useState(filterNewThisMonth);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [selectedChildByCustomer, setSelectedChildByCustomer] = useState<
-    Record<string, string | null> // customer_id -> child_id | null (null = "all children")
+  const [expandedChildId, setExpandedChildId] = useState<string | null>(null);
+  const [historyByChild, setHistoryByChild] = useState<
+    Record<string, VisitHistoryEntry[]>
   >({});
-  const [historyByKey, setHistoryByKey] = useState<
-    Record<string, VisitHistoryEntry[]> // `${customerId}:${childId ?? "all"}`
-  >({});
-  const [historyLoadingKey, setHistoryLoadingKey] = useState<string | null>(
+  const [historyLoadingChild, setHistoryLoadingChild] = useState<string | null>(
     null,
   );
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
@@ -75,6 +77,75 @@ export default function CustomerSearch({
   const [planOptions, setPlanOptions] = useState<
     { id: string; name: string; plan_type: "recurring" | "special" }[]
   >([]);
+  const [onSiteFirst, setOnSiteFirst] = useState(false);
+  const [checkinBusyId, setCheckinBusyId] = useState<string | null>(null);
+  const [durationPickerFor, setDurationPickerFor] = useState<{
+    customerId: string;
+    childId: string;
+    childName: string;
+  } | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const patchChild = (
+    customerId: string,
+    childId: string,
+    patch: Partial<ChildInfo>,
+  ) => {
+    setResults((prev) =>
+      prev.map((r) =>
+        r.customer_id !== customerId
+          ? r
+          : {
+              ...r,
+              children: (r.children ?? []).map((c) =>
+                c.id === childId ? { ...c, ...patch } : c,
+              ),
+            },
+      ),
+    );
+  };
+
+  const handleCheckIn = async (
+    customerId: string,
+    childId: string,
+    durationMins: number | null,
+  ) => {
+    setCheckinBusyId(childId);
+    setActionError(null);
+    const { data, error } = await supabase.rpc("checkin_create_sessions", {
+      p_customer_id: customerId,
+      p_child_ids: [childId],
+      p_duration_mins: durationMins,
+      p_client_key: getClientKey(),
+      p_status: "active",
+    });
+    setCheckinBusyId(null);
+    setDurationPickerFor(null);
+    if (error) return setActionError(error.message);
+    const sessionId = data?.sessions?.[0]?.session_id ?? null;
+    patchChild(customerId, childId, {
+      currently_checked_in: true,
+      active_session_id: sessionId,
+    });
+  };
+
+  const handleCheckOut = async (
+    customerId: string,
+    childId: string,
+    sessionId: string,
+  ) => {
+    setCheckinBusyId(childId);
+    setActionError(null);
+    const { error } = await supabase.rpc("checkout_session", {
+      p_session_id: sessionId,
+    });
+    setCheckinBusyId(null);
+    if (error) return setActionError(error.message);
+    patchChild(customerId, childId, {
+      currently_checked_in: false,
+      active_session_id: null,
+    });
+  };
 
   useEffect(() => {
     (async () => {
@@ -135,32 +206,28 @@ export default function CustomerSearch({
   }, [query, supabase, planFilter]);
 
   const loadHistory = useCallback(
-    async (customerId: string, childId: string | null) => {
-      const key = `${customerId}:${childId ?? "all"}`;
-      setHistoryLoadingKey(key);
+    async (customerId: string, childId: string) => {
+      setHistoryLoadingChild(childId);
       const { data, error } = await supabase.rpc("customer_visit_history", {
         p_customer_id: customerId,
         p_child_id: childId,
       });
-      setHistoryLoadingKey(null);
-
+      setHistoryLoadingChild(null);
       if (!error) {
-        setHistoryByKey((prev) => ({
+        setHistoryByChild((prev) => ({
           ...prev,
-          [key]: (data as VisitHistoryEntry[]) ?? [],
+          [childId]: (data as VisitHistoryEntry[]) ?? [],
         }));
       }
     },
     [supabase],
   );
 
-  const handleViewHistory = async (customerId: string) => {
-    const childId = selectedChildByCustomer[customerId] ?? null;
-    const key = `${customerId}:${childId ?? "all"}`;
-    if (historyByKey[key]) {
-      setHistoryByKey((prev) => {
+  const toggleHistory = async (customerId: string, childId: string) => {
+    if (historyByChild[childId]) {
+      setHistoryByChild((prev) => {
         const next = { ...prev };
-        delete next[key];
+        delete next[childId];
         return next;
       });
       return;
@@ -168,23 +235,19 @@ export default function CustomerSearch({
     await loadHistory(customerId, childId);
   };
 
-  const selectChildFilter = (customerId: string, childId: string | null) => {
-    setSelectedChildByCustomer((prev) => ({ ...prev, [customerId]: childId }));
-  };
-
   useEffect(() => {
     if (!focusCustomerPhone) return;
     const match = results.find((r) => r.phone === focusCustomerPhone);
-    if (!match) return;
-    setExpandedId(match.customer_id);
-    const key = `${match.customer_id}:all`;
-    if (!historyByKey[key]) {
-      void loadHistory(match.customer_id, null);
+    const firstChild = match?.children?.[0];
+    if (!match || !firstChild) return;
+    setExpandedChildId(firstChild.id);
+    if (!historyByChild[firstChild.id]) {
+      void loadHistory(match.customer_id, firstChild.id);
     }
-  }, [focusCustomerPhone, historyByKey, loadHistory, results]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusCustomerPhone, results]);
 
   const loading = query.trim().length >= 2 ? searching : loadingGlimpse;
-  const [onSiteFirst, setOnSiteFirst] = useState(false);
   const monthStartStr = `${new Date().toISOString().slice(0, 7)}-01`;
   const baseResults = newOnly
     ? results.filter((r) => (r.created_at ?? "") >= monthStartStr)
@@ -211,15 +274,7 @@ export default function CustomerSearch({
         />
       </div>
 
-      <div className="flex items-center justify-between gap-3 mb-3">
-        {query.trim().length < 2 && !loadingGlimpse ? (
-          <p className="text-xs text-brand-nightText/35">
-            Showing {results.length} most recently active families — type to
-            search everyone.
-          </p>
-        ) : (
-          <span />
-        )}
+      <div className="flex items-center justify-end gap-3 mb-3">
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
           <PillSelect
             value={planFilter}
@@ -259,253 +314,297 @@ export default function CustomerSearch({
 
       {loading && <p className="text-sm text-brand-nightText/40">Loading…</p>}
 
+      {actionError && (
+        <div className="mb-3 rounded-xl border border-brand-coral/30 bg-brand-coral/10 px-3.5 py-2.5 text-sm text-brand-coral">
+          {actionError}
+        </div>
+      )}
+
       {!loading && query.trim().length >= 2 && results.length === 0 && (
         <p className="text-sm text-brand-nightText/40">No matches found.</p>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         {displayedResults.map((r) => {
-          const isOpen = expandedId === r.customer_id;
+          const kids = r.children ?? [];
           return (
             <div
               key={r.customer_id}
-              className="bg-brand-nightSurface rounded-2xl border border-white/10 overflow-hidden"
+              className={`rounded-2xl overflow-hidden ${
+                kids.length > 1 ? "border-l-2 border-brand-sky/30 pl-2.5" : ""
+              }`}
             >
-              <button
-                onClick={() => setExpandedId(isOpen ? null : r.customer_id)}
-                className="w-full flex items-center gap-3 px-5 py-4 text-left"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-brand-nightText truncate">
+              {kids.length === 0 && (
+                <div className="rounded-xl border border-white/10 bg-brand-nightSurface px-3.5 py-3">
+                  <p className="text-sm font-semibold text-brand-nightText">
                     {r.parent_name}
                   </p>
-                  <p className="text-xs text-brand-nightText/40 truncate">
-                    {r.phone} ·{" "}
-                    {(r.children ?? []).map((c) => c.name).join(", ") ||
-                      "No children registered"}
+                  <p className="text-xs text-brand-nightText/40">
+                    {r.phone} · No children registered yet
                   </p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {(r.children ?? []).some(hasMedicalInfo) && (
-                    <Heart
-                      size={13}
-                      className="text-brand-coral shrink-0"
-                      fill="currentColor"
-                    />
-                  )}
-                  {r.any_active_subscription && (
-                    <span className="text-xs font-semibold text-brand-sky bg-brand-sky/15 px-2 py-1 rounded-full">
-                      Member
-                    </span>
-                  )}
-                  {r.currently_checked_in && (
-                    <span className="text-xs font-semibold text-brand-leaf bg-brand-leaf/10 px-2 py-1 rounded-full">
-                      On site
-                    </span>
-                  )}
-                  <ChevronDown
-                    size={16}
-                    className={`text-brand-nightText/25 transition-transform ${isOpen ? "rotate-180" : ""}`}
-                  />
-                </div>
-              </button>
-
-              {isOpen && (
-                <div className="px-5 pb-5 pt-1 border-t border-white/8">
-                  <p className="text-xs font-semibold text-brand-nightText/40 uppercase tracking-wide mt-3 mb-2">
-                    Children
-                    {(r.children ?? []).length > 1 &&
-                      " — tap to filter history"}
-                  </p>
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {(r.children ?? []).length === 0 && (
-                      <p className="text-sm text-brand-nightText/40">
-                        No children registered.
-                      </p>
-                    )}
-                    {(r.children ?? []).length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => selectChildFilter(r.customer_id, null)}
-                        className={`text-sm rounded-full px-3 py-1.5 border transition-colors ${
-                          (selectedChildByCustomer[r.customer_id] ?? null) ===
-                          null
-                            ? "border-brand-sky bg-brand-sky/15 text-brand-skyLight"
-                            : "border-white/15 bg-white/[0.04] text-brand-nightText/50"
-                        }`}
-                      >
-                        All children
-                      </button>
-                    )}
-                    {(r.children ?? []).map((child) => {
-                      const active =
-                        child.subscription_active &&
-                        (!child.subscription_expires_on ||
-                          child.subscription_expires_on >= today);
-                      const isSelected =
-                        selectedChildByCustomer[r.customer_id] === child.id;
-                      const multiKid = (r.children ?? []).length > 1;
-                      return (
-                        <button
-                          key={child.id}
-                          type="button"
-                          onClick={() =>
-                            multiKid &&
-                            selectChildFilter(
-                              r.customer_id,
-                              isSelected ? null : child.id,
-                            )
-                          }
-                          className={`flex items-center gap-1.5 text-sm rounded-full px-3 py-1.5 border transition-colors ${
-                            multiKid
-                              ? isSelected
-                                ? "border-brand-sky bg-brand-sky/15 text-brand-skyLight"
-                                : "border-white/15 bg-white/[0.04] text-brand-nightText/60"
-                              : active
-                                ? "border-transparent bg-brand-sky/15 text-brand-skyLight"
-                                : "border-transparent bg-white/8 text-brand-nightText/70"
-                          }`}
-                        >
-                          {hasMedicalInfo(child) && (
-                            <Heart
-                              size={11}
-                              className="text-brand-coral shrink-0"
-                              fill="currentColor"
-                            />
-                          )}
-                          {child.name} · {child.age}y{active && " · Member"}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {(r.children ?? []).some(hasMedicalInfo) && (
-                    <div className="rounded-lg bg-brand-coral/8 border border-brand-coral/20 px-3 py-2.5 mb-4 space-y-1.5">
-                      {(r.children ?? [])
-                        .filter(hasMedicalInfo)
-                        .map((child) => (
-                          <div key={child.id}>
-                            <p className="flex items-center gap-1.5 text-[11px] font-semibold text-brand-coral uppercase tracking-wide">
-                              <Heart size={11} fill="currentColor" />{" "}
-                              {child.name}
-                            </p>
-                            {child.allergies && (
-                              <p className="text-xs text-brand-nightText/70">
-                                Allergies: {child.allergies}
-                              </p>
-                            )}
-                            {child.medical_conditions && (
-                              <p className="text-xs text-brand-nightText/70">
-                                Conditions: {child.medical_conditions}
-                              </p>
-                            )}
-                            {child.special_instructions && (
-                              <p className="text-xs text-brand-nightText/70">
-                                Notes: {child.special_instructions}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                    </div>
-                  )}
-
-                  {isAdmin && (r.children ?? []).length > 0 && (
-                    <p className="text-xs text-brand-nightText/35 mb-4">
-                      To activate or renew a membership, use the Memberships tab
-                      and pick this family + child.
-                    </p>
-                  )}
-
-                  {(() => {
-                    const childId =
-                      selectedChildByCustomer[r.customer_id] ?? null;
-                    const key = `${r.customer_id}:${childId ?? "all"}`;
-                    const history = historyByKey[key];
-                    return (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => handleViewHistory(r.customer_id)}
-                          className="min-h-[40px] rounded-xl2 bg-brand-sky px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-sky/90"
-                        >
-                          {historyLoadingKey === key
-                            ? "Loading history…"
-                            : history
-                              ? "Hide history"
-                              : childId
-                                ? `View ${(r.children ?? []).find((c) => c.id === childId)?.name}'s history`
-                                : "View history"}
-                        </button>
-
-                        {history && (
-                          <div className="mt-4 rounded-xl border border-white/10 bg-brand-nightSurface2/70 p-4">
-                            <p className="text-sm font-semibold text-brand-nightText mb-3">
-                              Visit history
-                            </p>
-                            {history.length === 0 ? (
-                              <p className="text-sm text-brand-nightText/40">
-                                No visits recorded yet.
-                              </p>
-                            ) : (
-                              <div className="space-y-3">
-                                {history.map((entry, index) => (
-                                  <div
-                                    key={`${entry.visit_day}-${entry.child_name}-${index}`}
-                                    className="rounded-xl bg-brand-nightSurface p-3"
-                                  >
-                                    <div className="flex items-center justify-between gap-2 mb-1">
-                                      <p className="text-sm font-semibold text-brand-nightText">
-                                        {entry.child_name}
-                                      </p>
-                                      <span className="text-xs font-medium text-brand-nightText/50">
-                                        {new Date(
-                                          entry.visit_day,
-                                        ).toLocaleDateString([], {
-                                          month: "short",
-                                          day: "numeric",
-                                          year: "numeric",
-                                        })}
-                                      </span>
-                                    </div>
-                                    <p className="text-sm text-brand-nightText/60">
-                                      Checked in:{" "}
-                                      {formatTimeIST(entry.checked_in_at)}
-                                    </p>
-                                    <p className="text-sm text-brand-nightText/60">
-                                      {entry.checked_out_at
-                                        ? `Checked out: ${formatTimeIST(entry.checked_out_at)}`
-                                        : "Still checked in"}
-                                    </p>
-                                    <p className="text-xs text-brand-nightText/40 mt-1">
-                                      {entry.status === "active"
-                                        ? "Currently active"
-                                        : entry.status === "completed"
-                                          ? "Completed"
-                                          : entry.status === "expired"
-                                            ? "Expired"
-                                            : entry.status}
-                                      {entry.intended_duration_mins !== null
-                                        ? ` • planned ${entry.intended_duration_mins} min`
-                                        : ""}
-                                      {entry.actual_duration_mins !== null
-                                        ? ` • actual ${entry.actual_duration_mins} min`
-                                        : ""}
-                                    </p>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
                 </div>
               )}
+
+              <div className="space-y-1.5">
+                {kids.map((child) => {
+                  const isMember =
+                    child.subscription_active &&
+                    (!child.subscription_expires_on ||
+                      child.subscription_expires_on >= today);
+                  const isOpen = expandedChildId === child.id;
+                  const history = historyByChild[child.id];
+
+                  return (
+                    <ListRow
+                      key={child.id}
+                      title={child.name}
+                      subtitle={`${child.age}y`}
+                      safetyFlag={
+                        hasMedicalInfo(child) ? (
+                          <Heart
+                            size={12}
+                            className="text-brand-coral shrink-0"
+                            fill="currentColor"
+                          />
+                        ) : r.currently_checked_in ? (
+                          <span className="text-[9px] font-semibold uppercase tracking-wide text-brand-leaf bg-brand-leaf/10 rounded-full px-1.5 py-0.5 shrink-0">
+                            On site
+                          </span>
+                        ) : undefined
+                      }
+                      facts={[
+                        { icon: undefined, value: r.parent_name },
+                        {
+                          icon: <BadgeCheck size={11} />,
+                          value: isMember
+                            ? (child.plan_name ?? "Member")
+                            : "No membership",
+                          hideOnMobile: true,
+                        },
+                      ]}
+                      action={
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <a
+                            href={`tel:${r.phone}`}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`Call ${r.parent_name}`}
+                            className="p-1.5 rounded-full border border-brand-sky/30 bg-brand-sky/10 text-brand-skyLight hover:bg-brand-sky/15 transition-colors"
+                          >
+                            <Phone size={12} />
+                          </a>
+                          {child.currently_checked_in &&
+                          child.active_session_id ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleCheckOut(
+                                  r.customer_id,
+                                  child.id,
+                                  child.active_session_id!,
+                                );
+                              }}
+                              disabled={checkinBusyId === child.id}
+                              className="flex items-center gap-1 rounded-full border border-brand-coral/30 bg-brand-coral/10 px-2.5 py-1.5 text-[11px] font-semibold text-brand-coral hover:bg-brand-coral/15 transition-colors disabled:opacity-50"
+                            >
+                              <LogOut size={11} />
+                              {checkinBusyId === child.id ? "…" : "Check out"}
+                            </button>
+                          ) : (
+                            isMember && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDurationPickerFor({
+                                    customerId: r.customer_id,
+                                    childId: child.id,
+                                    childName: child.name,
+                                  });
+                                }}
+                                disabled={checkinBusyId === child.id}
+                                className="flex items-center gap-1 rounded-full border border-brand-leaf/30 bg-brand-leaf/10 px-2.5 py-1.5 text-[11px] font-semibold text-brand-leaf hover:bg-brand-leaf/15 transition-colors disabled:opacity-50"
+                              >
+                                <LogIn size={11} />
+                                {checkinBusyId === child.id ? "…" : "Check in"}
+                              </button>
+                            )
+                          )}
+                        </div>
+                      }
+                      expanded={isOpen}
+                      onToggleExpand={() =>
+                        setExpandedChildId(isOpen ? null : child.id)
+                      }
+                      expandedContent={
+                        <div className="space-y-2.5">
+                          <p className="text-xs text-brand-nightText/50">
+                            {r.parent_name} · {r.phone}
+                          </p>
+                          <p className="text-xs text-brand-nightText/50">
+                            {isMember
+                              ? `Member · ${child.plan_name ?? "Active plan"}${
+                                  child.subscription_expires_on
+                                    ? ` · until ${new Date(
+                                        child.subscription_expires_on +
+                                          "T00:00:00",
+                                      ).toLocaleDateString("en-IN", {
+                                        day: "numeric",
+                                        month: "short",
+                                      })}`
+                                    : ""
+                                }`
+                              : "No membership on file"}
+                          </p>
+
+                          {hasMedicalInfo(child) && (
+                            <div className="rounded-lg bg-brand-coral/8 border border-brand-coral/20 px-3 py-2">
+                              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-brand-coral uppercase tracking-wide mb-1">
+                                <Heart size={11} fill="currentColor" /> Medical
+                              </p>
+                              {child.allergies && (
+                                <p className="text-xs text-brand-nightText/70">
+                                  Allergies: {child.allergies}
+                                </p>
+                              )}
+                              {child.medical_conditions && (
+                                <p className="text-xs text-brand-nightText/70">
+                                  Conditions: {child.medical_conditions}
+                                </p>
+                              )}
+                              {child.special_instructions && (
+                                <p className="text-xs text-brand-nightText/70">
+                                  Notes: {child.special_instructions}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          {isAdmin && (
+                            <p className="text-[11px] text-brand-nightText/35">
+                              To activate or renew this child's membership, use
+                              the Memberships tab.
+                            </p>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toggleHistory(r.customer_id, child.id)
+                            }
+                            className="min-h-[36px] rounded-lg bg-brand-sky px-3.5 text-xs font-semibold text-white transition-colors hover:bg-brand-sky/90"
+                          >
+                            {historyLoadingChild === child.id
+                              ? "Loading history…"
+                              : history
+                                ? "Hide history"
+                                : "View visit history"}
+                          </button>
+
+                          {history && (
+                            <div className="rounded-xl border border-white/10 bg-brand-nightSurface2/70 p-3.5">
+                              {history.length === 0 ? (
+                                <p className="text-sm text-brand-nightText/40">
+                                  No visits recorded yet.
+                                </p>
+                              ) : (
+                                <div className="space-y-2.5">
+                                  {history.map((entry, index) => (
+                                    <div
+                                      key={`${entry.visit_day}-${index}`}
+                                      className="rounded-lg bg-brand-nightSurface p-2.5"
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-xs font-medium text-brand-nightText/50">
+                                          {new Date(
+                                            entry.visit_day,
+                                          ).toLocaleDateString("en-IN", {
+                                            month: "short",
+                                            day: "numeric",
+                                            year: "numeric",
+                                          })}
+                                        </span>
+                                        <span className="text-[10px] text-brand-nightText/35">
+                                          {entry.status === "active"
+                                            ? "Currently active"
+                                            : entry.status === "completed"
+                                              ? "Completed"
+                                              : entry.status === "expired"
+                                                ? "Expired"
+                                                : entry.status}
+                                        </span>
+                                      </div>
+                                      <p className="text-xs text-brand-nightText/60 mt-1">
+                                        {formatTimeIST(entry.checked_in_at)}
+                                        {entry.checked_out_at
+                                          ? ` – ${formatTimeIST(entry.checked_out_at)}`
+                                          : " – still checked in"}
+                                        {entry.actual_duration_mins !== null &&
+                                          ` · ${entry.actual_duration_mins} min`}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      }
+                    />
+                  );
+                })}
+              </div>
             </div>
           );
         })}
       </div>
+
+      {durationPickerFor && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Choose visit duration"
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-brand-nightSurface p-5 shadow-xl">
+            <p className="font-bold text-brand-nightText">
+              Check in {durationPickerFor.childName}
+            </p>
+            <p className="text-sm text-brand-nightText/50 mt-1 mb-4">
+              Choose the planned visit length.
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: "1 hour", value: 60 },
+                { label: "2 hours", value: 120 },
+                { label: "Unlimited", value: null },
+              ].map((option) => (
+                <button
+                  key={option.label}
+                  type="button"
+                  onClick={() =>
+                    void handleCheckIn(
+                      durationPickerFor.customerId,
+                      durationPickerFor.childId,
+                      option.value,
+                    )
+                  }
+                  className="min-h-[52px] rounded-xl bg-brand-leaf text-white text-sm font-semibold"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setDurationPickerFor(null)}
+              className="w-full min-h-[44px] mt-2 rounded-xl bg-white/8 text-sm font-semibold text-brand-nightText"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

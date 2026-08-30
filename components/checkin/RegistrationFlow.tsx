@@ -88,6 +88,10 @@ const EMPTY: FormState = {
   whatsapp_consent: false,
 };
 
+function RequiredMark() {
+  return <span className="ml-1 text-brand-coral">*</span>;
+}
+
 const STEPS = ["Child", "Medical", "Guardian", "Plan", "Finish"] as const;
 type StepId = (typeof STEPS)[number];
 
@@ -116,6 +120,8 @@ export default function RegistrationFlow() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<string | null>(null);
+  const [hasOtherInterest, setHasOtherInterest] = useState(false);
+  const [otherInterest, setOtherInterest] = useState("");
 
   const step: StepId = STEPS[stepIndex];
   const childAge = useMemo(
@@ -156,6 +162,13 @@ export default function RegistrationFlow() {
     }));
   };
 
+  const toggleOtherInterest = () => {
+    setHasOtherInterest((prev) => {
+      if (prev) setOtherInterest("");
+      return !prev;
+    });
+  };
+
   const selectedPlan = plans.find((p) => p.id === form.plan_id) ?? null;
 
   const validateStep = (): string | null => {
@@ -184,7 +197,16 @@ export default function RegistrationFlow() {
 
   const handleSubmit = async () => {
     setError(null);
+
+    if (hasOtherInterest && !otherInterest.trim()) {
+      setError("Please enter the other interest.");
+      return;
+    }
+
     setSubmitting(true);
+    const interests = hasOtherInterest
+      ? [...form.interests, otherInterest.trim()].filter(Boolean)
+      : form.interests;
     const { data, error: err } = await supabase.rpc(
       "submit_membership_registration",
       {
@@ -192,7 +214,7 @@ export default function RegistrationFlow() {
         p_date_of_birth: form.date_of_birth,
         p_gender: form.gender || null,
         p_school: form.school || null,
-        p_interests: form.interests,
+        p_interests: interests,
         p_allergies: form.allergies || null,
         p_medical_conditions: form.medical_conditions || null,
         p_special_instructions: form.special_instructions || null,
@@ -300,7 +322,9 @@ export default function RegistrationFlow() {
             {step === "Child" && (
               <>
                 <div>
-                  <label className={labelClass()}>Child's name</label>
+                  <label className={labelClass()}>
+                    Child&apos;s name<RequiredMark />
+                  </label>
                   <input
                     value={form.child_name}
                     onChange={(e) => set("child_name", e.target.value)}
@@ -310,7 +334,7 @@ export default function RegistrationFlow() {
                 <BirthDateDial
                   value={form.date_of_birth}
                   onChange={(v) => set("date_of_birth", v)}
-                  label="Date of birth"
+                  label="Date of birth *"
                 />
                 <div>
                   <label className={labelClass()}>Gender</label>
@@ -356,7 +380,31 @@ export default function RegistrationFlow() {
                         {interest}
                       </button>
                     ))}
+                    <button
+                      type="button"
+                      onClick={toggleOtherInterest}
+                      className={`text-sm font-medium px-3 py-2 rounded-full border-2 transition-colors ${
+                        hasOtherInterest
+                          ? "bg-brand-sky text-white border-brand-sky"
+                          : "bg-white text-brand-ink/60 border-brand-sky/20"
+                      }`}
+                    >
+                      Others
+                    </button>
                   </div>
+                  {hasOtherInterest && (
+                    <div className="mt-3">
+                      <label className={labelClass()}>
+                        Other interests<RequiredMark />
+                      </label>
+                      <input
+                        value={otherInterest}
+                        onChange={(e) => setOtherInterest(e.target.value)}
+                        placeholder="Enter other interests"
+                        className={inputClass()}
+                      />
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -399,7 +447,9 @@ export default function RegistrationFlow() {
             {step === "Guardian" && (
               <>
                 <div>
-                  <label className={labelClass()}>Name</label>
+                  <label className={labelClass()}>
+                    Name<RequiredMark />
+                  </label>
                   <input
                     value={form.parent_name}
                     onChange={(e) => set("parent_name", e.target.value)}
@@ -407,7 +457,9 @@ export default function RegistrationFlow() {
                   />
                 </div>
                 <div>
-                  <label className={labelClass()}>Primary phone number</label>
+                  <label className={labelClass()}>
+                    Primary phone number<RequiredMark />
+                  </label>
                   <input
                     type="tel"
                     inputMode="numeric"

@@ -218,17 +218,13 @@ function EmployeePanelInner({
             venueCapacity={venueCapacity}
             onViewAll={() => setTab("floor")}
             onOpenCustomerDirectory={openCustomerDirectory}
+            variant="full"
           />
         );
       case "quickcheckin":
         return <QuickCheckin key="quickcheckin" />;
       case "floor":
-        return (
-          <LiveFloorView
-            key="floor"
-            initialSessions={initialSessions}
-          />
-        );
+        return <LiveFloorView key="floor" initialSessions={initialSessions} />;
       case "activity":
         return (
           <div className="space-y-4">
@@ -323,7 +319,12 @@ function EmployeePanelInner({
         className="fixed bottom-0 inset-x-0 z-30 bg-brand-nightSurface border-t border-white/10 pb-[env(safe-area-inset-bottom)]"
         aria-label="Employee panel navigation"
       >
-        <div className="max-w-2xl mx-auto px-2 py-1.5 grid grid-cols-6 gap-1">
+        <div
+          className="max-w-2xl mx-auto px-2 py-1.5 grid gap-1"
+          style={{
+            gridTemplateColumns: `repeat(${TAB_META.length}, minmax(0, 1fr))`,
+          }}
+        >
           {TAB_META.map((t) => {
             const Icon = t.icon;
             const isActive = tab === t.id;

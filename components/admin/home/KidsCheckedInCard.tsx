@@ -5,13 +5,37 @@ import {
   ChevronRight,
   Phone,
   Clock,
-  ChevronDown,
   Heart,
   Hourglass,
+  BadgeCheck,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatTimeIST } from "@/lib/formatTime";
+import ListRow from "@/components/shared/ListRow";
 
+export type CheckedInKid = {
+  session_id: string;
+  child_id: string;
+  child_name: string;
+  age: number;
+  start_time: string;
+  end_time: string | null;
+  status: string;
+  parent_name: string;
+  phone: string;
+  allergies: string | null;
+  medical_conditions: string | null;
+  special_instructions: string | null;
+  is_member: boolean;
+  plan_name: string | null;
+  is_special_today: boolean;
+  special_plan_name: string | null;
+  receipt_number: string | null;
+};
+
+// Kept for backward compatibility with server-rendered initial props —
+// the page still passes the old flat session shape on first paint; the
+// client refetch upgrades it to CheckedInKid via the new RPC.
 export type SessionRow = {
   id: string;
   start_time: string;
@@ -26,8 +50,13 @@ export type SessionRow = {
   } | null;
 };
 
-function hasMedicalInfo(c: SessionRow["children"]): boolean {
-  return !!(c?.allergies || c?.medical_conditions || c?.special_instructions);
+function hasMedicalInfo(
+  k: Pick<
+    CheckedInKid,
+    "allergies" | "medical_conditions" | "special_instructions"
+  >,
+): boolean {
+  return !!(k.allergies || k.medical_conditions || k.special_instructions);
 }
 
 function statusFor(
@@ -40,56 +69,64 @@ function statusFor(
   return "ok";
 }
 
-const dotStyles: Record<string, string> = {
-  ok: "bg-brand-leaf",
-  soon: "bg-brand-sun",
-  over: "bg-brand-coral",
-  unlimited: "bg-brand-sky",
+const dotFor: Record<string, "leaf" | "sun" | "coral" | "sky"> = {
+  ok: "leaf",
+  soon: "sun",
+  over: "coral",
+  unlimited: "sky",
 };
 
 function timeStr(v: string) {
   return formatTimeIST(v);
 }
 
+function sessionLength(start: string): string {
+  const mins = Math.max(
+    0,
+    Math.round((Date.now() - new Date(start).getTime()) / 60000),
+  );
+  if (mins < 60) return `${mins}m`;
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
 export default function KidsCheckedInCard({
-  initialSessions,
   todayCheckinCount,
   venueCapacity,
   onViewAll,
   onOpenCustomerDirectory,
   pendingCount,
   onPendingClick,
+  variant = "grid",
 }: {
-  initialSessions: SessionRow[];
+  // Server-provided initial sessions are intentionally not required —
+  // this card now owns its own richer fetch via dashboard_list_checked_in_kids.
+  initialSessions?: SessionRow[];
   todayCheckinCount: number;
   venueCapacity: number;
   onViewAll: () => void;
   onOpenCustomerDirectory: (customerKey: string) => void;
-  // Optional — when provided, a "pending" pill shows alongside the header
-  // and routes to the Pending tab instead of the default view-all action.
   pendingCount?: number;
   onPendingClick?: () => void;
+  /** "grid" (default): fixed height, for sitting side-by-side with
+   *  another card (admin dashboard). "full": stretches to fill the
+   *  viewport below the header — for when this card IS the page
+   *  (employee Home tab), so the bottom of the screen isn't wasted. */
+  variant?: "grid" | "full";
 }) {
   const [supabase] = useState(() => createClient());
-  const [sessions, setSessions] = useState(initialSessions ?? []);
+  const [kids, setKids] = useState<CheckedInKid[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [checkingOut, setCheckingOut] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
-    const { data } = await supabase
-      .from("play_sessions")
-      .select(
-        "id, start_time, end_time, status, children(name, allergies, medical_conditions, special_instructions, customers(name, phone))",
-      )
-      .eq("status", "active")
-      .order("end_time", { ascending: true, nullsFirst: false });
-    setSessions((data as any) ?? []);
+    const { data } = await supabase.rpc("dashboard_list_checked_in_kids");
+    setKids((data as CheckedInKid[]) ?? []);
   }, [supabase]);
 
   useEffect(() => {
     void refetch();
     const channel = supabase
-      .channel("play_sessions_home_card")
+      .channel(`play_sessions_home_card_${Math.random().toString(36).slice(2)}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "play_sessions" },
@@ -116,14 +153,20 @@ export default function KidsCheckedInCard({
   };
 
   return (
-    <div className="bg-brand-nightSurface rounded-2xl border border-white/10 flex flex-col h-[420px]">
+    <div
+      className={`bg-brand-nightSurface rounded-2xl border border-white/10 flex flex-col ${
+        variant === "full"
+          ? "h-[calc(100dvh-200px)] min-h-[440px]"
+          : "h-[440px]"
+      }`}
+    >
       <div className="flex items-start justify-between gap-2 px-5 pt-5 pb-4">
         <button onClick={onViewAll} className="flex-1 min-w-0 text-left group">
           <p className="font-semibold text-brand-nightText group-hover:text-brand-sky transition-colors">
-            Kids checked in
+            Kids on site
           </p>
           <p className="text-xs text-brand-nightText/40 mt-0.5">
-            {sessions.length} of {venueCapacity} capacity · {todayCheckinCount}{" "}
+            {kids.length} of {venueCapacity} capacity · {todayCheckinCount}{" "}
             check-ins today
           </p>
         </button>
@@ -149,132 +192,132 @@ export default function KidsCheckedInCard({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 pb-3">
-        {sessions.length === 0 ? (
+      <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-1.5">
+        {kids.length === 0 ? (
           <p className="text-sm text-brand-nightText/35 text-center py-10">
             No one's checked in right now.
           </p>
         ) : (
-          <div className="space-y-1.5">
-            {sessions.map((s) => {
-              const state = statusFor(s.end_time);
-              const isOpen = expandedId === s.id;
-              return (
-                <div
-                  key={s.id}
-                  className="rounded-xl border border-white/10 overflow-hidden"
-                >
-                  <button
-                    onClick={() => setExpandedId(isOpen ? null : s.id)}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-white/[0.05] transition-colors"
-                  >
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotStyles[state]}`}
+          kids.map((k) => {
+            const state = statusFor(k.end_time);
+            const isOpen = expandedId === k.session_id;
+            return (
+              <ListRow
+                key={k.session_id}
+                title={k.child_name}
+                subtitle={`${k.age}y`}
+                statusDot={dotFor[state]}
+                safetyFlag={
+                  hasMedicalInfo(k) ? (
+                    <Heart
+                      size={12}
+                      className="text-brand-coral shrink-0"
+                      fill="currentColor"
                     />
-                    <span className="text-sm font-medium text-brand-nightText flex-1 truncate">
-                      {s.children?.name ?? "—"}
+                  ) : k.is_special_today ? (
+                    <span className="text-[9px] font-semibold uppercase tracking-wide text-brand-sun bg-brand-sun/10 rounded-full px-1.5 py-0.5 shrink-0">
+                      Special
                     </span>
-                    {hasMedicalInfo(s.children) && (
-                      <Heart
-                        size={12}
-                        className="text-brand-coral shrink-0"
-                        fill="currentColor"
-                      />
-                    )}
-                    <span className="text-xs text-brand-nightText/35 shrink-0">
-                      {state === "unlimited"
-                        ? "Unlimited"
-                        : timeStr(s.end_time!)}
-                    </span>
-                    <ChevronDown
-                      size={14}
-                      className={`text-brand-nightText/25 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
-                    />
-                  </button>
+                  ) : undefined
+                }
+                facts={[
+                  { icon: <Clock size={11} />, value: timeStr(k.start_time) },
+                  {
+                    icon: <Hourglass size={11} />,
+                    value: sessionLength(k.start_time),
+                    hideOnMobile: true,
+                  },
+                ]}
+                action={
+                  k.phone ? (
+                    <a
+                      href={`tel:${k.phone}`}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={`Call ${k.parent_name}`}
+                      className="shrink-0 p-1.5 rounded-full border border-brand-sky/30 bg-brand-sky/10 text-brand-skyLight hover:bg-brand-sky/15 transition-colors"
+                    >
+                      <Phone size={12} />
+                    </a>
+                  ) : undefined
+                }
+                expanded={isOpen}
+                onToggleExpand={() =>
+                  setExpandedId(isOpen ? null : k.session_id)
+                }
+                expandedContent={
+                  <div className="space-y-2.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onOpenCustomerDirectory(k.phone || k.child_name)
+                      }
+                      className="block text-left"
+                    >
+                      <p className="text-xs text-brand-nightText/50">Parent</p>
+                      <p className="text-sm font-semibold text-brand-nightText hover:text-brand-sky transition-colors">
+                        {k.parent_name} · {k.phone}
+                      </p>
+                    </button>
 
-                  {isOpen && (
-                    <div className="px-3.5 pb-3.5 pt-1 border-t border-white/10 bg-white/[0.035]">
-                      <div className="space-y-2 mb-3 mt-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onOpenCustomerDirectory(
-                              s.children?.customers?.phone ??
-                                s.children?.name ??
-                                "",
-                            )
-                          }
-                          className="block w-full text-left"
-                        >
-                          <p className="text-xs text-brand-nightText/50">
-                            Child
-                          </p>
-                          <p className="text-sm font-semibold text-brand-nightText hover:text-brand-sky transition-colors">
-                            {s.children?.name ?? "—"}
-                          </p>
-                        </button>
-                        <p className="text-xs text-brand-nightText/50">
-                          Parent:{" "}
-                          <span className="text-brand-nightText font-medium">
-                            {s.children?.customers?.name ?? "—"}
-                          </span>
-                        </p>
-                        {s.children?.customers?.phone && (
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs text-brand-nightText/50">
-                              {s.children.customers.phone}
-                            </span>
-                            <a
-                              href={`tel:${s.children.customers.phone}`}
-                              className="inline-flex items-center gap-1 rounded-full border border-brand-sky/30 bg-brand-sky/10 px-2.5 py-1 text-[11px] font-semibold text-brand-skyLight hover:bg-brand-sky/15 transition-colors"
-                            >
-                              <Phone size={11} />
-                              Call
-                            </a>
-                          </div>
-                        )}
-                        <p className="flex items-center gap-1.5 text-xs text-brand-nightText/50">
-                          <Clock size={12} />
-                          Checked in {timeStr(s.start_time)}
-                          {state !== "unlimited" &&
-                            ` · checkout by ${timeStr(s.end_time!)}`}
-                        </p>
-                      </div>
-                      {hasMedicalInfo(s.children) && (
-                        <div className="rounded-lg bg-brand-coral/8 border border-brand-coral/20 px-3 py-2 mb-3">
-                          <p className="flex items-center gap-1.5 text-[11px] font-semibold text-brand-coral uppercase tracking-wide mb-1">
-                            <Heart size={11} fill="currentColor" /> Medical
-                          </p>
-                          {s.children?.allergies && (
-                            <p className="text-xs text-brand-nightText/70">
-                              Allergies: {s.children.allergies}
-                            </p>
-                          )}
-                          {s.children?.medical_conditions && (
-                            <p className="text-xs text-brand-nightText/70">
-                              Conditions: {s.children.medical_conditions}
-                            </p>
-                          )}
-                          {s.children?.special_instructions && (
-                            <p className="text-xs text-brand-nightText/70">
-                              Notes: {s.children.special_instructions}
-                            </p>
-                          )}
-                        </div>
+                    <p className="flex items-center gap-1.5 text-xs text-brand-nightText/50">
+                      <BadgeCheck size={12} />
+                      {k.is_member
+                        ? `Member · ${k.plan_name ?? "Active plan"}`
+                        : "Not a member"}
+                      {k.is_special_today && k.special_plan_name && (
+                        <span className="text-brand-sun">
+                          {" "}
+                          · {k.special_plan_name} today
+                        </span>
                       )}
-                      <button
-                        onClick={() => handleCheckout(s.id)}
-                        disabled={checkingOut === s.id}
-                        className="w-full min-h-[34px] rounded-lg bg-brand-sky text-white text-xs font-semibold hover:bg-brand-sky/85 disabled:opacity-50 transition-colors"
-                      >
-                        {checkingOut === s.id ? "Checking out…" : "Check out"}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                    </p>
+
+                    {k.receipt_number && (
+                      <p className="text-xs text-brand-nightText/50">
+                        Receipt:{" "}
+                        <span className="text-brand-nightText font-medium">
+                          {k.receipt_number}
+                        </span>
+                      </p>
+                    )}
+
+                    {hasMedicalInfo(k) && (
+                      <div className="rounded-lg bg-brand-coral/8 border border-brand-coral/20 px-3 py-2">
+                        <p className="flex items-center gap-1.5 text-[11px] font-semibold text-brand-coral uppercase tracking-wide mb-1">
+                          <Heart size={11} fill="currentColor" /> Medical
+                        </p>
+                        {k.allergies && (
+                          <p className="text-xs text-brand-nightText/70">
+                            Allergies: {k.allergies}
+                          </p>
+                        )}
+                        {k.medical_conditions && (
+                          <p className="text-xs text-brand-nightText/70">
+                            Conditions: {k.medical_conditions}
+                          </p>
+                        )}
+                        {k.special_instructions && (
+                          <p className="text-xs text-brand-nightText/70">
+                            Notes: {k.special_instructions}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => handleCheckout(k.session_id)}
+                      disabled={checkingOut === k.session_id}
+                      className="w-full min-h-[34px] rounded-lg bg-brand-sky text-white text-xs font-semibold hover:bg-brand-sky/85 disabled:opacity-50 transition-colors"
+                    >
+                      {checkingOut === k.session_id
+                        ? "Checking out…"
+                        : "Check out"}
+                    </button>
+                  </div>
+                }
+              />
+            );
+          })
         )}
       </div>
     </div>

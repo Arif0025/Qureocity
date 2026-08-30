@@ -14,7 +14,7 @@ type Result = {
   currently_checked_in: boolean;
   active_session_id: string | null;
   is_special_today?: boolean;
-  special_payment_pending?: boolean;
+  special_attended_today?: boolean;
 };
 
 export default function QuickCheckin() {
@@ -28,7 +28,14 @@ export default function QuickCheckin() {
   const [durationChoiceFor, setDurationChoiceFor] = useState<Result | null>(
     null,
   );
+  const [planFilter, setPlanFilter] = useState<"all" | "monthly" | "special">(
+    "all",
+  );
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const matchesFilter = (r: Result) =>
+    planFilter === "all" ||
+    (planFilter === "special" ? !!r.is_special_today : !r.is_special_today);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -115,11 +122,34 @@ export default function QuickCheckin() {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Type the child's name…"
-        className="w-full min-h-[52px] rounded-xl2 border-2 border-white/15 focus:border-brand-sky bg-brand-nightSurface2 text-brand-nightText px-4 text-lg mb-4"
+        className="w-full min-h-[52px] rounded-xl2 border-2 border-white/15 focus:border-brand-sky bg-brand-nightSurface2 text-brand-nightText px-4 text-lg mb-3"
         autoFocus
       />
 
-      {activeMembers.length > 0 && (
+      <div className="flex gap-1.5 mb-4">
+        {(
+          [
+            { value: "all", label: "All" },
+            { value: "monthly", label: "Monthly members" },
+            { value: "special", label: "Special days" },
+          ] as const
+        ).map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => setPlanFilter(opt.value)}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+              planFilter === opt.value
+                ? "border-brand-sky/40 bg-brand-sky/15 text-brand-skyLight"
+                : "border-white/15 text-brand-nightText/50 hover:text-brand-nightText"
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {activeMembers.filter(matchesFilter).length > 0 && (
         <div className="mb-4 rounded-xl2 border border-white/10 bg-brand-nightSurface p-3">
           <div className="flex items-center justify-between gap-3 mb-2">
             <p className="text-sm font-semibold text-brand-nightText">
@@ -130,7 +160,7 @@ export default function QuickCheckin() {
             </span>
           </div>
           <div className="grid sm:grid-cols-2 gap-2">
-            {activeMembers.map((r) => (
+            {activeMembers.filter(matchesFilter).map((r) => (
               <div
                 key={r.child_id}
                 className="rounded-xl bg-brand-nightSurface2 px-3 py-2 flex items-center justify-between gap-2"
@@ -145,9 +175,9 @@ export default function QuickCheckin() {
                         Special
                       </span>
                     )}
-                    {r.special_payment_pending && (
-                      <span className="text-[9px] font-semibold uppercase tracking-wide text-brand-coral bg-brand-coral/10 rounded-full px-1.5 py-0.5 shrink-0">
-                        Payment due
+                    {r.special_attended_today && (
+                      <span className="text-[9px] font-semibold uppercase tracking-wide text-brand-sky bg-brand-sky/10 rounded-full px-1.5 py-0.5 shrink-0">
+                        Attended
                       </span>
                     )}
                   </div>
@@ -180,14 +210,17 @@ export default function QuickCheckin() {
 
       {error && <p className="text-brand-coral text-sm mb-3">{error}</p>}
       {loading && <p className="text-sm text-brand-nightText/40">Searching…</p>}
-      {!loading && query.trim().length >= 2 && results.length === 0 && (
-        <p className="text-sm text-brand-nightText/40">
-          No active members match that name.
-        </p>
-      )}
+      {!loading &&
+        query.trim().length >= 2 &&
+        results.filter(matchesFilter).length === 0 && (
+          <p className="text-sm text-brand-nightText/40">
+            No active members match that name
+            {planFilter !== "all" ? " and filter" : ""}.
+          </p>
+        )}
 
       <div className="space-y-3">
-        {results.map((r) => (
+        {results.filter(matchesFilter).map((r) => (
           <div
             key={r.child_id}
             className="bg-brand-nightSurface rounded-2xl border border-white/10 p-4 flex items-center justify-between gap-3"
@@ -205,9 +238,9 @@ export default function QuickCheckin() {
                     Special today
                   </span>
                 )}
-                {r.special_payment_pending && (
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-brand-coral bg-brand-coral/10 rounded-full px-2 py-0.5 shrink-0">
-                    Payment due
+                {r.special_attended_today && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-brand-sky bg-brand-sky/10 rounded-full px-2 py-0.5 shrink-0">
+                    Already attended
                   </span>
                 )}
               </div>

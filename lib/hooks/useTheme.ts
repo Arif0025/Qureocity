@@ -10,7 +10,7 @@ export function useTheme() {
   // Matches the default set by the inline FOUC-prevention script in
   // app/layout.tsx so the first client render never disagrees with what
   // was already painted.
-  const [theme, setThemeState] = useState<Theme>("dark");
+  const [theme, setThemeState] = useState<Theme>("light");
 
   useEffect(() => {
     const current = document.documentElement.getAttribute("data-theme");

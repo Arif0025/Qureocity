@@ -46,9 +46,8 @@ type Shift = {
   employees: { name: string } | null;
 };
 
-const CUSTOMER_SUBTABS = [
-  { id: "directory", label: "Directory" },
-  { id: "subscriptions", label: "Memberships" },
+const MEMBERSHIPS_SUBTABS = [
+  { id: "subscribers", label: "Subscribers" },
   { id: "plans", label: "Plans" },
 ] as const;
 
@@ -93,7 +92,8 @@ function AdminDashboardV2Inner({
 
   const VALID_TABS: AdminTabId[] = [
     "home",
-    "customers",
+    "directory",
+    "memberships",
     "staff",
     "clubcheckin",
     "pending",
@@ -105,8 +105,8 @@ function AdminDashboardV2Inner({
     tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : "home",
   );
 
-  const [customerSubtab, setCustomerSubtab] =
-    useState<(typeof CUSTOMER_SUBTABS)[number]["id"]>("directory");
+  const [membershipsSubtab, setMembershipsSubtab] =
+    useState<(typeof MEMBERSHIPS_SUBTABS)[number]["id"]>("subscribers");
   const [customerSearchQuery, setCustomerSearchQuery] = useState(
     searchParams.get("customer") ?? "",
   );
@@ -156,18 +156,17 @@ function AdminDashboardV2Inner({
 
   const goToNewFamilies = () => {
     setDirectoryNewOnly(true);
-    setCustomerSubtab("directory");
-    setTab("customers");
+    setTab("directory");
   };
   const goToNewMemberships = () => {
     setMembershipsFilter("new_this_month");
-    setCustomerSubtab("subscriptions");
-    setTab("customers");
+    setMembershipsSubtab("subscribers");
+    setTab("memberships");
   };
   const goToExpiring = () => {
     setMembershipsFilter("expiring_soon");
-    setCustomerSubtab("subscriptions");
-    setTab("customers");
+    setMembershipsSubtab("subscribers");
+    setTab("memberships");
   };
   const goToPlan = (
     planId: string | null,
@@ -175,17 +174,16 @@ function AdminDashboardV2Inner({
   ) => {
     setPlansTypeFilter(planType);
     setPlansFocusId(planId);
-    setCustomerSubtab("plans");
-    setTab("customers");
+    setMembershipsSubtab("plans");
+    setTab("memberships");
   };
 
   const openCustomerDirectory = (customerKey: string) => {
-    setCustomerSubtab("directory");
     setCustomerSearchQuery(customerKey);
     const params = new URLSearchParams(searchParams.toString());
-    params.set("tab", "customers");
+    params.set("tab", "directory");
     params.set("customer", customerKey);
-    setTabState("customers");
+    setTabState("directory");
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
@@ -203,7 +201,7 @@ function AdminDashboardV2Inner({
           {tab === "home" && (
             <>
               <h1 className="text-xl font-bold text-brand-nightText mb-6">
-                Home
+                Overview
               </h1>
               <HomeOverview
                 initialSessions={initialSessions}
@@ -228,7 +226,9 @@ function AdminDashboardV2Inner({
           {tab === "pending" && (
             <>
               <div className="flex items-start justify-between gap-3 mb-1">
-                <h1 className="text-lg font-bold text-brand-nightText">Pending memberships</h1>
+                <h1 className="text-lg font-bold text-brand-nightText">
+                  Pending memberships
+                </h1>
                 <BackToHomeButton onClick={() => setTab("home")} />
               </div>
               <p className="text-brand-nightText/50 text-sm mb-5">
@@ -266,24 +266,45 @@ function AdminDashboardV2Inner({
             </>
           )}
 
-          {tab === "customers" && (
+          {tab === "directory" && (
             <>
               <div className="flex items-start justify-between gap-3 mb-1">
                 <h1 className="text-lg font-bold text-brand-nightText">
-                  Customers
+                  Directory
+                </h1>
+                <BackToHomeButton onClick={() => setTab("home")} />
+              </div>
+              <p className="text-brand-nightText/50 text-sm mb-6">
+                Registered families and their children — search by name or
+                phone.
+              </p>
+              <CustomerSearch
+                isAdmin={true}
+                initialQuery={customerSearchQuery}
+                focusCustomerPhone={customerSearchQuery}
+                filterNewThisMonth={directoryNewOnly}
+              />
+            </>
+          )}
+
+          {tab === "memberships" && (
+            <>
+              <div className="flex items-start justify-between gap-3 mb-1">
+                <h1 className="text-lg font-bold text-brand-nightText">
+                  Memberships
                 </h1>
                 <BackToHomeButton onClick={() => setTab("home")} />
               </div>
               <p className="text-brand-nightText/50 text-sm mb-5">
-                Registered families, their history, and subscriptions.
+                Subscriber status, monthly plans, and special days.
               </p>
               <div className="flex gap-1 border-b border-white/8 mb-6">
-                {CUSTOMER_SUBTABS.map((st) => (
+                {MEMBERSHIPS_SUBTABS.map((st) => (
                   <button
                     key={st.id}
-                    onClick={() => setCustomerSubtab(st.id)}
+                    onClick={() => setMembershipsSubtab(st.id)}
                     className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
-                      customerSubtab === st.id
+                      membershipsSubtab === st.id
                         ? "border-brand-skyLight text-brand-skyLight"
                         : "border-transparent text-brand-nightText/50 hover:text-brand-nightText"
                     }`}
@@ -292,18 +313,10 @@ function AdminDashboardV2Inner({
                   </button>
                 ))}
               </div>
-              {customerSubtab === "directory" && (
-                <CustomerSearch
-                  isAdmin={true}
-                  initialQuery={customerSearchQuery}
-                  focusCustomerPhone={customerSearchQuery}
-                  filterNewThisMonth={directoryNewOnly}
-                />
-              )}
-              {customerSubtab === "subscriptions" && (
+              {membershipsSubtab === "subscribers" && (
                 <SubscriptionsManager initialFilter={membershipsFilter} />
               )}
-              {customerSubtab === "plans" && (
+              {membershipsSubtab === "plans" && (
                 <PlansManager
                   key={`${plansTypeFilter}:${plansFocusId ?? "none"}`}
                   initialTypeFilter={plansTypeFilter}
@@ -338,7 +351,9 @@ function AdminDashboardV2Inner({
           {tab === "settings" && (
             <>
               <div className="flex items-start justify-between gap-3 mb-1">
-                <h1 className="text-lg font-bold text-brand-nightText">Settings</h1>
+                <h1 className="text-lg font-bold text-brand-nightText">
+                  Settings
+                </h1>
                 <BackToHomeButton onClick={() => setTab("home")} />
               </div>
               <p className="text-brand-nightText/50 text-sm mb-6">

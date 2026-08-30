@@ -46,10 +46,34 @@ type SubscriberRow = {
   receipt_number: string | null;
 };
 
+type Plan = {
+  id: string;
+  name: string;
+  description: string | null;
+  validity_value: number;
+  validity_unit: "weeks" | "months";
+  price: number;
+  min_age: number | null;
+  max_age: number | null;
+};
+
 function addMonths(dateStr: string, months: number): string {
   const d = new Date(dateStr + "T00:00:00");
   d.setMonth(d.getMonth() + months);
   return d.toISOString().slice(0, 10);
+}
+
+function addWeeks(dateStr: string, weeks: number): string {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + weeks * 7);
+  return d.toISOString().slice(0, 10);
+}
+
+function expiryFor(purchaseDate: string, plan: Plan | null): string {
+  if (!plan) return purchaseDate;
+  return plan.validity_unit === "weeks"
+    ? addWeeks(purchaseDate, plan.validity_value)
+    : addMonths(purchaseDate, plan.validity_value);
 }
 
 export default function SubscriptionsManager({
@@ -69,7 +93,8 @@ export default function SubscriptionsManager({
   const [purchaseDate, setPurchaseDate] = useState(
     new Date().toISOString().slice(0, 10),
   );
-  const [duration, setDuration] = useState(1);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [selectedPlanId, setSelectedPlanId] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -106,39 +131,45 @@ export default function SubscriptionsManager({
     };
   }, [query, supabase]);
 
-  const expiryPreview = addMonths(purchaseDate, duration);
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("membership_plans")
+        .select("*")
+        .eq("active", true)
+        .eq("plan_type", "recurring")
+        .order("price", { ascending: true });
+      setPlans((data as Plan[]) ?? []);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const selectedPlan = plans.find((p) => p.id === selectedPlanId) ?? null;
+  const expiryPreview = expiryFor(purchaseDate, selectedPlan);
 
   const handleSave = async () => {
     if (!selectedFamily || !selectedChild)
       return setError("Select a family, then the specific child, first.");
+    if (!selectedPlanId) return setError("Pick a plan first.");
     setSaving(true);
     setError(null);
     setSuccessMsg(null);
 
-    // One row per child (upsert) — this is the actual fix: a subscription
-    // belongs to a specific child, not to the whole family, so a second
-    // child in the same family is never treated as a member just because
-    // their sibling has an active plan.
-    const { error } = await supabase.from("child_subscriptions").upsert(
-      {
-        child_id: selectedChild.id,
-        active: true,
-        started_on: purchaseDate,
-        expires_on: expiryPreview,
-        duration_months: duration,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "child_id" },
-    );
+    const { error } = await supabase.rpc("admin_apply_plan_to_child", {
+      p_child_id: selectedChild.id,
+      p_plan_id: selectedPlanId,
+      p_started_on: purchaseDate,
+    });
 
     setSaving(false);
     if (error) return setError(error.message);
 
     showSuccess(
-      `${selectedChild.name}'s subscription is active until ${expiryPreview}.`,
+      `${selectedChild.name}'s ${selectedPlan?.name ?? "membership"} is active until ${expiryPreview}.`,
     );
     setSelectedFamily(null);
     setSelectedChild(null);
+    setSelectedPlanId("");
     setQuery("");
     setSearchResults([]);
     loadSubscribers();
@@ -342,24 +373,44 @@ export default function SubscriptionsManager({
             />
 
             <label className="block text-xs font-medium text-brand-nightText/50 mb-2">
-              Duration
+              Plan
             </label>
-            <div className="grid grid-cols-3 gap-2 mb-4">
-              {[1, 2, 3].map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setDuration(m)}
-                  className={`min-h-[48px] rounded-xl2 border-2 font-semibold ${
-                    duration === m
-                      ? "border-brand-sky bg-brand-sky/10 text-brand-nightText"
-                      : "border-white/15 text-brand-nightText/50"
-                  }`}
-                >
-                  {m} {m === 1 ? "month" : "months"}
-                </button>
-              ))}
-            </div>
+            {plans.length === 0 ? (
+              <p className="text-sm text-brand-nightText/40 mb-4">
+                No active recurring plans found.
+              </p>
+            ) : (
+              <div className="grid gap-2 mb-4">
+                {plans.map((plan) => {
+                  const isSelected = selectedPlanId === plan.id;
+                  return (
+                    <button
+                      key={plan.id}
+                      type="button"
+                      onClick={() => setSelectedPlanId(plan.id)}
+                      className={`w-full text-left min-h-[48px] rounded-xl2 border-2 px-4 py-3 font-semibold transition-colors ${
+                        isSelected
+                          ? "border-brand-sky bg-brand-sky/10 text-brand-nightText"
+                          : "border-white/15 text-brand-nightText/70 hover:border-brand-sky/30 hover:bg-white/[0.03]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span>{plan.name}</span>
+                        <span className="text-sm text-brand-nightText/50">
+                          {plan.price.toFixed(0)}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs font-normal text-brand-nightText/45">
+                        {plan.validity_value}{" "}
+                        {plan.validity_unit === "weeks" ? "week" : "month"}
+                        {plan.validity_value === 1 ? "" : "s"}
+                        {plan.description ? ` · ${plan.description}` : ""}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             <p className="text-sm text-brand-nightText/60 mb-4">
               Expires:{" "}

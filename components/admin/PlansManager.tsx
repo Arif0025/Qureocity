@@ -93,7 +93,6 @@ type PlanMember = {
   currently_active?: boolean;
   event_date?: string;
   purchased_at?: string;
-  payment_status?: "pending" | "paid";
   attendance_status?: "not_attended" | "on_site" | "attended";
   checked_in_at?: string | null;
   checked_out_at?: string | null;
@@ -139,7 +138,9 @@ export default function PlansManager({
     initialExpandedPlanId ?? null,
   );
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [togglingPassId, setTogglingPassId] = useState<string | null>(null);
+  const [unregisteringPassId, setUnregisteringPassId] = useState<string | null>(
+    null,
+  );
   const [viewType, setViewType] = useState<"recurring" | "special">(
     initialTypeFilter ?? "recurring",
   );
@@ -163,18 +164,21 @@ export default function PlansManager({
     setRosterLoading(false);
   };
 
-  const togglePaymentStatus = async (
+  const unregisterFromSpecialDay = async (
     passId: string,
-    current: PlanMember["payment_status"],
+    childName: string,
   ) => {
-    setTogglingPassId(passId);
-    const next = current === "paid" ? "pending" : "paid";
-    await supabase.rpc("admin_set_special_pass_payment_status", {
+    if (!confirm(`Remove ${childName} from this special day's roster?`)) return;
+    setUnregisteringPassId(passId);
+    const { error: err } = await supabase.rpc("admin_remove_special_pass", {
       p_pass_id: passId,
-      p_status: next,
     });
-    await loadRoster();
-    setTogglingPassId(null);
+    setUnregisteringPassId(null);
+    if (err) {
+      alert(`Couldn't remove: ${err.message}`);
+      return;
+    }
+    void loadRoster();
   };
 
   useEffect(() => {
@@ -266,9 +270,13 @@ export default function PlansManager({
   };
 
   const remove = async (id: string) => {
+    const plan = plans.find((p) => p.id === id);
+    const memberCount = roster[id]?.member_count ?? 0;
     if (
       !confirm(
-        "Delete this plan? Existing registrations keep their history either way.",
+        memberCount > 0
+          ? `Delete "${plan?.name ?? "this plan"}"? It still has ${memberCount} registered — if that fails, remove them from the roster first.`
+          : `Delete "${plan?.name ?? "this plan"}"?`,
       )
     )
       return;
@@ -277,10 +285,17 @@ export default function PlansManager({
       .delete()
       .eq("id", id);
     if (err) {
-      alert(`Couldn't delete: ${err.message}`);
+      if (err.code === "23503") {
+        alert(
+          "This plan can't be deleted yet — it still has members on the roster, or a pending registration awaiting confirmation. Remove everyone from the roster (and confirm or discard any pending ones) first.",
+        );
+      } else {
+        alert(`Couldn't delete: ${err.message}`);
+      }
       return;
     }
     void load();
+    void loadRoster();
   };
 
   const toggleActive = async (p: Plan) => {
@@ -293,7 +308,7 @@ export default function PlansManager({
 
   const isFormOpen = creating || editingId !== null;
   const selectedPlan = selectedPlanId
-    ? plans.find((plan) => plan.id === selectedPlanId) ?? null
+    ? (plans.find((plan) => plan.id === selectedPlanId) ?? null)
     : null;
 
   if (selectedPlan) {
@@ -334,50 +349,86 @@ export default function PlansManager({
         ) : (
           <div className="overflow-hidden rounded-2xl border border-white/10 bg-brand-nightSurface">
             <div className="hidden sm:grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] gap-4 border-b border-white/10 px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-brand-nightText/40">
-              <span>Child</span><span>Parent</span><span>Status</span>
+              <span>Child</span>
+              <span>Parent</span>
+              <span>Status</span>
             </div>
             <div className="divide-y divide-white/8">
               {members.map((member) => {
                 const isSpecial = selectedPlan.plan_type === "special";
                 const attendance = member.attendance_status ?? "not_attended";
                 return (
-                  <div key={member.pass_id ?? member.child_id} className="grid gap-2 px-5 py-4 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+                  <div
+                    key={member.pass_id ?? member.child_id}
+                    className="grid gap-2 px-5 py-4 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] sm:items-center sm:gap-4"
+                  >
                     <div className="min-w-0">
                       <p className="font-semibold text-brand-nightText">
-                        {member.child_name} <span className="font-normal text-brand-nightText/40">· {member.age}y</span>
+                        {member.child_name}{" "}
+                        <span className="font-normal text-brand-nightText/40">
+                          · {member.age}y
+                        </span>
                       </p>
                       {isSpecial && member.checked_in_at && (
                         <p className="mt-0.5 text-xs text-brand-nightText/40">
-                          Checked in {new Date(member.checked_in_at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}
+                          Checked in{" "}
+                          {new Date(member.checked_in_at).toLocaleTimeString(
+                            "en-IN",
+                            { hour: "numeric", minute: "2-digit" },
+                          )}
                         </p>
                       )}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm text-brand-nightText/70 truncate">{member.parent_name}</p>
-                      <a href={`tel:${member.phone}`} className="inline-flex items-center gap-1 text-xs text-brand-sky hover:underline">
+                      <p className="text-sm text-brand-nightText/70 truncate">
+                        {member.parent_name}
+                      </p>
+                      <a
+                        href={`tel:${member.phone}`}
+                        className="inline-flex items-center gap-1 text-xs text-brand-sky hover:underline"
+                      >
                         <Phone size={11} /> {member.phone}
                       </a>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
                       {isSpecial ? (
                         <>
-                          <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${attendance === "on_site" ? "bg-brand-leaf/15 text-brand-leaf" : attendance === "attended" ? "bg-brand-sky/15 text-brand-skyLight" : "bg-white/5 text-brand-nightText/45"}`}>
-                            {attendance === "on_site" ? "On site" : attendance === "attended" ? "Attended" : "Not attended"}
+                          <span
+                            className={`rounded-full px-2 py-1 text-[11px] font-semibold ${attendance === "on_site" ? "bg-brand-leaf/15 text-brand-leaf" : attendance === "attended" ? "bg-brand-sky/15 text-brand-skyLight" : "bg-white/5 text-brand-nightText/45"}`}
+                          >
+                            {attendance === "on_site"
+                              ? "On site"
+                              : attendance === "attended"
+                                ? "Attended"
+                                : "Not attended"}
                           </span>
                           {member.pass_id && (
                             <button
                               type="button"
-                              onClick={() => togglePaymentStatus(member.pass_id!, member.payment_status)}
-                              disabled={togglingPassId === member.pass_id}
-                              className={`rounded-full px-2 py-1 text-[11px] font-semibold disabled:opacity-50 ${member.payment_status === "paid" ? "bg-brand-leaf/10 text-brand-leaf" : "bg-brand-coral/10 text-brand-coral"}`}
+                              onClick={() =>
+                                unregisterFromSpecialDay(
+                                  member.pass_id!,
+                                  member.child_name,
+                                )
+                              }
+                              disabled={unregisteringPassId === member.pass_id}
+                              className="rounded-full px-2 py-1 text-[11px] font-semibold text-brand-coral/70 hover:text-brand-coral hover:bg-brand-coral/10 transition-colors disabled:opacity-50"
                             >
-                              {togglingPassId === member.pass_id ? "…" : member.payment_status === "paid" ? "Paid" : "Payment pending"}
+                              {unregisteringPassId === member.pass_id
+                                ? "…"
+                                : "Remove"}
                             </button>
                           )}
                         </>
                       ) : (
-                        <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${member.currently_active ? "bg-brand-leaf/10 text-brand-leaf" : "bg-white/5 text-brand-nightText/45"}`}>
-                          {member.currently_active ? (member.expires_on ? `Active until ${formatDate(member.expires_on)}` : "Active") : "Expired"}
+                        <span
+                          className={`rounded-full px-2 py-1 text-[11px] font-semibold ${member.currently_active ? "bg-brand-leaf/10 text-brand-leaf" : "bg-white/5 text-brand-nightText/45"}`}
+                        >
+                          {member.currently_active
+                            ? member.expires_on
+                              ? `Active until ${formatDate(member.expires_on)}`
+                              : "Active"
+                            : "Expired"}
                         </span>
                       )}
                     </div>
@@ -696,7 +747,8 @@ export default function PlansManager({
               tabIndex={0}
               onClick={() => setSelectedPlanId(p.id)}
               onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") setSelectedPlanId(p.id);
+                if (event.key === "Enter" || event.key === " ")
+                  setSelectedPlanId(p.id);
               }}
               className={`bg-brand-nightSurface rounded-xl border border-white/10 p-4 ${!p.active ? "opacity-50" : ""}`}
             >
@@ -804,7 +856,6 @@ export default function PlansManager({
                   </button>
                 </div>
               </div>
-
             </div>
           ))}
         </div>
