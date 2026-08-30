@@ -196,7 +196,7 @@ function AdminDashboardV2Inner({
         onSignOut={handleSignOut}
       />
 
-      <main className="flex-1 min-w-0 px-5 md:px-10 py-6 md:py-10">
+      <main className="flex-1 min-w-0 px-5 md:px-10 py-6 md:py-10 pb-24 md:pb-10">
         <div className="max-w-6xl mx-auto">
           {tab === "home" && (
             <>

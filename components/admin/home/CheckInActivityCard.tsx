@@ -79,6 +79,8 @@ export default function CheckInActivityCard({
   const weeks: Cell[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
+  const totalCount = cells.reduce((acc, c) => acc + (c ? c.count : 0), 0);
+
   const monthLabelForWeek = new Map<number, string>();
   let lastMonth = -1;
   weeks.forEach((week, wi) => {
@@ -98,7 +100,7 @@ export default function CheckInActivityCard({
   });
 
   return (
-    <div className="bg-brand-nightSurface rounded-2xl border border-white/10 flex flex-col h-[420px]">
+    <div className="bg-brand-nightSurface rounded-2xl border border-white/10 flex flex-col">
       <button
         onClick={onViewFull}
         className="flex items-center justify-between px-5 pt-5 pb-1 text-left group"
@@ -108,7 +110,8 @@ export default function CheckInActivityCard({
             Check-in activity
           </p>
           <p className="text-xs text-brand-nightText/40 mt-0.5">
-            Last {WEEKS_SHOWN} weeks
+            Last {WEEKS_SHOWN} weeks · {totalCount} check-in
+            {totalCount === 1 ? "" : "s"}
           </p>
         </div>
         <ChevronRight
@@ -117,7 +120,7 @@ export default function CheckInActivityCard({
         />
       </button>
 
-      <div className="flex-1 flex flex-col justify-center px-5 pb-5">
+      <div className="px-5 py-5">
         <div className="w-full">
           <div className="flex gap-2 mb-1.5 pl-8">
             {weeks.map((_, wi) => (
@@ -173,21 +176,6 @@ export default function CheckInActivityCard({
                 </div>
               ))}
             </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 text-[11px] text-brand-nightText/40 mt-3 pl-7">
-            <span>Less</span>
-            <span className="w-3 h-3 rounded-sm bg-brand-nightBg/60 ring-1 ring-inset ring-white/10" />
-            <span className="w-3 h-3 rounded-sm bg-brand-sky/25" />
-            <span className="w-3 h-3 rounded-sm bg-brand-sky/50" />
-            <span className="w-3 h-3 rounded-sm bg-brand-sky/75" />
-            <span className="w-3 h-3 rounded-sm bg-brand-sky" />
-            <span>More</span>
-          </div>
-
-          <div className="flex items-center gap-1.5 text-[11px] text-brand-nightText/45 mt-2 pl-7">
-            <span className="w-3 h-3 rounded-sm bg-brand-coral/20 ring-1 ring-inset ring-brand-coral/55" />
-            <span>Closed on Tuesdays</span>
           </div>
         </div>
 

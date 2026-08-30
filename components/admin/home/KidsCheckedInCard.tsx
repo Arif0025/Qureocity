@@ -157,7 +157,7 @@ export default function KidsCheckedInCard({
       className={`bg-brand-nightSurface rounded-2xl border border-white/10 flex flex-col ${
         variant === "full"
           ? "h-[calc(100dvh-200px)] min-h-[440px]"
-          : "h-[440px]"
+          : "max-h-[440px]"
       }`}
     >
       <div className="flex items-start justify-between gap-2 px-5 pt-5 pb-4">

@@ -124,7 +124,7 @@ export default function HomeOverview({
         onOpenDay={(planId) => onOpenPlan?.(planId, "special")}
         onOpenPlans={() => onOpenPlan?.(null, "special")}
       />
-      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
+      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5 items-start">
         <KidsCheckedInCard
           initialSessions={initialSessions}
           todayCheckinCount={todayCheckinCount}

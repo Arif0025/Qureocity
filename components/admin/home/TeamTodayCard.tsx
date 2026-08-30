@@ -73,7 +73,7 @@ export default function TeamTodayCard({
   const absentCount = team.filter((t) => t.status === "absent").length;
 
   return (
-    <div className="bg-brand-nightSurface rounded-2xl border border-white/10 flex flex-col h-[440px]">
+    <div className="bg-brand-nightSurface rounded-2xl border border-white/10 flex flex-col max-h-[440px]">
       <div className="flex items-start justify-between gap-2 px-5 pt-5 pb-4">
         <button onClick={onViewAll} className="flex-1 min-w-0 text-left group">
           <p className="font-semibold text-brand-nightText group-hover:text-brand-sky transition-colors">

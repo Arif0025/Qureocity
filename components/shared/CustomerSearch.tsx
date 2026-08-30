@@ -411,24 +411,22 @@ export default function CustomerSearch({
                               {checkinBusyId === child.id ? "…" : "Check out"}
                             </button>
                           ) : (
-                            isMember && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDurationPickerFor({
-                                    customerId: r.customer_id,
-                                    childId: child.id,
-                                    childName: child.name,
-                                  });
-                                }}
-                                disabled={checkinBusyId === child.id}
-                                className="flex items-center gap-1 rounded-full border border-brand-leaf/30 bg-brand-leaf/10 px-2.5 py-1.5 text-[11px] font-semibold text-brand-leaf hover:bg-brand-leaf/15 transition-colors disabled:opacity-50"
-                              >
-                                <LogIn size={11} />
-                                {checkinBusyId === child.id ? "…" : "Check in"}
-                              </button>
-                            )
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDurationPickerFor({
+                                  customerId: r.customer_id,
+                                  childId: child.id,
+                                  childName: child.name,
+                                });
+                              }}
+                              disabled={checkinBusyId === child.id}
+                              className="flex items-center gap-1 rounded-full border border-brand-leaf/30 bg-brand-leaf/10 px-2.5 py-1.5 text-[11px] font-semibold text-brand-leaf hover:bg-brand-leaf/15 transition-colors disabled:opacity-50"
+                            >
+                              <LogIn size={11} />
+                              {checkinBusyId === child.id ? "…" : "Check in"}
+                            </button>
                           )}
                         </div>
                       }
