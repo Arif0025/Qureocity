@@ -92,7 +92,7 @@ function RequiredMark() {
   return <span className="ml-1 text-brand-coral">*</span>;
 }
 
-const STEPS = ["Child", "Medical", "Guardian", "Plan", "Finish"] as const;
+const STEPS = ["Guardian", "Child", "Medical", "Plan", "Finish"] as const;
 type StepId = (typeof STEPS)[number];
 
 function ageFromDob(dob: string): number | null {
@@ -105,6 +105,35 @@ function ageFromDob(dob: string): number | null {
   return age;
 }
 
+function normalizeMedicalText(value: string | null | undefined): string {
+  if (value == null) return "";
+  const cleaned = value.trim();
+  if (!cleaned) return "";
+  const normalized = cleaned.toLowerCase();
+  const ignored = new Set([
+    "none",
+    "no allergies",
+    "no allergy",
+    "no alergies",
+    "no alergie",
+    "nothing",
+    "n/a",
+    "na",
+    "nil",
+    "not applicable",
+    "no medical conditions",
+    "no medical condition",
+    "no medical issues",
+    "no medical issue",
+    "no special instructions",
+    "no special instruction",
+    "no issues",
+    "no worries",
+    "no concerns",
+  ]);
+  return ignored.has(normalized) ? "" : cleaned;
+}
+
 function inputClass() {
   return "w-full min-h-[52px] rounded-xl2 border-2 border-brand-sky/20 focus:border-brand-sky focus:outline-none px-4 text-brand-ink";
 }
@@ -115,6 +144,7 @@ function labelClass() {
 export default function RegistrationFlow() {
   const supabase = createClient();
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [plansError, setPlansError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [stepIndex, setStepIndex] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -122,6 +152,7 @@ export default function RegistrationFlow() {
   const [receipt, setReceipt] = useState<string | null>(null);
   const [hasOtherInterest, setHasOtherInterest] = useState(false);
   const [otherInterest, setOtherInterest] = useState("");
+  const [phoneLookup, setPhoneLookup] = useState<string | null>(null);
 
   const step: StepId = STEPS[stepIndex];
   const childAge = useMemo(
@@ -130,15 +161,29 @@ export default function RegistrationFlow() {
   );
 
   useEffect(() => {
+    let active = true;
     (async () => {
-      const { data } = await supabase
+      const { data, error: fetchError } = await supabase
         .from("membership_plans")
         .select("*")
         .eq("active", true)
         .eq("plan_type", "recurring")
         .order("price", { ascending: true });
+
+      if (!active) return;
+      if (fetchError) {
+        setPlans([]);
+        setPlansError(fetchError.message || "Unable to load membership plans.");
+        return;
+      }
+
       setPlans((data as Plan[]) ?? []);
+      setPlansError(null);
     })();
+
+    return () => {
+      active = false;
+    };
   }, [supabase]);
 
   const eligiblePlans = useMemo(() => {
@@ -171,15 +216,43 @@ export default function RegistrationFlow() {
 
   const selectedPlan = plans.find((p) => p.id === form.plan_id) ?? null;
 
+  const lookupPhone = async (digits: string) => {
+    const clean = digits.replace(/\D/g, "").slice(0, 10);
+    if (clean.length !== 10) {
+      setPhoneLookup(null);
+      return;
+    }
+
+    const { data, error: lookupError } = await supabase.rpc("checkin_lookup", {
+      p_phone: clean,
+      p_client_key: getClientKey(),
+    });
+
+    if (lookupError) {
+      setPhoneLookup("We couldn't verify this number right now.");
+      return;
+    }
+
+    if (data?.found && data.parent_name) {
+      set("parent_name", data.parent_name);
+      setPhoneLookup("We found this family on file for this number.");
+      return;
+    }
+
+    setPhoneLookup(
+      "No family was found for this number — we'll create a new membership registration.",
+    );
+  };
+
   const validateStep = (): string | null => {
+    if (step === "Guardian") {
+      if (!/^\d{10}$/.test(form.phone.replace(/\D/g, "")))
+        return "A valid 10-digit phone number is required.";
+      if (!form.parent_name.trim()) return "Parent/guardian name is required.";
+    }
     if (step === "Child") {
       if (!form.child_name.trim()) return "Child's name is required.";
       if (!form.date_of_birth) return "Date of birth is required.";
-    }
-    if (step === "Guardian") {
-      if (!form.parent_name.trim()) return "Parent/guardian name is required.";
-      if (!/^\d{10}$/.test(form.phone.replace(/\D/g, "")))
-        return "A valid 10-digit phone number is required.";
     }
     return null;
   };
@@ -207,6 +280,11 @@ export default function RegistrationFlow() {
     const interests = hasOtherInterest
       ? [...form.interests, otherInterest.trim()].filter(Boolean)
       : form.interests;
+    const sanitizedAllergies = normalizeMedicalText(form.allergies);
+    const sanitizedConditions = normalizeMedicalText(form.medical_conditions);
+    const sanitizedInstructions = normalizeMedicalText(
+      form.special_instructions,
+    );
     const { data, error: err } = await supabase.rpc(
       "submit_membership_registration",
       {
@@ -215,9 +293,9 @@ export default function RegistrationFlow() {
         p_gender: form.gender || null,
         p_school: form.school || null,
         p_interests: interests,
-        p_allergies: form.allergies || null,
-        p_medical_conditions: form.medical_conditions || null,
-        p_special_instructions: form.special_instructions || null,
+        p_allergies: sanitizedAllergies || null,
+        p_medical_conditions: sanitizedConditions || null,
+        p_special_instructions: sanitizedInstructions || null,
         p_parent_name: form.parent_name.trim(),
         p_phone: form.phone.replace(/\D/g, ""),
         p_secondary_phone: form.secondary_phone || null,
@@ -323,7 +401,8 @@ export default function RegistrationFlow() {
               <>
                 <div>
                   <label className={labelClass()}>
-                    Child&apos;s name<RequiredMark />
+                    Child&apos;s name
+                    <RequiredMark />
                   </label>
                   <input
                     value={form.child_name}
@@ -395,7 +474,8 @@ export default function RegistrationFlow() {
                   {hasOtherInterest && (
                     <div className="mt-3">
                       <label className={labelClass()}>
-                        Other interests<RequiredMark />
+                        Other interests
+                        <RequiredMark />
                       </label>
                       <input
                         value={otherInterest}
@@ -448,29 +528,41 @@ export default function RegistrationFlow() {
               <>
                 <div>
                   <label className={labelClass()}>
-                    Name<RequiredMark />
-                  </label>
-                  <input
-                    value={form.parent_name}
-                    onChange={(e) => set("parent_name", e.target.value)}
-                    className={inputClass()}
-                  />
-                </div>
-                <div>
-                  <label className={labelClass()}>
-                    Primary phone number<RequiredMark />
+                    Primary phone number
+                    <RequiredMark />
                   </label>
                   <input
                     type="tel"
                     inputMode="numeric"
                     maxLength={10}
                     value={form.phone}
-                    onChange={(e) =>
-                      set(
-                        "phone",
-                        e.target.value.replace(/\D/g, "").slice(0, 10),
-                      )
-                    }
+                    onChange={async (e) => {
+                      const digits = e.target.value
+                        .replace(/\D/g, "")
+                        .slice(0, 10);
+                      set("phone", digits);
+                      if (digits.length === 10) {
+                        void lookupPhone(digits);
+                      } else {
+                        setPhoneLookup(null);
+                      }
+                    }}
+                    className={inputClass()}
+                  />
+                  {phoneLookup && (
+                    <p className="mt-2 text-xs text-brand-ink/60">
+                      {phoneLookup}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className={labelClass()}>
+                    Name
+                    <RequiredMark />
+                  </label>
+                  <input
+                    value={form.parent_name}
+                    onChange={(e) => set("parent_name", e.target.value)}
                     className={inputClass()}
                   />
                 </div>
@@ -506,6 +598,11 @@ export default function RegistrationFlow() {
 
             {step === "Plan" && (
               <>
+                {plansError ? (
+                  <div className="mb-4 rounded-xl2 bg-brand-coral/10 border border-brand-coral text-brand-coral px-4 py-3 text-sm font-medium">
+                    {plansError}
+                  </div>
+                ) : null}
                 {childAge != null && (
                   <p className="text-xs text-brand-ink/40 -mt-2">
                     Showing plans for age {childAge}

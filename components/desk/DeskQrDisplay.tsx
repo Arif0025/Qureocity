@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 const STATIC_QR_VALUE =
@@ -82,6 +83,7 @@ export default function DeskQrDisplay({
 }: {
   mode: "static" | "dynamic";
 }) {
+  const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const remainingMs = useBucketCountdown(mode === "dynamic");
 
@@ -124,11 +126,14 @@ export default function DeskQrDisplay({
       <div className="pointer-events-none absolute -top-20 -left-20 w-72 h-72 rounded-full bg-brand-sun/20 blur-2xl" />
       <div className="pointer-events-none absolute bottom-0 -right-20 w-80 h-80 rounded-full bg-brand-sky/10 blur-2xl" />
 
-      <img
-        src="/logo-full.png"
-        alt="QureoCity"
-        className="h-14 mb-6 relative"
-      />
+      <button
+        type="button"
+        onClick={() => router.push("/")}
+        aria-label="Go to home"
+        className="mb-6 relative hover:opacity-90 transition-opacity"
+      >
+        <img src="/logo-full.png" alt="QureoCity" className="h-14" />
+      </button>
 
       <div className="bg-white rounded-xl2 shadow-lg p-10 text-center relative">
         <p className="text-brand-ink/60 font-semibold mb-6">

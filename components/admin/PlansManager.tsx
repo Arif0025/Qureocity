@@ -86,8 +86,16 @@ type PlanMember = {
   child_id: string;
   child_name: string;
   age: number;
+  gender?: string | null;
+  school?: string | null;
+  interests?: string[] | null;
+  allergies?: string | null;
+  medical_conditions?: string | null;
+  special_instructions?: string | null;
   parent_name: string;
   phone: string;
+  secondary_phone?: string | null;
+  address?: string | null;
   started_on?: string | null;
   expires_on?: string | null;
   currently_active?: boolean;
@@ -96,6 +104,7 @@ type PlanMember = {
   attendance_status?: "not_attended" | "on_site" | "attended";
   checked_in_at?: string | null;
   checked_out_at?: string | null;
+  receipt_number?: string | null;
 };
 
 type PlanRoster = {
@@ -139,6 +148,9 @@ export default function PlansManager({
   );
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [unregisteringPassId, setUnregisteringPassId] = useState<string | null>(
+    null,
+  );
+  const [expandedMemberKey, setExpandedMemberKey] = useState<string | null>(
     null,
   );
   const [viewType, setViewType] = useState<"recurring" | "special">(
@@ -357,81 +369,194 @@ export default function PlansManager({
               {members.map((member) => {
                 const isSpecial = selectedPlan.plan_type === "special";
                 const attendance = member.attendance_status ?? "not_attended";
+                const memberKey = member.pass_id ?? member.child_id;
+                const isExpanded = expandedMemberKey === memberKey;
+                const hasMedicalInfo =
+                  member.allergies ||
+                  member.medical_conditions ||
+                  member.special_instructions;
+
                 return (
                   <div
-                    key={member.pass_id ?? member.child_id}
-                    className="grid gap-2 px-5 py-4 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] sm:items-center sm:gap-4"
+                    key={memberKey}
+                    className="border-b border-white/8 last:border-b-0"
                   >
-                    <div className="min-w-0">
-                      <p className="font-semibold text-brand-nightText">
-                        {member.child_name}{" "}
-                        <span className="font-normal text-brand-nightText/40">
-                          · {member.age}y
-                        </span>
-                      </p>
-                      {isSpecial && member.checked_in_at && (
-                        <p className="mt-0.5 text-xs text-brand-nightText/40">
-                          Checked in{" "}
-                          {new Date(member.checked_in_at).toLocaleTimeString(
-                            "en-IN",
-                            { hour: "numeric", minute: "2-digit" },
-                          )}
-                        </p>
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm text-brand-nightText/70 truncate">
-                        {member.parent_name}
-                      </p>
-                      <a
-                        href={`tel:${member.phone}`}
-                        className="inline-flex items-center gap-1 text-xs text-brand-sky hover:underline"
+                    <div className="grid gap-2 px-5 py-4 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedMemberKey(isExpanded ? null : memberKey)
+                        }
+                        className="min-w-0 text-left"
                       >
-                        <Phone size={11} /> {member.phone}
-                      </a>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
-                      {isSpecial ? (
-                        <>
-                          <span
-                            className={`rounded-full px-2 py-1 text-[11px] font-semibold ${attendance === "on_site" ? "bg-brand-leaf/15 text-brand-leaf" : attendance === "attended" ? "bg-brand-sky/15 text-brand-skyLight" : "bg-white/5 text-brand-nightText/45"}`}
-                          >
-                            {attendance === "on_site"
-                              ? "On site"
-                              : attendance === "attended"
-                                ? "Attended"
-                                : "Not attended"}
+                        <p className="font-semibold text-brand-nightText">
+                          {member.child_name}{" "}
+                          <span className="font-normal text-brand-nightText/40">
+                            · {member.age}y
                           </span>
-                          {member.pass_id && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                unregisterFromSpecialDay(
-                                  member.pass_id!,
-                                  member.child_name,
-                                )
-                              }
-                              disabled={unregisteringPassId === member.pass_id}
-                              className="rounded-full px-2 py-1 text-[11px] font-semibold text-brand-coral/70 hover:text-brand-coral hover:bg-brand-coral/10 transition-colors disabled:opacity-50"
-                            >
-                              {unregisteringPassId === member.pass_id
-                                ? "…"
-                                : "Remove"}
-                            </button>
-                          )}
-                        </>
-                      ) : (
-                        <span
-                          className={`rounded-full px-2 py-1 text-[11px] font-semibold ${member.currently_active ? "bg-brand-leaf/10 text-brand-leaf" : "bg-white/5 text-brand-nightText/45"}`}
+                        </p>
+                        {isSpecial && member.checked_in_at && (
+                          <p className="mt-0.5 text-xs text-brand-nightText/40">
+                            Checked in{" "}
+                            {new Date(member.checked_in_at).toLocaleTimeString(
+                              "en-IN",
+                              { hour: "numeric", minute: "2-digit" },
+                            )}
+                          </p>
+                        )}
+                      </button>
+
+                      <div className="min-w-0">
+                        <p className="text-sm text-brand-nightText/70 truncate">
+                          {member.parent_name}
+                        </p>
+                        <a
+                          href={`tel:${member.phone}`}
+                          className="inline-flex items-center gap-1 text-xs text-brand-sky hover:underline"
                         >
-                          {member.currently_active
-                            ? member.expires_on
-                              ? `Active until ${formatDate(member.expires_on)}`
-                              : "Active"
-                            : "Expired"}
-                        </span>
-                      )}
+                          <Phone size={11} /> {member.phone}
+                          {member.secondary_phone
+                            ? ` / ${member.secondary_phone}`
+                            : ""}
+                        </a>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
+                        {isSpecial ? (
+                          <>
+                            <span
+                              className={`rounded-full px-2 py-1 text-[11px] font-semibold ${attendance === "on_site" ? "bg-brand-leaf/15 text-brand-leaf" : attendance === "attended" ? "bg-brand-sky/15 text-brand-skyLight" : "bg-white/5 text-brand-nightText/45"}`}
+                            >
+                              {attendance === "on_site"
+                                ? "On site"
+                                : attendance === "attended"
+                                  ? "Attended"
+                                  : "Not attended"}
+                            </span>
+                            {member.pass_id && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  unregisterFromSpecialDay(
+                                    member.pass_id!,
+                                    member.child_name,
+                                  )
+                                }
+                                disabled={
+                                  unregisteringPassId === member.pass_id
+                                }
+                                className="rounded-full px-2 py-1 text-[11px] font-semibold text-brand-coral/70 hover:text-brand-coral hover:bg-brand-coral/10 transition-colors disabled:opacity-50"
+                              >
+                                {unregisteringPassId === member.pass_id
+                                  ? "…"
+                                  : "Remove"}
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          <span
+                            className={`rounded-full px-2 py-1 text-[11px] font-semibold ${member.currently_active ? "bg-brand-leaf/10 text-brand-leaf" : "bg-white/5 text-brand-nightText/45"}`}
+                          >
+                            {member.currently_active
+                              ? member.expires_on
+                                ? `Active until ${formatDate(member.expires_on)}`
+                                : "Active"
+                              : "Expired"}
+                          </span>
+                        )}
+                      </div>
                     </div>
+
+                    {isExpanded && (
+                      <div className="px-5 pb-4 pt-1 border-t border-white/8 bg-white/[0.02] space-y-3">
+                        <div className="grid sm:grid-cols-2 gap-3 mt-3 text-sm">
+                          <div>
+                            <p className="text-xs font-semibold text-brand-nightText/40 uppercase tracking-wide mb-1">
+                              Child
+                            </p>
+                            <p className="text-brand-nightText">
+                              {member.child_name}
+                              {member.gender ? ` · ${member.gender}` : ""}
+                            </p>
+                            {member.school && (
+                              <p className="text-xs text-brand-nightText/50 mt-1">
+                                School: {member.school}
+                              </p>
+                            )}
+                            {member.interests &&
+                              member.interests.length > 0 && (
+                                <p className="text-xs text-brand-nightText/50 mt-1">
+                                  Interests: {member.interests.join(", ")}
+                                </p>
+                              )}
+                          </div>
+
+                          <div>
+                            <p className="text-xs font-semibold text-brand-nightText/40 uppercase tracking-wide mb-1">
+                              Guardian
+                            </p>
+                            <p className="text-brand-nightText">
+                              {member.parent_name}
+                            </p>
+                            <a
+                              href={`tel:${member.phone}`}
+                              className="flex items-center gap-1 text-xs text-brand-sky hover:underline mt-1 w-fit"
+                            >
+                              <Phone size={12} /> {member.phone}
+                              {member.secondary_phone
+                                ? ` / ${member.secondary_phone}`
+                                : ""}
+                            </a>
+                            {member.address && (
+                              <p className="text-xs text-brand-nightText/50 mt-1">
+                                {member.address}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {(member.receipt_number ||
+                          (member.expires_on && !isSpecial) ||
+                          (member.event_date && isSpecial)) && (
+                          <div className="text-xs text-brand-nightText/50">
+                            {member.receipt_number && (
+                              <p>Receipt: {member.receipt_number}</p>
+                            )}
+                            {!isSpecial && member.expires_on && (
+                              <p>
+                                Membership ends: {formatDate(member.expires_on)}
+                              </p>
+                            )}
+                            {isSpecial && member.event_date && (
+                              <p>Event: {formatDate(member.event_date)}</p>
+                            )}
+                          </div>
+                        )}
+
+                        {hasMedicalInfo && (
+                          <div className="rounded-lg bg-brand-coral/8 border border-brand-coral/20 px-3 py-2.5">
+                            <p className="flex items-center gap-1.5 text-xs font-semibold text-brand-coral uppercase tracking-wide mb-1.5">
+                              Medical
+                            </p>
+                            {member.allergies && (
+                              <p className="text-xs text-brand-nightText/70">
+                                Allergies: {member.allergies}
+                              </p>
+                            )}
+                            {member.medical_conditions && (
+                              <p className="text-xs text-brand-nightText/70">
+                                Conditions: {member.medical_conditions}
+                              </p>
+                            )}
+                            {member.special_instructions && (
+                              <p className="text-xs text-brand-nightText/70">
+                                Notes: {member.special_instructions}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}

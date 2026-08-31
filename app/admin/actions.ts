@@ -49,7 +49,10 @@ export async function createEmployee(input: {
     name: input.name,
     role: input.role,
   });
-  if (insertError) return { error: insertError.message };
+  if (insertError) {
+    await admin.auth.admin.deleteUser(created.user.id);
+    return { error: insertError.message };
+  }
 
   return { id: created.user.id };
 }
@@ -82,6 +85,41 @@ export async function resetEmployeePassword(
   if (error) return { error: error.message };
 
   return { newTemporaryPassword };
+}
+
+export async function removeEmployee(
+  employeeId: string,
+): Promise<{ error?: string }> {
+  const supabase = createServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated." };
+
+  const { data: caller } = await supabase
+    .from("employees")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (caller?.role !== "admin") {
+    return { error: "Only admins can remove employees." };
+  }
+
+  const admin = createServiceRoleClient();
+
+  const { error: authError } = await admin.auth.admin.deleteUser(employeeId);
+  if (authError && authError.message !== "User not found") {
+    return { error: authError.message };
+  }
+
+  const { error: deleteError } = await admin
+    .from("employees")
+    .delete()
+    .eq("id", employeeId);
+  if (deleteError) return { error: deleteError.message };
+
+  return {};
 }
 
 export async function setQrMode(

@@ -1,9 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ChevronDown, KeyRound, Plus, LogIn, LogOut } from "lucide-react";
+import {
+  ChevronDown,
+  KeyRound,
+  Plus,
+  LogIn,
+  LogOut,
+  UserMinus,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { resetEmployeePassword } from "@/app/admin/actions";
+import { resetEmployeePassword, removeEmployee } from "@/app/admin/actions";
 import EmployeeCalendar from "./EmployeeCalendar";
 import ShiftEditor from "./ShiftEditor";
 import AddEmployeeModal from "../AddEmployeeModal";
@@ -54,12 +61,14 @@ export default function StaffRoster({
   activeEmployeeId?: string | null;
 }) {
   const [supabase] = useState(() => createClient());
+  const [staffList, setStaffList] = useState(staff ?? []);
   const [shifts, setShifts] = useState(initialShifts ?? []);
   const [summaries, setSummaries] = useState<Record<string, Summary>>({});
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingShiftFor, setEditingShiftFor] = useState<string | null>(null);
   const [resettingId, setResettingId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [historyByEmployee, setHistoryByEmployee] = useState<
     Record<string, LogRow[]>
@@ -170,6 +179,10 @@ export default function StaffRoster({
   }, [supabase]);
 
   useEffect(() => {
+    setStaffList(staff ?? []);
+  }, [staff]);
+
+  useEffect(() => {
     void refreshSummaries();
   }, [refreshSummaries]);
 
@@ -192,8 +205,8 @@ export default function StaffRoster({
       const { data } = await supabase
         .from("attendance_logs")
         .select("id, punch_in, punch_out")
-      .eq("employee_id", employeeId)
-      .order("punch_in", { ascending: false })
+        .eq("employee_id", employeeId)
+        .order("punch_in", { ascending: false })
         .limit(1000);
       setHistoryLoadingId(null);
       setHistoryByEmployee((prev) => ({
@@ -215,7 +228,11 @@ export default function StaffRoster({
       p_punch_out: input.punchOut,
     });
     if (error) return error.message;
-    await Promise.all([loadHistory(employeeId), refreshSummaries(), refetchOnDuty()]);
+    await Promise.all([
+      loadHistory(employeeId),
+      refreshSummaries(),
+      refetchOnDuty(),
+    ]);
     return null;
   };
 
@@ -236,6 +253,23 @@ export default function StaffRoster({
     setResettingId(null);
     if (result.error) return alert(result.error);
     alert(`New temporary password for ${name}: ${result.newTemporaryPassword}`);
+  };
+
+  const handleRemove = async (id: string, name: string) => {
+    if (
+      !confirm(
+        `Remove ${name} from the team? This will delete their login and account permissions.`,
+      )
+    )
+      return;
+    setRemovingId(id);
+    const result = await removeEmployee(id);
+    setRemovingId(null);
+    if (result.error) return alert(result.error);
+    setStaffList((prev) => prev.filter((employee) => employee.id !== id));
+    setExpandedId((current) => (current === id ? null : current));
+    setEditingShiftFor((current) => (current === id ? null : current));
+    alert(`${name} was removed successfully.`);
   };
 
   return (
@@ -278,7 +312,7 @@ export default function StaffRoster({
           )}
         </div>
       )}
-      {staff.map((s) => {
+      {staffList.map((s) => {
         const summary = summaries[s.id];
         const shift = shiftFor(s.id);
         const isOpen = expandedId === s.id;
@@ -460,7 +494,9 @@ export default function StaffRoster({
                     varianceThresholdMins={varianceThreshold}
                     showLegend
                     editable={isAdmin}
-                    onSaveAttendance={(input) => handleSaveAttendance(s.id, input)}
+                    onSaveAttendance={(input) =>
+                      handleSaveAttendance(s.id, input)
+                    }
                   />
                 )}
 
@@ -498,6 +534,16 @@ export default function StaffRoster({
                           {resettingId === s.id
                             ? "Resetting…"
                             : "Reset password"}
+                        </button>
+                        <button
+                          onClick={() => handleRemove(s.id, s.name)}
+                          disabled={removingId === s.id}
+                          className="min-h-[38px] px-4 rounded-lg border border-white/15 text-brand-nightText text-sm font-medium hover:border-brand-coral/40 disabled:opacity-50 flex items-center gap-1.5 transition-colors"
+                        >
+                          <UserMinus size={14} />
+                          {removingId === s.id
+                            ? "Removing…"
+                            : "Remove employee"}
                         </button>
                       </div>
                     )}

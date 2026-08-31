@@ -32,11 +32,14 @@ export default function EmployeeLoginPage() {
   return (
     <div className="dark-ui min-h-screen bg-brand-nightBg flex items-center justify-center px-4">
       <div className="bg-brand-nightSurface rounded-xl2 shadow-sm p-8 w-full max-w-sm border border-white/8">
-        <img
-          src="/logo-full.png"
-          alt="QureoCity"
-          className="h-12 mx-auto mb-6"
-        />
+        <button
+          type="button"
+          onClick={() => router.push("/")}
+          className="block mx-auto mb-6"
+          aria-label="Go to home"
+        >
+          <img src="/logo-full.png" alt="QureoCity" className="h-12 mx-auto" />
+        </button>
         <h1 className="text-xl font-bold text-brand-nightText mb-2 text-center">
           Employee login
         </h1>

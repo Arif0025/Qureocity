@@ -6,6 +6,7 @@ import { ChevronDown } from "lucide-react";
 export type ListRowFact = {
   icon?: ReactNode;
   value: ReactNode;
+  title?: string;
   /** Hidden on the narrowest screens — only the most essential facts show there. */
   hideOnMobile?: boolean;
 };
@@ -30,6 +31,7 @@ export default function ListRow({
   onToggleExpand,
   expandedContent,
   accent = "default",
+  factsLayout = "inline",
 }: {
   avatar?: ReactNode;
   title: ReactNode;
@@ -42,6 +44,7 @@ export default function ListRow({
   onToggleExpand?: () => void;
   expandedContent?: ReactNode;
   accent?: "default" | "muted";
+  factsLayout?: "inline" | "stacked";
 }) {
   const dotClass: Record<string, string> = {
     leaf: "bg-brand-leaf",
@@ -62,45 +65,68 @@ export default function ListRow({
       <div className="flex items-center gap-3 px-3.5 py-2.5">
         {avatar}
 
-        <button
-          type="button"
-          onClick={onToggleExpand}
-          disabled={!onToggleExpand}
-          className="flex items-center gap-2 min-w-0 flex-1 text-left disabled:cursor-default"
-        >
-          {statusDot && (
-            <span
-              className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass[statusDot]}`}
-            />
-          )}
-          <span className="min-w-0">
-            <span className="flex items-center gap-1.5">
-              <span className="text-sm font-semibold text-brand-nightText truncate">
+        <div className="min-w-0 flex-1 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            disabled={!onToggleExpand}
+            className="min-w-0 flex-1 text-left disabled:cursor-default"
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              {statusDot && (
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass[statusDot]}`}
+                />
+              )}
+              <span className="min-w-0 text-sm font-semibold text-brand-nightText truncate">
                 {title}
               </span>
-              {safetyFlag}
-            </span>
+              {safetyFlag && <span className="shrink-0">{safetyFlag}</span>}
+            </div>
             {subtitle && (
-              <span className="block text-xs text-brand-nightText/40 truncate">
+              <span className="block mt-0.5 text-xs text-brand-nightText/40 truncate">
                 {subtitle}
               </span>
             )}
-          </span>
-        </button>
+          </button>
 
-        {facts.length > 0 && (
-          <div className="hidden sm:flex items-center gap-4 shrink-0">
-            {facts.map((f, i) => (
-              <span
-                key={i}
-                className="flex items-center gap-1 text-xs text-brand-nightText/50 whitespace-nowrap"
-              >
-                {f.icon}
-                {f.value}
-              </span>
-            ))}
-          </div>
-        )}
+          {facts.length > 0 && (
+            <div
+              className={`shrink-0 ml-auto min-w-0 ${
+                factsLayout === "stacked"
+                  ? "flex flex-col gap-1 border-l border-white/10 pl-4"
+                  : "hidden sm:flex items-center gap-4 pl-2 border-l border-white/10"
+              }`}
+            >
+              {facts.map((f, i) => (
+                <span
+                  key={i}
+                  title={f.title}
+                  aria-label={f.title}
+                  className={`min-w-0 text-brand-nightText/50 whitespace-nowrap ${
+                    factsLayout === "stacked"
+                      ? "flex flex-col items-start gap-0.5 text-[10px]"
+                      : "flex items-center gap-1 text-xs"
+                  }`}
+                >
+                  {factsLayout === "stacked" ? (
+                    <>
+                      <span className="text-brand-nightText/45">{f.icon}</span>
+                      <span className="text-xs font-semibold text-brand-nightText/70">
+                        {f.value}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      {f.icon}
+                      {f.value}
+                    </>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
 
         {action}
 
@@ -120,13 +146,15 @@ export default function ListRow({
       </div>
 
       {/* Mobile-only second line for facts that don't fit the compact row */}
-      {facts.length > 0 && (
+      {facts.length > 0 && factsLayout === "inline" && (
         <div className="sm:hidden flex items-center gap-3 px-3.5 pb-2 -mt-1 flex-wrap">
           {facts
             .filter((f) => !f.hideOnMobile)
             .map((f, i) => (
               <span
                 key={i}
+                title={f.title}
+                aria-label={f.title}
                 className="flex items-center gap-1 text-[11px] text-brand-nightText/45"
               >
                 {f.icon}

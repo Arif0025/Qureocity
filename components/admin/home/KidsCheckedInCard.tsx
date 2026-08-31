@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import {
   ChevronRight,
   Phone,
-  Clock,
+  LogOut,
   Heart,
   Hourglass,
   BadgeCheck,
@@ -205,7 +205,8 @@ export default function KidsCheckedInCard({
               <ListRow
                 key={k.session_id}
                 title={k.child_name}
-                subtitle={`${k.age}y`}
+                subtitle={`${k.age} ${k.age === 1 ? "year" : "years"} old`}
+                factsLayout="stacked"
                 statusDot={dotFor[state]}
                 safetyFlag={
                   hasMedicalInfo(k) ? (
@@ -221,11 +222,12 @@ export default function KidsCheckedInCard({
                   ) : undefined
                 }
                 facts={[
-                  { icon: <Clock size={11} />, value: timeStr(k.start_time) },
                   {
-                    icon: <Hourglass size={11} />,
-                    value: sessionLength(k.start_time),
-                    hideOnMobile: true,
+                    icon: <LogOut size={13} strokeWidth={2.2} />,
+                    value: k.end_time ? timeStr(k.end_time) : "Open",
+                    title: k.end_time
+                      ? `Check-out time: ${timeStr(k.end_time)}`
+                      : "No scheduled checkout time",
                   },
                 ]}
                 action={
@@ -277,6 +279,20 @@ export default function KidsCheckedInCard({
                         Receipt:{" "}
                         <span className="text-brand-nightText font-medium">
                           {k.receipt_number}
+                        </span>
+                      </p>
+                    )}
+                    <p className="text-xs text-brand-nightText/50">
+                      Check-in time:{" "}
+                      <span className="text-brand-nightText font-medium">
+                        {timeStr(k.start_time)}
+                      </span>
+                    </p>
+                    {k.end_time && (
+                      <p className="text-xs text-brand-nightText/50">
+                        Check-out time:{" "}
+                        <span className="text-brand-nightText font-medium">
+                          {timeStr(k.end_time)}
                         </span>
                       </p>
                     )}
