@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { todayISTDateString } from "@/lib/istTime";
 import { ChevronDown, Heart, School, Phone, MapPin } from "lucide-react";
 
 type ChildInfo = {
@@ -43,6 +44,7 @@ type SubscriberRow = {
   started_on: string | null;
   expires_on: string | null;
   plan_name: string | null;
+  plan_description: string | null;
   receipt_number: string | null;
 };
 
@@ -90,9 +92,7 @@ export default function SubscriptionsManager({
     null,
   );
   const [selectedChild, setSelectedChild] = useState<ChildInfo | null>(null);
-  const [purchaseDate, setPurchaseDate] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
+  const [purchaseDate, setPurchaseDate] = useState(todayISTDateString());
   const [plans, setPlans] = useState<Plan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string>("");
   const [saving, setSaving] = useState(false);
@@ -196,7 +196,7 @@ export default function SubscriptionsManager({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = todayISTDateString();
   const sevenDaysOutStr = new Date(Date.now() + 7 * 86_400_000)
     .toISOString()
     .slice(0, 10);
@@ -562,6 +562,11 @@ export default function SubscriptionsManager({
                           <p className="text-brand-nightText">
                             {s.plan_name ?? "No plan on file"}
                           </p>
+                          {s.plan_description && (
+                            <p className="text-xs text-brand-nightText/50 mt-1">
+                              {s.plan_description}
+                            </p>
+                          )}
                           <p className="text-xs text-brand-nightText/50 mt-1">
                             {s.started_on ?? "—"} → {s.expires_on ?? "—"}
                           </p>

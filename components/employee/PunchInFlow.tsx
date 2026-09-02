@@ -8,7 +8,7 @@ const STATIC_QR_VALUE =
   process.env.NEXT_PUBLIC_DESK_QR_VALUE ?? "QUREOCITY-FRONT-DESK";
 
 export default function PunchInFlow() {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const [qrMode, setQrMode] = useState<"static" | "dynamic">("static");
   const [scannedValue, setScannedValue] = useState<string | null>(null);
   const [sliding, setSliding] = useState(false);

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { todayISTDateString } from "@/lib/istTime";
 import { Calendar, Clock, IndianRupee, PartyPopper } from "lucide-react";
 
 type Plan = {
@@ -29,7 +30,7 @@ export default function SpecialDaysBrowser() {
 
   useEffect(() => {
     (async () => {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayISTDateString();
       const { data } = await supabase
         .from("membership_plans")
         .select("*")

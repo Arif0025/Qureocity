@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Check, X, Phone, MapPin, School, Heart } from "lucide-react";
+import { Check, X, MapPin, School, Heart } from "lucide-react";
+import PhoneLinks from "@/components/shared/PhoneLinks";
 
 type Registration = {
   id: string;
@@ -189,10 +190,12 @@ export default function MembershipRegistrations() {
                       Guardian
                     </p>
                     <p className="text-brand-nightText">{r.parent_name}</p>
-                    <p className="flex items-center gap-1 text-xs text-brand-nightText/50 mt-1">
-                      <Phone size={12} /> {r.phone}
-                      {r.secondary_phone ? ` / ${r.secondary_phone}` : ""}
-                    </p>
+                    <PhoneLinks
+                      phone={r.phone}
+                      secondaryPhone={r.secondary_phone}
+                      className="flex items-center gap-1 text-xs text-brand-nightText/50 mt-1 hover:text-brand-sky"
+                      showNumber
+                    />
                     {r.address && (
                       <p className="flex items-center gap-1 text-xs text-brand-nightText/50 mt-1">
                         <MapPin size={12} /> {r.address}

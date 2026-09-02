@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { todayISTDateString } from "@/lib/istTime";
 import { getClientKey } from "@/lib/clientKey";
 import {
   Check,
@@ -93,7 +94,7 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
         return;
       }
       const p = data as Plan;
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayISTDateString();
       if (!p.active || p.event_date < today) {
         setPlan(p);
         setStep("ended");

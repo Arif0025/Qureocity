@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Clock, Pencil, Plus } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { formatTimeIST, istDateParts, dateKey } from "@/lib/formatTime";
 
 type LogRow = {
@@ -148,6 +155,7 @@ export default function EmployeeCalendar({
   showLegend = false,
   editable = false,
   onSaveAttendance,
+  onDeleteAttendance,
 }: {
   logs: LogRow[];
   // When provided, days get classified against the shift (present /
@@ -163,6 +171,7 @@ export default function EmployeeCalendar({
     punchIn: string;
     punchOut: string | null;
   }) => Promise<string | null>;
+  onDeleteAttendance?: (logId: string) => Promise<string | null>;
 }) {
   const logsByDay = useMemo(() => {
     const map = new Map<string, LogRow[]>();
@@ -192,6 +201,7 @@ export default function EmployeeCalendar({
   const [punchOutInput, setPunchOutInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
 
   const firstOfMonth: DayParts = {
     year: cursor.year,
@@ -227,11 +237,13 @@ export default function EmployeeCalendar({
     if (!selectedDay) return;
     setEditingLog(log);
     setPunchInInput(
-      log
-        ? toDateTimeLocalIST(log.punch_in)
-        : `${selectedDay}T09:00`,
+      log ? toDateTimeLocalIST(log.punch_in) : `${selectedDay}T09:00`,
     );
-    setPunchOutInput(log?.punch_out ? toDateTimeLocalIST(log.punch_out) : `${selectedDay}T18:00`);
+    setPunchOutInput(
+      log?.punch_out
+        ? toDateTimeLocalIST(log.punch_out)
+        : `${selectedDay}T18:00`,
+    );
     setEditError(null);
   };
 
@@ -252,6 +264,17 @@ export default function EmployeeCalendar({
     setSaving(false);
     if (error) return setEditError(error);
     setEditingLog(undefined);
+  };
+
+  const deleteLog = async (log: LogRow) => {
+    if (!onDeleteAttendance) return;
+    if (!window.confirm("Remove this punch record? This cannot be undone.")) {
+      return;
+    }
+    setDeletingLogId(log.id);
+    const error = await onDeleteAttendance(log.id);
+    setDeletingLogId(null);
+    if (error) setEditError(error);
   };
 
   return (
@@ -359,15 +382,23 @@ export default function EmployeeCalendar({
                 <p className="text-sm text-brand-nightText/35">
                   No attendance record.
                 </p>
-                {editable && !isAfter({ year: selectedParts[0], month: selectedParts[1] - 1, date: selectedParts[2] }, today) && (
-                  <button
-                    type="button"
-                    onClick={() => startEdit(null)}
-                    className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-sky hover:text-brand-skyLight"
-                  >
-                    <Plus size={13} /> Add attendance
-                  </button>
-                )}
+                {editable &&
+                  !isAfter(
+                    {
+                      year: selectedParts[0],
+                      month: selectedParts[1] - 1,
+                      date: selectedParts[2],
+                    },
+                    today,
+                  ) && (
+                    <button
+                      type="button"
+                      onClick={() => startEdit(null)}
+                      className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-sky hover:text-brand-skyLight"
+                    >
+                      <Plus size={13} /> Add attendance
+                    </button>
+                  )}
               </>
             ) : (
               <div className="space-y-3">
@@ -390,13 +421,28 @@ export default function EmployeeCalendar({
                       {durationStr(log.punch_in, log.punch_out)}
                     </p>
                     {editable && (
-                      <button
-                        type="button"
-                        onClick={() => startEdit(log)}
-                        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-brand-sky hover:text-brand-skyLight"
-                      >
-                        <Pencil size={12} /> Edit times
-                      </button>
+                      <div className="mt-2 flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(log)}
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-brand-sky hover:text-brand-skyLight"
+                        >
+                          <Pencil size={12} /> Edit times
+                        </button>
+                        {onDeleteAttendance && (
+                          <button
+                            type="button"
+                            onClick={() => void deleteLog(log)}
+                            disabled={deletingLogId === log.id}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-brand-coral hover:text-brand-coral/80 disabled:opacity-50"
+                          >
+                            <Trash2 size={12} />
+                            {deletingLogId === log.id
+                              ? "Removing…"
+                              : "Remove punch"}
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 ))}
@@ -425,7 +471,9 @@ export default function EmployeeCalendar({
                     className="mt-1 w-full min-h-[38px] rounded-lg border border-white/15 bg-brand-nightSurface text-brand-nightText px-2 text-xs"
                   />
                 </label>
-                {editError && <p className="text-xs text-brand-coral">{editError}</p>}
+                {editError && (
+                  <p className="text-xs text-brand-coral">{editError}</p>
+                )}
                 <div className="flex gap-2">
                   <button
                     type="button"

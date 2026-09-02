@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import PhoneLinks from "@/components/shared/PhoneLinks";
 import {
   Plus,
   Pencil,
   Trash2,
   X,
   ArrowLeft,
-  Phone,
   Link as LinkIcon,
 } from "lucide-react";
 
@@ -410,15 +410,12 @@ export default function PlansManager({
                         <p className="text-sm text-brand-nightText/70 truncate">
                           {member.parent_name}
                         </p>
-                        <a
-                          href={`tel:${member.phone}`}
+                        <PhoneLinks
+                          phone={member.phone}
+                          secondaryPhone={member.secondary_phone}
                           className="inline-flex items-center gap-1 text-xs text-brand-sky hover:underline"
-                        >
-                          <Phone size={11} /> {member.phone}
-                          {member.secondary_phone
-                            ? ` / ${member.secondary_phone}`
-                            : ""}
-                        </a>
+                          showNumber
+                        />
                       </div>
 
                       <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
@@ -498,15 +495,12 @@ export default function PlansManager({
                             <p className="text-brand-nightText">
                               {member.parent_name}
                             </p>
-                            <a
-                              href={`tel:${member.phone}`}
+                            <PhoneLinks
+                              phone={member.phone}
+                              secondaryPhone={member.secondary_phone}
                               className="flex items-center gap-1 text-xs text-brand-sky hover:underline mt-1 w-fit"
-                            >
-                              <Phone size={12} /> {member.phone}
-                              {member.secondary_phone
-                                ? ` / ${member.secondary_phone}`
-                                : ""}
-                            </a>
+                              showNumber
+                            />
                             {member.address && (
                               <p className="text-xs text-brand-nightText/50 mt-1">
                                 {member.address}

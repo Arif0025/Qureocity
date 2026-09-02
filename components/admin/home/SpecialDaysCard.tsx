@@ -3,12 +3,14 @@
 import { useState, useEffect } from "react";
 import { PartyPopper, Calendar, Users, Link as LinkIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { todayISTDateString } from "@/lib/istTime";
 
 type SpecialDay = {
   plan_id: string;
   plan_name: string;
   code: string | null;
   event_date: string;
+  description: string | null;
   member_count: number;
 };
 
@@ -33,11 +35,11 @@ export default function SpecialDaysCard({
 
   useEffect(() => {
     (async () => {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayISTDateString();
       const [{ data: plans }, { data: members }] = await Promise.all([
         supabase
           .from("membership_plans")
-          .select("id, name, code, event_date")
+          .select("id, name, code, event_date, description")
           .eq("plan_type", "special")
           .eq("active", true)
           .gte("event_date", today)
@@ -55,6 +57,7 @@ export default function SpecialDaysCard({
           plan_name: p.name,
           code: p.code,
           event_date: p.event_date,
+          description: p.description,
           member_count: countByPlan[p.id] ?? 0,
         })),
       );
@@ -104,6 +107,11 @@ export default function SpecialDaysCard({
                 <p className="text-sm font-semibold text-brand-nightText truncate">
                   {d.plan_name}
                 </p>
+                {d.description && (
+                  <p className="text-xs text-brand-nightText/45 truncate mt-0.5">
+                    {d.description}
+                  </p>
+                )}
                 <p className="text-xs text-brand-nightText/40 flex items-center gap-1.5 mt-0.5">
                   <Calendar size={11} /> {formatEventDate(d.event_date)}
                   <span className="text-brand-nightText/25">·</span>

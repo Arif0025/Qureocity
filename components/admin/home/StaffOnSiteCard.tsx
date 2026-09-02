@@ -37,7 +37,7 @@ export default function StaffOnSiteCard({
   totalStaff: number;
   onViewAll: () => void;
 }) {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const [onDutyStaff, setOnDutyStaff] = useState(initialOnDutyStaff ?? []);
   const [absentCount, setAbsentCount] = useState<number | null>(null);
   const [isClosedToday, setIsClosedToday] = useState(false);

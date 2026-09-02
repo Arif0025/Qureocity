@@ -95,4 +95,4 @@ begin
 end;
 $$;
 
-grant execute on function admin_apply_plan_to_child(uuid, uuid, date) to authenticated;s
+grant execute on function admin_apply_plan_to_child(uuid, uuid, date) to authenticated;

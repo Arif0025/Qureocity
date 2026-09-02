@@ -122,7 +122,11 @@ export default function StaffRoster({
     });
     setPunchingOutId(null);
     if (error) alert(error.message);
-    void refetchOnDuty();
+    await Promise.all([
+      refetchOnDuty(),
+      refreshSummaries(),
+      loadHistory(employeeId),
+    ]);
   };
 
   const handleForcePunchIn = async (employeeId: string) => {
@@ -137,7 +141,11 @@ export default function StaffRoster({
     } else if (data && !data.success && data.reason !== "already_on_duty") {
       alert("Could not punch in this employee.");
     }
-    void refetchOnDuty();
+    await Promise.all([
+      refetchOnDuty(),
+      refreshSummaries(),
+      loadHistory(employeeId),
+    ]);
   };
 
   useEffect(() => {
@@ -228,6 +236,24 @@ export default function StaffRoster({
       p_punch_out: input.punchOut,
     });
     if (error) return error.message;
+    await Promise.all([
+      loadHistory(employeeId),
+      refreshSummaries(),
+      refetchOnDuty(),
+    ]);
+    return null;
+  };
+
+  const handleDeleteAttendance = async (
+    employeeId: string,
+    logId: string,
+  ): Promise<string | null> => {
+    const { data, error } = await supabase.rpc("admin_delete_attendance_log", {
+      p_employee_id: employeeId,
+      p_log_id: logId,
+    });
+    if (error) return error.message;
+    if (data && !data.success) return "Attendance record was not found.";
     await Promise.all([
       loadHistory(employeeId),
       refreshSummaries(),
@@ -496,6 +522,9 @@ export default function StaffRoster({
                     editable={isAdmin}
                     onSaveAttendance={(input) =>
                       handleSaveAttendance(s.id, input)
+                    }
+                    onDeleteAttendance={(logId) =>
+                      handleDeleteAttendance(s.id, logId)
                     }
                   />
                 )}

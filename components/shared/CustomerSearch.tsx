@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Search, Heart, Phone, BadgeCheck, LogIn, LogOut } from "lucide-react";
+import { Search, Heart, BadgeCheck, LogIn, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatTimeIST } from "@/lib/formatTime";
+import { todayISTDateString } from "@/lib/istTime";
 import { getClientKey } from "@/lib/clientKey";
 import PillSelect from "./PillSelect";
 import ListRow from "./ListRow";
+import PhoneLinks from "./PhoneLinks";
 
 type ChildInfo = {
   id: string;
@@ -31,6 +33,7 @@ type Result = {
   customer_id: string;
   parent_name: string;
   phone: string;
+  secondary_phone: string | null;
   created_at?: string;
   any_active_subscription: boolean;
   children: ChildInfo[] | null;
@@ -72,7 +75,7 @@ export default function CustomerSearch({
     null,
   );
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayISTDateString();
   const [planFilter, setPlanFilter] = useState("");
   const [planOptions, setPlanOptions] = useState<
     { id: string; name: string; plan_type: "recurring" | "special" }[]
@@ -165,6 +168,27 @@ export default function CustomerSearch({
 
   // The "glimpse" — a browsable list of registered families before
   // anyone types anything, so the tab isn't just an empty search box.
+  const addSecondaryPhones = useCallback(
+    async (rows: Result[]) => {
+      if (rows.length === 0) return rows;
+      const ids = rows.map((row) => row.customer_id);
+      const { data } = await supabase
+        .from("customers")
+        .select("id, secondary_phone")
+        .in("id", ids);
+      const secondaryById = new Map(
+        ((data as { id: string; secondary_phone: string | null }[]) ?? []).map(
+          (row) => [row.id, row.secondary_phone],
+        ),
+      );
+      return rows.map((row) => ({
+        ...row,
+        secondary_phone: secondaryById.get(row.customer_id) ?? null,
+      }));
+    },
+    [supabase],
+  );
+
   const loadGlimpse = useCallback(async () => {
     setLoadingGlimpse(true);
     const { data, error } = await supabase.rpc("staff_list_customers", {
@@ -172,8 +196,8 @@ export default function CustomerSearch({
       p_plan_id: planFilter || null,
     });
     setLoadingGlimpse(false);
-    if (!error) setResults((data as Result[]) ?? []);
-  }, [supabase, planFilter]);
+    if (!error) setResults(await addSecondaryPhones((data as Result[]) ?? []));
+  }, [addSecondaryPhones, supabase, planFilter]);
 
   useEffect(() => {
     void loadGlimpse();
@@ -196,7 +220,8 @@ export default function CustomerSearch({
         p_plan_id: planFilter || null,
       });
       setSearching(false);
-      if (!error) setResults((data as Result[]) ?? []);
+      if (!error)
+        setResults(await addSecondaryPhones((data as Result[]) ?? []));
     }, 300);
 
     return () => {
@@ -384,14 +409,11 @@ export default function CustomerSearch({
                       ]}
                       action={
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <a
-                            href={`tel:${r.phone}`}
-                            onClick={(e) => e.stopPropagation()}
-                            aria-label={`Call ${r.parent_name}`}
+                          <PhoneLinks
+                            phone={r.phone}
+                            secondaryPhone={r.secondary_phone}
                             className="p-1.5 rounded-full border border-brand-sky/30 bg-brand-sky/10 text-brand-skyLight hover:bg-brand-sky/15 transition-colors"
-                          >
-                            <Phone size={12} />
-                          </a>
+                          />
                           {child.currently_checked_in &&
                           child.active_session_id ? (
                             <button
@@ -437,7 +459,15 @@ export default function CustomerSearch({
                       expandedContent={
                         <div className="space-y-2.5">
                           <p className="text-xs text-brand-nightText/50">
-                            {r.parent_name} · {r.phone}
+                            <span className="flex items-center gap-2">
+                              {r.parent_name}
+                              <PhoneLinks
+                                phone={r.phone}
+                                secondaryPhone={r.secondary_phone}
+                                className="text-brand-sky hover:underline"
+                                showNumber
+                              />
+                            </span>
                           </p>
                           <p className="text-xs text-brand-nightText/50">
                             {isMember
