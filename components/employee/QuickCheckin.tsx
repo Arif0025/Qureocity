@@ -98,11 +98,9 @@ export default function QuickCheckin() {
     if (error) return setError(error.message);
     refreshOne(r.child_id);
   };
-
   const handleCheckOut = async (r: Result) => {
     if (!r.active_session_id) return;
     setBusyChildId(r.child_id);
-    setError(null);
     const { error } = await supabase.rpc("checkout_session", {
       p_session_id: r.active_session_id,
     });

@@ -1,7 +1,15 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Search, Heart, BadgeCheck, LogIn, LogOut } from "lucide-react";
+import {
+  Search,
+  Heart,
+  BadgeCheck,
+  LogIn,
+  LogOut,
+  Pencil,
+  Check,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatTimeIST } from "@/lib/formatTime";
 import { todayISTDateString } from "@/lib/istTime";
@@ -13,6 +21,7 @@ import PhoneLinks from "./PhoneLinks";
 type ChildInfo = {
   id: string;
   name: string;
+  date_of_birth?: string;
   age: number;
   subscription_active: boolean;
   subscription_started_on: string | null;
@@ -27,6 +36,20 @@ type ChildInfo = {
 
 function hasMedicalInfo(c: ChildInfo): boolean {
   return !!(c.allergies || c.medical_conditions || c.special_instructions);
+}
+
+function ageFromDateOfBirth(dateOfBirth: string): number {
+  const birthDate = new Date(`${dateOfBirth}T00:00:00`);
+  const now = new Date();
+  let age = now.getFullYear() - birthDate.getFullYear();
+  const monthDelta = now.getMonth() - birthDate.getMonth();
+  if (
+    monthDelta < 0 ||
+    (monthDelta === 0 && now.getDate() < birthDate.getDate())
+  ) {
+    age -= 1;
+  }
+  return age;
 }
 
 type Result = {
@@ -88,6 +111,19 @@ export default function CustomerSearch({
     childName: string;
   } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [editingNames, setEditingNames] = useState<{
+    customerId: string;
+    childId: string;
+    parentName: string;
+    childName: string;
+    dateOfBirth: string;
+    address: string;
+    allergies: string;
+    medicalConditions: string;
+    specialInstructions: string;
+  } | null>(null);
+  const [savingNames, setSavingNames] = useState(false);
+  const [deletingCustomer, setDeletingCustomer] = useState(false);
 
   const patchChild = (
     customerId: string,
@@ -148,6 +184,116 @@ export default function CustomerSearch({
       currently_checked_in: false,
       active_session_id: null,
     });
+  };
+
+  const beginEditDetails = async (customerId: string, child: ChildInfo) => {
+    const [{ data: customer }, { data: childData }] = await Promise.all([
+      supabase
+        .from("customers")
+        .select("address")
+        .eq("id", customerId)
+        .single(),
+      supabase
+        .from("children")
+        .select(
+          "date_of_birth, allergies, medical_conditions, special_instructions",
+        )
+        .eq("id", child.id)
+        .eq("customer_id", customerId)
+        .single(),
+    ]);
+    setEditingNames({
+      customerId,
+      childId: child.id,
+      parentName:
+        results.find((result) => result.customer_id === customerId)
+          ?.parent_name ?? "",
+      childName: child.name,
+      dateOfBirth: childData?.date_of_birth ?? "",
+      address: customer?.address ?? "",
+      allergies: childData?.allergies ?? "",
+      medicalConditions: childData?.medical_conditions ?? "",
+      specialInstructions: childData?.special_instructions ?? "",
+    });
+  };
+
+  const handleSaveNames = async () => {
+    if (!editingNames) return;
+    setSavingNames(true);
+    setActionError(null);
+    const { error } = await supabase.rpc(
+      "admin_update_customer_child_details",
+      {
+        p_customer_id: editingNames.customerId,
+        p_child_id: editingNames.childId,
+        p_parent_name: editingNames.parentName,
+        p_child_name: editingNames.childName,
+        p_date_of_birth: editingNames.dateOfBirth,
+        p_address: editingNames.address,
+        p_allergies: editingNames.allergies,
+        p_medical_conditions: editingNames.medicalConditions,
+        p_special_instructions: editingNames.specialInstructions,
+      },
+    );
+    setSavingNames(false);
+    if (error) {
+      setActionError(error.message);
+      return;
+    }
+    setResults((prev) =>
+      prev.map((result) =>
+        result.customer_id !== editingNames.customerId
+          ? result
+          : {
+              ...result,
+              parent_name: editingNames.parentName.trim(),
+              children: (result.children ?? []).map((child) =>
+                child.id !== editingNames.childId
+                  ? child
+                  : {
+                      ...child,
+                      name: editingNames.childName.trim(),
+                      age: ageFromDateOfBirth(editingNames.dateOfBirth),
+                      date_of_birth: editingNames.dateOfBirth,
+                      allergies: editingNames.allergies.trim() || null,
+                      medical_conditions:
+                        editingNames.medicalConditions.trim() || null,
+                      special_instructions:
+                        editingNames.specialInstructions.trim() || null,
+                    },
+              ),
+            },
+      ),
+    );
+    setEditingNames(null);
+  };
+
+  const handleDeleteCustomer = async (
+    customerId: string,
+    parentName: string,
+  ) => {
+    if (
+      !window.confirm(
+        `Remove ${parentName} and all of their children? Historical registration records will be preserved, but this cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setDeletingCustomer(true);
+    setActionError(null);
+    const { error } = await supabase.rpc("admin_delete_customer", {
+      p_customer_id: customerId,
+    });
+    setDeletingCustomer(false);
+    if (error) {
+      setActionError(error.message);
+      return;
+    }
+    setResults((prev) =>
+      prev.filter((result) => result.customer_id !== customerId),
+    );
+    setExpandedChildId(null);
+    setEditingNames(null);
   };
 
   useEffect(() => {
@@ -458,32 +604,181 @@ export default function CustomerSearch({
                       }
                       expandedContent={
                         <div className="space-y-2.5">
-                          <p className="text-xs text-brand-nightText/50">
-                            <span className="flex items-center gap-2">
-                              {r.parent_name}
-                              <PhoneLinks
-                                phone={r.phone}
-                                secondaryPhone={r.secondary_phone}
-                                className="text-brand-sky hover:underline"
-                                showNumber
-                              />
-                            </span>
-                          </p>
-                          <p className="text-xs text-brand-nightText/50">
-                            {isMember
-                              ? `Member · ${child.plan_name ?? "Active plan"}${
-                                  child.subscription_expires_on
-                                    ? ` · until ${new Date(
-                                        child.subscription_expires_on +
-                                          "T00:00:00",
-                                      ).toLocaleDateString("en-IN", {
-                                        day: "numeric",
-                                        month: "short",
-                                      })}`
-                                    : ""
-                                }`
-                              : "No membership on file"}
-                          </p>
+                          {isAdmin && editingNames?.childId === child.id ? (
+                            <div className="space-y-2 rounded-lg border border-brand-sky/20 bg-brand-sky/5 p-3">
+                              <label className="block text-xs font-semibold text-brand-nightText/55">
+                                Parent name
+                                <input
+                                  value={editingNames.parentName}
+                                  onChange={(event) =>
+                                    setEditingNames({
+                                      ...editingNames,
+                                      parentName: event.target.value,
+                                    })
+                                  }
+                                  className="mt-1 w-full rounded-lg border border-white/15 bg-brand-nightSurface px-2.5 py-2 text-sm text-brand-nightText"
+                                />
+                              </label>
+                              <label className="block text-xs font-semibold text-brand-nightText/55">
+                                Child name
+                                <input
+                                  value={editingNames.childName}
+                                  onChange={(event) =>
+                                    setEditingNames({
+                                      ...editingNames,
+                                      childName: event.target.value,
+                                    })
+                                  }
+                                  className="mt-1 w-full rounded-lg border border-white/15 bg-brand-nightSurface px-2.5 py-2 text-sm text-brand-nightText"
+                                />
+                              </label>
+                              <label className="block text-xs font-semibold text-brand-nightText/55">
+                                Date of birth
+                                <input
+                                  type="date"
+                                  value={editingNames.dateOfBirth}
+                                  max={today}
+                                  onChange={(event) =>
+                                    setEditingNames({
+                                      ...editingNames,
+                                      dateOfBirth: event.target.value,
+                                    })
+                                  }
+                                  className="mt-1 w-full rounded-lg border border-white/15 bg-brand-nightSurface px-2.5 py-2 text-sm text-brand-nightText"
+                                />
+                              </label>
+                              <label className="block text-xs font-semibold text-brand-nightText/55">
+                                Location / address
+                                <textarea
+                                  value={editingNames.address}
+                                  onChange={(event) =>
+                                    setEditingNames({
+                                      ...editingNames,
+                                      address: event.target.value,
+                                    })
+                                  }
+                                  rows={2}
+                                  className="mt-1 w-full rounded-lg border border-white/15 bg-brand-nightSurface px-2.5 py-2 text-sm text-brand-nightText"
+                                />
+                              </label>
+                              <label className="block text-xs font-semibold text-brand-nightText/55">
+                                Allergies
+                                <textarea
+                                  value={editingNames.allergies}
+                                  onChange={(event) =>
+                                    setEditingNames({
+                                      ...editingNames,
+                                      allergies: event.target.value,
+                                    })
+                                  }
+                                  rows={2}
+                                  className="mt-1 w-full rounded-lg border border-white/15 bg-brand-nightSurface px-2.5 py-2 text-sm text-brand-nightText"
+                                />
+                              </label>
+                              <label className="block text-xs font-semibold text-brand-nightText/55">
+                                Medical conditions
+                                <textarea
+                                  value={editingNames.medicalConditions}
+                                  onChange={(event) =>
+                                    setEditingNames({
+                                      ...editingNames,
+                                      medicalConditions: event.target.value,
+                                    })
+                                  }
+                                  rows={2}
+                                  className="mt-1 w-full rounded-lg border border-white/15 bg-brand-nightSurface px-2.5 py-2 text-sm text-brand-nightText"
+                                />
+                              </label>
+                              <label className="block text-xs font-semibold text-brand-nightText/55">
+                                Special instructions
+                                <textarea
+                                  value={editingNames.specialInstructions}
+                                  onChange={(event) =>
+                                    setEditingNames({
+                                      ...editingNames,
+                                      specialInstructions: event.target.value,
+                                    })
+                                  }
+                                  rows={2}
+                                  className="mt-1 w-full rounded-lg border border-white/15 bg-brand-nightSurface px-2.5 py-2 text-sm text-brand-nightText"
+                                />
+                              </label>
+                              <div className="flex gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleSaveNames()}
+                                  disabled={savingNames}
+                                  className="inline-flex items-center gap-1 text-xs font-semibold text-brand-leaf disabled:opacity-50"
+                                >
+                                  <Check size={13} />
+                                  {savingNames ? "Saving…" : "Save details"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingNames(null)}
+                                  className="text-xs font-semibold text-brand-nightText/45"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void handleDeleteCustomer(
+                                      r.customer_id,
+                                      r.parent_name,
+                                    )
+                                  }
+                                  disabled={deletingCustomer}
+                                  className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-brand-coral disabled:opacity-50"
+                                >
+                                  {deletingCustomer
+                                    ? "Removing…"
+                                    : "Remove customer"}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 text-xs text-brand-nightText/50">
+                              <span className="flex items-center gap-2">
+                                {r.parent_name}
+                                <PhoneLinks
+                                  phone={r.phone}
+                                  secondaryPhone={r.secondary_phone}
+                                  className="text-brand-sky hover:underline"
+                                  showNumber
+                                />
+                              </span>
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void beginEditDetails(r.customer_id, child)
+                                  }
+                                  className="inline-flex items-center gap-1 text-brand-sky hover:text-brand-skyLight"
+                                >
+                                  <Pencil size={12} /> Edit names
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          {isAdmin &&
+                          editingNames?.childId === child.id ? null : (
+                            <p className="text-xs text-brand-nightText/50">
+                              {isMember
+                                ? `Member · ${child.plan_name ?? "Active plan"}${
+                                    child.subscription_expires_on
+                                      ? ` · until ${new Date(
+                                          child.subscription_expires_on +
+                                            "T00:00:00",
+                                        ).toLocaleDateString("en-IN", {
+                                          day: "numeric",
+                                          month: "short",
+                                        })}`
+                                      : ""
+                                  }`
+                                : "No membership on file"}
+                            </p>
+                          )}
 
                           {hasMedicalInfo(child) && (
                             <div className="rounded-lg bg-brand-coral/8 border border-brand-coral/20 px-3 py-2">

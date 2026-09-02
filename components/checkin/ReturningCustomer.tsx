@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getClientKey } from "@/lib/clientKey";
+import { todayISTDateString } from "@/lib/istTime";
 import BirthDateDial from "./BirthDateDial";
 
 type Child = {
@@ -30,7 +31,11 @@ export default function ReturningCustomer({
   parentName: string;
   children: Child[];
   onConfirmed: (
-    sessions: { session_id: string; end_time: string | null }[],
+    sessions: {
+      session_id: string;
+      end_time: string | null;
+      status?: string;
+    }[],
   ) => void;
   onError: (msg: string) => void;
   defaultSelectedIds?: string[];
@@ -41,6 +46,10 @@ export default function ReturningCustomer({
     new Set(defaultSelectedIds ?? []),
   );
   const [duration, setDuration] = useState<number | null>(60);
+  const [historicalMode, setHistoricalMode] = useState(false);
+  const [historicalDate, setHistoricalDate] = useState(todayISTDateString());
+  const [historicalStart, setHistoricalStart] = useState("09:00");
+  const [historicalEnd, setHistoricalEnd] = useState("11:00");
   const [submitting, setSubmitting] = useState(false);
 
   const [addingChild, setAddingChild] = useState(false);
@@ -89,13 +98,43 @@ export default function ReturningCustomer({
     }
     setSubmitting(true);
     try {
-      const { data, error } = await supabase.rpc("checkin_create_sessions", {
-        p_customer_id: customerId,
-        p_child_ids: Array.from(selected),
-        p_duration_mins: duration,
-        p_client_key: getClientKey(),
-        p_status: "active",
-      });
+      const start = historicalMode
+        ? new Date(`${historicalDate}T${historicalStart}:00+05:30`)
+        : null;
+      const end = historicalMode
+        ? new Date(`${historicalDate}T${historicalEnd}:00+05:30`)
+        : null;
+      if (
+        historicalMode &&
+        (!start ||
+          !end ||
+          Number.isNaN(start.getTime()) ||
+          Number.isNaN(end.getTime()))
+      ) {
+        throw new Error("Enter a valid date, start time, and end time.");
+      }
+      if (historicalMode && start && end && end <= start) {
+        throw new Error("End time must be after start time.");
+      }
+      if (historicalMode && end && end > new Date()) {
+        throw new Error("Historical check-in cannot be in the future.");
+      }
+
+      const { data, error } = historicalMode
+        ? await supabase.rpc("checkin_create_historical_session", {
+            p_customer_id: customerId,
+            p_child_ids: Array.from(selected),
+            p_started_at: start!.toISOString(),
+            p_ended_at: end!.toISOString(),
+            p_client_key: getClientKey(),
+          })
+        : await supabase.rpc("checkin_create_sessions", {
+            p_customer_id: customerId,
+            p_child_ids: Array.from(selected),
+            p_duration_mins: duration,
+            p_client_key: getClientKey(),
+            p_status: "active",
+          });
       if (error) throw error;
       onConfirmed(data.sessions);
     } catch (e: any) {
@@ -199,26 +238,80 @@ export default function ReturningCustomer({
         </div>
       )}
 
-      <p className="text-sm font-medium text-brand-ink/60 mb-2">Duration</p>
-      <div className="grid grid-cols-3 gap-2 mb-6">
-        {[
-          { label: "1 hour", value: 60 },
-          { label: "2 hours", value: 120 },
-          { label: "Unlimited", value: null },
-        ].map((opt) => (
+      {!historicalMode ? (
+        <>
+          <p className="text-sm font-medium text-brand-ink/60 mb-2">Duration</p>
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            {[
+              { label: "1 hour", value: 60 },
+              { label: "2 hours", value: 120 },
+              { label: "Unlimited", value: null },
+            ].map((opt) => (
+              <button
+                key={opt.label}
+                onClick={() => setDuration(opt.value)}
+                className={`min-h-[56px] rounded-xl2 border-2 font-semibold transition-colors ${
+                  duration === opt.value
+                    ? "border-brand-sun bg-brand-sun/20 text-brand-ink"
+                    : "border-brand-ink/10 text-brand-ink/60"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
           <button
-            key={opt.label}
-            onClick={() => setDuration(opt.value)}
-            className={`min-h-[56px] rounded-xl2 border-2 font-semibold transition-colors ${
-              duration === opt.value
-                ? "border-brand-sun bg-brand-sun/20 text-brand-ink"
-                : "border-brand-ink/10 text-brand-ink/60"
-            }`}
+            type="button"
+            onClick={() => setHistoricalMode(true)}
+            className="mb-6 text-xs font-semibold text-brand-ink/40 hover:text-brand-sky"
           >
-            {opt.label}
+            Different date/time? Record a past walk-in
           </button>
-        ))}
-      </div>
+        </>
+      ) : (
+        <div className="mb-6 rounded-xl2 border border-brand-sky/20 bg-brand-sky/5 p-4">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <p className="text-sm font-semibold text-brand-ink">Past walk-in</p>
+            <button
+              type="button"
+              onClick={() => setHistoricalMode(false)}
+              className="text-xs font-semibold text-brand-sky"
+            >
+              Use now
+            </button>
+          </div>
+          <label className="block text-xs font-medium text-brand-ink/60 mb-2">
+            Date
+            <input
+              type="date"
+              value={historicalDate}
+              max={todayISTDateString()}
+              onChange={(event) => setHistoricalDate(event.target.value)}
+              className="mt-1 w-full min-h-[44px] rounded-lg border border-brand-ink/10 px-3 [color-scheme:light]"
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block text-xs font-medium text-brand-ink/60">
+              Start time
+              <input
+                type="time"
+                value={historicalStart}
+                onChange={(event) => setHistoricalStart(event.target.value)}
+                className="mt-1 w-full min-h-[44px] rounded-lg border border-brand-ink/10 px-3"
+              />
+            </label>
+            <label className="block text-xs font-medium text-brand-ink/60">
+              End time
+              <input
+                type="time"
+                value={historicalEnd}
+                onChange={(event) => setHistoricalEnd(event.target.value)}
+                className="mt-1 w-full min-h-[44px] rounded-lg border border-brand-ink/10 px-3"
+              />
+            </label>
+          </div>
+        </div>
+      )}
 
       <button
         onClick={handleConfirm}

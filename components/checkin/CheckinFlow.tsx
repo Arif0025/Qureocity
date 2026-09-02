@@ -34,7 +34,7 @@ export default function CheckinFlow() {
   const [phone, setPhone] = useState("");
   const [lookup, setLookup] = useState<LookupResult | null>(null);
   const [confirmedSessions, setConfirmedSessions] = useState<
-    { session_id: string; end_time: string | null }[]
+    { session_id: string; end_time: string | null; status?: string }[]
   >([]);
 
   // A single indexed lookup (phone is a UNIQUE btree column) — this is
@@ -79,7 +79,13 @@ export default function CheckinFlow() {
   );
 
   const handleSessionsCreated = useCallback(
-    (sessions: { session_id: string; end_time: string | null }[]) => {
+    (
+      sessions: {
+        session_id: string;
+        end_time: string | null;
+        status?: string;
+      }[],
+    ) => {
       setConfirmedSessions(sessions);
       setStep("confirmed");
     },

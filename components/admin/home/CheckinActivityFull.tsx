@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Phone } from "lucide-react";
+import { ChevronLeft, ChevronRight, Phone, Pencil, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatTimeIST } from "@/lib/formatTime";
 
@@ -10,6 +10,7 @@ const CLOSED_WEEKDAY = 2;
 
 type DayDetail = {
   checkins: {
+    session_id: string;
     child_name: string;
     parent_name: string;
     parent_phone: string;
@@ -81,6 +82,16 @@ export default function CheckinActivityFull({
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [detail, setDetail] = useState<DayDetail | null>(null);
   const [loading, setLoading] = useState(false);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editStart, setEditStart] = useState("");
+  const [editEnd, setEditEnd] = useState("");
+  const [savingSession, setSavingSession] = useState(false);
+
+  const toLocalIST = (iso: string) =>
+    new Date(new Date(iso).getTime() + 330 * 60_000).toISOString().slice(0, 16);
+
+  const toIsoIST = (value: string) =>
+    new Date(`${value}:00+05:30`).toISOString();
 
   const calendarStart = new Date(cursor);
   calendarStart.setDate(1 - calendarStart.getDay());
@@ -106,6 +117,46 @@ export default function CheckinActivityFull({
     },
     [supabase],
   );
+
+  const startEdit = (session: DayDetail["checkins"][number]) => {
+    setEditingSessionId(session.session_id);
+    setEditStart(toLocalIST(session.checked_in_at));
+    setEditEnd(
+      session.checked_out_at ? toLocalIST(session.checked_out_at) : "",
+    );
+  };
+
+  const saveSession = async () => {
+    if (!editingSessionId || !editStart) return;
+    setSavingSession(true);
+    const start = toIsoIST(editStart);
+    const end = editEnd ? toIsoIST(editEnd) : null;
+    const { error } = await supabase.rpc("admin_update_walkin_session", {
+      p_session_id: editingSessionId,
+      p_started_at: start,
+      p_ended_at: end,
+    });
+    setSavingSession(false);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    setEditingSessionId(null);
+    if (selectedDay) void loadDay(selectedDay);
+  };
+
+  const removeSession = async (sessionId: string) => {
+    if (!window.confirm("Remove this walk-in session? This cannot be undone."))
+      return;
+    const { error } = await supabase.rpc("admin_delete_walkin_session", {
+      p_session_id: sessionId,
+    });
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    if (selectedDay) void loadDay(selectedDay);
+  };
 
   useEffect(() => {
     const todayKey = dayKey(new Date());
@@ -238,6 +289,65 @@ export default function CheckinActivityFull({
                               ? `–${timeStr(c.checked_out_at)}`
                               : ""}
                           </p>
+                          <div className="mt-2 flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => startEdit(c)}
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-brand-sky"
+                            >
+                              <Pencil size={12} /> Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void removeSession(c.session_id)}
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-brand-coral"
+                            >
+                              <Trash2 size={12} /> Remove
+                            </button>
+                          </div>
+                          {editingSessionId === c.session_id && (
+                            <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
+                              <label className="block text-xs text-brand-nightText/50">
+                                Check-in time
+                                <input
+                                  type="datetime-local"
+                                  value={editStart}
+                                  onChange={(event) =>
+                                    setEditStart(event.target.value)
+                                  }
+                                  className="mt-1 w-full rounded-lg border border-white/15 bg-brand-nightSurface2 px-2 py-1.5 text-xs text-brand-nightText [color-scheme:dark]"
+                                />
+                              </label>
+                              <label className="block text-xs text-brand-nightText/50">
+                                Check-out time (blank = still on site)
+                                <input
+                                  type="datetime-local"
+                                  value={editEnd}
+                                  onChange={(event) =>
+                                    setEditEnd(event.target.value)
+                                  }
+                                  className="mt-1 w-full rounded-lg border border-white/15 bg-brand-nightSurface2 px-2 py-1.5 text-xs text-brand-nightText [color-scheme:dark]"
+                                />
+                              </label>
+                              <div className="flex gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => void saveSession()}
+                                  disabled={savingSession}
+                                  className="text-xs font-semibold text-brand-leaf disabled:opacity-50"
+                                >
+                                  {savingSession ? "Saving…" : "Save"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingSessionId(null)}
+                                  className="text-xs font-semibold text-brand-nightText/45"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
