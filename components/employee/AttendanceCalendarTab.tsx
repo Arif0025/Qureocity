@@ -9,7 +9,12 @@ type Summary = {
   total_hours_this_month: number;
   working_days_this_month: number;
 };
-type LogRow = { id: string; punch_in: string; punch_out: string | null };
+type LogRow = {
+  id: string;
+  punch_in: string;
+  punch_out: string | null;
+  auto_punched_out?: boolean;
+};
 type ShiftRow = { start_time: string; end_time: string } | null;
 
 export default function AttendanceCalendarTab({
@@ -39,7 +44,7 @@ export default function AttendanceCalendarTab({
         }),
         supabase
           .from("attendance_logs")
-          .select("id, punch_in, punch_out")
+          .select("id, punch_in, punch_out, auto_punched_out")
           .eq("employee_id", employeeId)
           .order("punch_in", { ascending: false })
           .limit(400),

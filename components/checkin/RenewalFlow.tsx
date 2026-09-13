@@ -21,8 +21,9 @@ type Plan = {
   plan_type: "recurring" | "special";
   event_date: string | null;
   validity_value: number;
-  validity_unit: "weeks" | "months";
+  validity_unit: "days" | "weeks" | "months";
   hours_per_visit: number;
+  max_visits: number | null;
   price: number;
   min_age: number | null;
   max_age: number | null;
@@ -341,6 +342,8 @@ export default function RenewalFlow() {
                             <span className="flex items-center gap-1">
                               <Calendar size={12} />
                               {p.validity_value} {p.validity_unit} validity
+                              {p.max_visits != null &&
+                                ` · ${p.max_visits} visits`}
                             </span>
                           )}
                         </div>

@@ -11,9 +11,11 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { resetEmployeePassword, removeEmployee } from "@/app/admin/actions";
+import { startOfTodayIST } from "@/lib/istTime";
 import EmployeeCalendar from "./EmployeeCalendar";
 import ShiftEditor from "./ShiftEditor";
 import AddEmployeeModal from "../AddEmployeeModal";
+import { Clock3 } from "lucide-react";
 
 type Staff = { id: string; name: string; role: string };
 type Shift = {
@@ -32,7 +34,18 @@ type Summary = {
   scheduled_hours_this_month: number | null;
   working_days_this_month: number;
 };
-type LogRow = { id: string; punch_in: string; punch_out: string | null };
+type LogRow = {
+  id: string;
+  punch_in: string;
+  punch_out: string | null;
+  auto_punched_out?: boolean;
+};
+type AutoPunchoutRow = {
+  employee_id: string;
+  employee_name: string;
+  punch_in: string;
+  punch_out: string;
+};
 
 // An employee is "falling behind" once actual hours drop meaningfully
 // under what their shift + days-open-so-far would predict. 80% gives
@@ -77,6 +90,12 @@ export default function StaffRoster({
   const [varianceThreshold, setVarianceThreshold] = useState(30);
   const [editingThreshold, setEditingThreshold] = useState(false);
   const [thresholdInput, setThresholdInput] = useState("30");
+  const [autoPunchOutTime, setAutoPunchOutTime] = useState("21:30");
+  const [editingAutoPunchOutTime, setEditingAutoPunchOutTime] = useState(false);
+  const [autoPunchOutTimeInput, setAutoPunchOutTimeInput] = useState("21:30");
+  const [autoPunchedToday, setAutoPunchedToday] = useState<AutoPunchoutRow[]>(
+    [],
+  );
   const [onDutyIds, setOnDutyIds] = useState<Set<string>>(new Set());
   const [confirmingPunchOutId, setConfirmingPunchOutId] = useState<
     string | null
@@ -99,6 +118,24 @@ export default function StaffRoster({
     );
   }, [supabase]);
 
+  const refetchAutoPunchedToday = useCallback(async () => {
+    if (!isAdmin) return;
+    const { data } = await supabase
+      .from("attendance_logs")
+      .select("employee_id, punch_in, punch_out, employees(name)")
+      .eq("auto_punched_out", true)
+      .gte("punch_out", startOfTodayIST().toISOString())
+      .order("punch_out", { ascending: false });
+    setAutoPunchedToday(
+      ((data as any[]) ?? []).map((row) => ({
+        employee_id: row.employee_id,
+        employee_name: row.employees?.name ?? "Unknown",
+        punch_in: row.punch_in,
+        punch_out: row.punch_out,
+      })),
+    );
+  }, [supabase, isAdmin]);
+
   useEffect(() => {
     void refetchOnDuty();
     const channel = supabase
@@ -106,13 +143,16 @@ export default function StaffRoster({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "attendance_logs" },
-        refetchOnDuty,
+        () => {
+          void refetchOnDuty();
+          void refetchAutoPunchedToday();
+        },
       )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, refetchOnDuty]);
+  }, [supabase, refetchOnDuty, refetchAutoPunchedToday]);
 
   const handleForcePunchOut = async (employeeId: string) => {
     setPunchingOutId(employeeId);
@@ -152,12 +192,19 @@ export default function StaffRoster({
     (async () => {
       const { data } = await supabase
         .from("app_settings")
-        .select("attendance_variance_threshold_mins")
+        .select("attendance_variance_threshold_mins, auto_punch_out_time")
         .eq("id", true)
         .single();
       if (data?.attendance_variance_threshold_mins != null) {
         setVarianceThreshold(data.attendance_variance_threshold_mins);
         setThresholdInput(String(data.attendance_variance_threshold_mins));
+      }
+      if (data?.auto_punch_out_time) {
+        // Postgres `time` comes back as "HH:MM:SS" — trim to "HH:MM" for
+        // the <input type="time"> control.
+        const trimmed = String(data.auto_punch_out_time).slice(0, 5);
+        setAutoPunchOutTime(trimmed);
+        setAutoPunchOutTimeInput(trimmed);
       }
     })();
   }, [supabase]);
@@ -174,6 +221,22 @@ export default function StaffRoster({
       setEditingThreshold(false);
     }
   };
+
+  const saveAutoPunchOutTime = async () => {
+    if (!/^\d{2}:\d{2}$/.test(autoPunchOutTimeInput)) return;
+    const { error } = await supabase
+      .from("app_settings")
+      .update({ auto_punch_out_time: autoPunchOutTimeInput })
+      .eq("id", true);
+    if (!error) {
+      setAutoPunchOutTime(autoPunchOutTimeInput);
+      setEditingAutoPunchOutTime(false);
+    }
+  };
+
+  useEffect(() => {
+    void refetchAutoPunchedToday();
+  }, [refetchAutoPunchedToday]);
 
   const refreshSummaries = useCallback(async () => {
     setLoadingSummary(true);
@@ -212,7 +275,7 @@ export default function StaffRoster({
       setHistoryLoadingId(employeeId);
       const { data } = await supabase
         .from("attendance_logs")
-        .select("id, punch_in, punch_out")
+        .select("id, punch_in, punch_out, auto_punched_out")
         .eq("employee_id", employeeId)
         .order("punch_in", { ascending: false })
         .limit(1000);
@@ -338,6 +401,66 @@ export default function StaffRoster({
           )}
         </div>
       )}
+
+      {isAdmin && (
+        <div className="bg-brand-nightSurface rounded-xl border border-white/10 px-4 py-3 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-brand-nightText">
+              Auto punch-out time
+            </p>
+            <p className="text-[11px] text-brand-nightText/40">
+              Anyone still punched in past this time gets automatically clocked
+              out. Since this runs on the once-a-day cron (~9:30 PM IST), a time
+              set later than that won't take effect until the next day's run.
+            </p>
+          </div>
+          {editingAutoPunchOutTime ? (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <input
+                type="time"
+                value={autoPunchOutTimeInput}
+                onChange={(e) => setAutoPunchOutTimeInput(e.target.value)}
+                className="min-h-[32px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-2 [color-scheme:dark]"
+              />
+              <button
+                onClick={saveAutoPunchOutTime}
+                className="text-xs font-semibold text-brand-sky px-2"
+              >
+                Save
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setEditingAutoPunchOutTime(true)}
+              className="text-sm font-semibold text-brand-nightText shrink-0"
+            >
+              {autoPunchOutTime}
+            </button>
+          )}
+        </div>
+      )}
+
+      {isAdmin && autoPunchedToday.length > 0 && (
+        <div className="rounded-xl border border-brand-sky/25 bg-brand-sky/8 px-4 py-3 flex items-start gap-2.5">
+          <Clock3 size={15} className="text-brand-sky shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-brand-nightText">
+              {autoPunchedToday.length === 1
+                ? `${autoPunchedToday[0].employee_name} was auto clocked out today`
+                : `${autoPunchedToday.length} staff were auto clocked out today`}
+            </p>
+            <p className="text-[11px] text-brand-nightText/45 mt-0.5">
+              {autoPunchedToday
+                .map(
+                  (row) =>
+                    `${row.employee_name} at ${new Date(row.punch_out).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" })}`,
+                )
+                .join(" · ")}
+            </p>
+          </div>
+        </div>
+      )}
+
       {staffList.map((s) => {
         const summary = summaries[s.id];
         const shift = shiftFor(s.id);

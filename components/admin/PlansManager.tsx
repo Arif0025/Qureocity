@@ -20,8 +20,9 @@ type Plan = {
   event_date: string | null;
   code: string | null;
   validity_value: number;
-  validity_unit: "weeks" | "months";
+  validity_unit: "days" | "weeks" | "months";
   hours_per_visit: number;
+  max_visits: number | null;
   allowed_weekdays: number[];
   min_age: number | null;
   max_age: number | null;
@@ -38,8 +39,9 @@ type FormState = {
   event_date: string;
   code: string;
   validity_value: string;
-  validity_unit: "weeks" | "months";
+  validity_unit: "days" | "weeks" | "months";
   hours_per_visit: string;
+  max_visits: string;
   allowed_weekdays: number[];
   min_age: string;
   max_age: string;
@@ -56,6 +58,7 @@ const EMPTY_FORM: FormState = {
   validity_value: "1",
   validity_unit: "months",
   hours_per_visit: "2",
+  max_visits: "",
   allowed_weekdays: [0, 1, 3, 4, 5, 6], // every open day by default (Tue closed)
   min_age: "",
   max_age: "",
@@ -73,6 +76,7 @@ function planToForm(p: Plan): FormState {
     validity_value: String(p.validity_value),
     validity_unit: p.validity_unit,
     hours_per_visit: String(p.hours_per_visit),
+    max_visits: p.max_visits != null ? String(p.max_visits) : "",
     allowed_weekdays: p.allowed_weekdays,
     min_age: p.min_age != null ? String(p.min_age) : "",
     max_age: p.max_age != null ? String(p.max_age) : "",
@@ -99,6 +103,8 @@ type PlanMember = {
   started_on?: string | null;
   expires_on?: string | null;
   currently_active?: boolean;
+  max_visits?: number | null;
+  visits_used?: number;
   event_date?: string;
   purchased_at?: string;
   attendance_status?: "not_attended" | "on_site" | "attended";
@@ -259,6 +265,12 @@ export default function PlansManager({
       validity_unit:
         form.plan_type === "special" ? "weeks" : form.validity_unit,
       hours_per_visit: parseFloat(form.hours_per_visit) || 1,
+      max_visits:
+        form.plan_type === "special"
+          ? null
+          : form.max_visits.trim()
+            ? parseInt(form.max_visits, 10)
+            : null,
       allowed_weekdays:
         form.plan_type === "special" && eventWeekday != null
           ? [eventWeekday]
@@ -459,6 +471,8 @@ export default function PlansManager({
                                 ? `Active until ${formatDate(member.expires_on)}`
                                 : "Active"
                               : "Expired"}
+                            {member.max_visits != null &&
+                              ` · ${Math.max(member.max_visits - (member.visits_used ?? 0), 0)} of ${member.max_visits} visits left`}
                           </span>
                         )}
                       </div>
@@ -721,11 +735,15 @@ export default function PlansManager({
                     onChange={(e) =>
                       setForm((f) => ({
                         ...f,
-                        validity_unit: e.target.value as "weeks" | "months",
+                        validity_unit: e.target.value as
+                          | "days"
+                          | "weeks"
+                          | "months",
                       }))
                     }
                     className="flex-1 min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-2"
                   >
+                    <option value="days">days</option>
                     <option value="weeks">weeks</option>
                     <option value="months">months</option>
                   </select>
@@ -747,6 +765,26 @@ export default function PlansManager({
                 className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
               />
             </div>
+            {form.plan_type === "recurring" && (
+              <div>
+                <label className="text-xs text-brand-nightText/50 block mb-1">
+                  Visits allowed
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Unlimited"
+                  value={form.max_visits}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, max_visits: e.target.value }))
+                  }
+                  className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
+                />
+                <p className="text-[11px] text-brand-nightText/35 mt-1">
+                  Leave blank for unlimited visits during the validity period.
+                </p>
+              </div>
+            )}
             <div>
               <label className="text-xs text-brand-nightText/50 block mb-1">
                 Age range
@@ -932,7 +970,10 @@ export default function PlansManager({
                       <p className="text-xs text-brand-nightText/40 mt-1.5">
                         {p.validity_value} {p.validity_unit} ·{" "}
                         {p.hours_per_visit}
-                        hrs/visit · ₹{p.price}
+                        hrs/visit
+                        {p.max_visits != null && ` · ${p.max_visits} visits`}
+                        {" · ₹"}
+                        {p.price}
                         {(p.min_age != null || p.max_age != null) &&
                           ` · Age ${p.min_age ?? "0"}–${p.max_age ?? "∞"}`}
                       </p>

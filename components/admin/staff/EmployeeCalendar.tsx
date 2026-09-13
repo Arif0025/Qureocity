@@ -15,6 +15,7 @@ type LogRow = {
   id: string;
   punch_in: string;
   punch_out: string | null;
+  auto_punched_out?: boolean;
 };
 
 type Shift = { start_time: string; end_time: string } | null;
@@ -317,20 +318,24 @@ export default function EmployeeCalendar({
             const inMonth = day.month === cursor.month;
             const status = statusFor(day, records);
             const tone = STATUS_TONE[status];
+            const autoClosed = records.some((r) => r.auto_punched_out);
             return (
               <button
                 key={key}
                 type="button"
                 disabled={!inMonth}
                 onClick={() => setSelectedDay(key)}
-                title={status}
-                className={`aspect-square rounded-lg text-xs font-medium disabled:opacity-20 transition-colors ${tone} ${
+                title={autoClosed ? `${status} · auto clocked out` : status}
+                className={`relative aspect-square rounded-lg text-xs font-medium disabled:opacity-20 transition-colors ${tone} ${
                   selectedDay === key
                     ? "ring-2 ring-brand-skyLight ring-offset-1 ring-offset-brand-nightSurface"
                     : ""
                 }`}
               >
                 {day.date}
+                {autoClosed && (
+                  <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-white ring-1 ring-brand-ink/40" />
+                )}
               </button>
             );
           })}
@@ -349,6 +354,12 @@ export default function EmployeeCalendar({
                 {l.label}
               </span>
             ))}
+            <span className="flex items-center gap-1.5 text-[11px] text-brand-nightText/45">
+              <span className="relative w-2.5 h-2.5 rounded-sm bg-white/[0.08]">
+                <span className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full bg-white ring-1 ring-brand-ink/40" />
+              </span>
+              Auto clocked out
+            </span>
           </div>
         )}
       </div>
@@ -417,8 +428,13 @@ export default function EmployeeCalendar({
                         <span className="text-brand-leaf">on duty</span>
                       )}
                     </p>
-                    <p className="text-xs text-brand-nightText/40 mt-1">
+                    <p className="flex items-center gap-1.5 text-xs text-brand-nightText/40 mt-1">
                       {durationStr(log.punch_in, log.punch_out)}
+                      {log.auto_punched_out && (
+                        <span className="text-[10px] font-semibold text-brand-sky bg-brand-sky/10 rounded-full px-1.5 py-0.5">
+                          Auto clocked out
+                        </span>
+                      )}
                     </p>
                     {editable && (
                       <div className="mt-2 flex items-center gap-3">

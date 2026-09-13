@@ -45,6 +45,8 @@ type SubscriberRow = {
   expires_on: string | null;
   plan_name: string | null;
   plan_description: string | null;
+  max_visits: number | null;
+  visits_used: number | null;
   receipt_number: string | null;
 };
 
@@ -53,29 +55,36 @@ type Plan = {
   name: string;
   description: string | null;
   validity_value: number;
-  validity_unit: "weeks" | "months";
+  validity_unit: "days" | "weeks" | "months";
   price: number;
   min_age: number | null;
   max_age: number | null;
 };
 
-function addMonths(dateStr: string, months: number): string {
-  const d = new Date(dateStr + "T00:00:00");
-  d.setMonth(d.getMonth() + months);
-  return d.toISOString().slice(0, 10);
-}
-
-function addWeeks(dateStr: string, weeks: number): string {
-  const d = new Date(dateStr + "T00:00:00");
-  d.setDate(d.getDate() + weeks * 7);
-  return d.toISOString().slice(0, 10);
+// Date-string arithmetic done entirely in UTC calendar components (no
+// local-timezone parsing), so this can't fall prey to the same IST
+// rollover bug lib/istTime.ts exists to avoid — a naive
+// `new Date(dateStr + "T00:00:00")` interprets that as *local* midnight,
+// and toISOString() converts back to UTC, silently landing on the
+// previous calendar day for anyone in IST or another positive-offset
+// timezone.
+function addCalendarUnits(
+  dateStr: string,
+  { days = 0, months = 0 }: { days?: number; months?: number },
+): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1 + months, d + days))
+    .toISOString()
+    .slice(0, 10);
 }
 
 function expiryFor(purchaseDate: string, plan: Plan | null): string {
   if (!plan) return purchaseDate;
-  return plan.validity_unit === "weeks"
-    ? addWeeks(purchaseDate, plan.validity_value)
-    : addMonths(purchaseDate, plan.validity_value);
+  if (plan.validity_unit === "days")
+    return addCalendarUnits(purchaseDate, { days: plan.validity_value });
+  if (plan.validity_unit === "weeks")
+    return addCalendarUnits(purchaseDate, { days: plan.validity_value * 7 });
+  return addCalendarUnits(purchaseDate, { months: plan.validity_value });
 }
 
 export default function SubscriptionsManager({
@@ -195,6 +204,46 @@ export default function SubscriptionsManager({
     loadSubscribers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // --- Admin visits override ---
+  const [editingVisitsChildId, setEditingVisitsChildId] = useState<
+    string | null
+  >(null);
+  const [visitsInput, setVisitsInput] = useState("");
+  const [savingVisits, setSavingVisits] = useState(false);
+  const [visitsError, setVisitsError] = useState<string | null>(null);
+
+  const beginEditVisits = (s: SubscriberRow) => {
+    setEditingVisitsChildId(s.child_id);
+    setVisitsError(null);
+    setVisitsInput(
+      s.max_visits != null
+        ? String(Math.max(s.max_visits - (s.visits_used ?? 0), 0))
+        : "",
+    );
+  };
+
+  const saveVisits = async (
+    childId: string,
+    currentMaxVisits: number | null,
+  ) => {
+    const remaining = parseInt(visitsInput, 10);
+    if (!Number.isFinite(remaining) || remaining < 0) {
+      setVisitsError("Enter a whole number, 0 or more.");
+      return;
+    }
+    setSavingVisits(true);
+    setVisitsError(null);
+    const { error } = await supabase.rpc("admin_set_child_visits", {
+      p_child_id: childId,
+      p_visits_remaining: remaining,
+      p_max_visits: currentMaxVisits ?? remaining,
+    });
+    setSavingVisits(false);
+    if (error) return setVisitsError(error.message);
+    setEditingVisitsChildId(null);
+    void loadSubscribers();
+  };
 
   const todayStr = todayISTDateString();
   const sevenDaysOutStr = new Date(Date.now() + 7 * 86_400_000)
@@ -570,6 +619,55 @@ export default function SubscriptionsManager({
                           <p className="text-xs text-brand-nightText/50 mt-1">
                             {s.started_on ?? "—"} → {s.expires_on ?? "—"}
                           </p>
+                          {editingVisitsChildId === s.child_id ? (
+                            <div className="mt-1.5">
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  autoFocus
+                                  value={visitsInput}
+                                  onChange={(e) =>
+                                    setVisitsInput(e.target.value)
+                                  }
+                                  placeholder="Visits left"
+                                  className="w-24 min-h-[32px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-xs px-2"
+                                />
+                                <button
+                                  onClick={() =>
+                                    void saveVisits(s.child_id, s.max_visits)
+                                  }
+                                  disabled={savingVisits}
+                                  className="text-xs font-semibold text-brand-sky disabled:opacity-50"
+                                >
+                                  {savingVisits ? "…" : "Save"}
+                                </button>
+                                <button
+                                  onClick={() => setEditingVisitsChildId(null)}
+                                  className="text-xs font-semibold text-brand-nightText/40"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                              {visitsError && (
+                                <p className="text-[11px] text-brand-coral mt-1">
+                                  {visitsError}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => beginEditVisits(s)}
+                              className="text-xs text-brand-nightText/50 mt-1 hover:text-brand-sky"
+                            >
+                              {s.max_visits != null
+                                ? `${Math.max(s.max_visits - (s.visits_used ?? 0), 0)} of ${s.max_visits} visits left`
+                                : "Unlimited visits"}{" "}
+                              <span className="text-brand-nightText/30">
+                                · edit
+                              </span>
+                            </button>
+                          )}
                           {s.receipt_number && (
                             <p className="text-xs text-brand-nightText/35 font-mono mt-1">
                               {s.receipt_number}

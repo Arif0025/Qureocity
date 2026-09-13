@@ -27,6 +27,8 @@ type ChildInfo = {
   subscription_started_on: string | null;
   subscription_expires_on: string | null;
   plan_name: string | null;
+  max_visits?: number | null;
+  visits_used?: number;
   allergies: string | null;
   medical_conditions: string | null;
   special_instructions: string | null;
@@ -552,6 +554,15 @@ export default function CustomerSearch({
                             : "No membership",
                           hideOnMobile: true,
                         },
+                        ...(isMember && child.max_visits != null
+                          ? [
+                              {
+                                icon: undefined,
+                                value: `${Math.max(child.max_visits - (child.visits_used ?? 0), 0)} of ${child.max_visits} visits left`,
+                                hideOnMobile: true,
+                              },
+                            ]
+                          : []),
                       ]}
                       action={
                         <div className="flex items-center gap-1.5 shrink-0">
@@ -774,6 +785,10 @@ export default function CustomerSearch({
                                           day: "numeric",
                                           month: "short",
                                         })}`
+                                      : ""
+                                  }${
+                                    child.max_visits != null
+                                      ? ` · ${Math.max(child.max_visits - (child.visits_used ?? 0), 0)} of ${child.max_visits} visits left`
                                       : ""
                                   }`
                                 : "No membership on file"}

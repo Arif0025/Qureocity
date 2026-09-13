@@ -71,6 +71,9 @@ export default function AttendanceSummaryCard({
   const supabase = createClient();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [presentDays, setPresentDays] = useState<Set<string>>(new Set());
+  const [autoPunchedDays, setAutoPunchedDays] = useState<Set<string>>(
+    new Set(),
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -84,7 +87,7 @@ export default function AttendanceSummaryCard({
         }),
         supabase
           .from("attendance_logs")
-          .select("punch_in")
+          .select("punch_in, auto_punched_out")
           .eq("employee_id", employeeId)
           .gte(
             "punch_in",
@@ -97,11 +100,14 @@ export default function AttendanceSummaryCard({
       ]);
       if (cancelled) return;
       setSummary(((summaryData as Summary[]) ?? [])[0] ?? null);
-      setPresentDays(
+      const rows =
+        (logs as { punch_in: string; auto_punched_out?: boolean }[]) ?? [];
+      setPresentDays(new Set(rows.map((l) => istDateKey(l.punch_in))));
+      setAutoPunchedDays(
         new Set(
-          ((logs as { punch_in: string }[]) ?? []).map((l) =>
-            istDateKey(l.punch_in),
-          ),
+          rows
+            .filter((l) => l.auto_punched_out)
+            .map((l) => istDateKey(l.punch_in)),
         ),
       );
       setLoading(false);
@@ -170,6 +176,7 @@ export default function AttendanceSummaryCard({
             const key = dateKey(d);
             const isClosed = weekdayOfUTC(d) === CLOSED_WEEKDAY;
             const isPresent = presentDays.has(key);
+            const wasAutoPunched = autoPunchedDays.has(key);
             const tone = isClosed
               ? "bg-white/8"
               : isPresent
@@ -178,12 +185,22 @@ export default function AttendanceSummaryCard({
             return (
               <span
                 key={key}
-                className={`flex-1 h-[10px] rounded-full ${tone}`}
-                title={key}
-              />
+                className={`relative flex-1 h-[10px] rounded-full ${tone}`}
+                title={wasAutoPunched ? `${key} · auto clocked out` : key}
+              >
+                {wasAutoPunched && (
+                  <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-brand-sky ring-1 ring-brand-nightSurface" />
+                )}
+              </span>
             );
           })}
         </div>
+        {autoPunchedDays.size > 0 && (
+          <p className="flex items-center gap-1.5 text-[11px] text-brand-nightText/40 mt-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-brand-sky shrink-0" />
+            Auto clocked out on {autoPunchedDays.size} of the last 7 days
+          </p>
+        )}
       </div>
     </div>
   );

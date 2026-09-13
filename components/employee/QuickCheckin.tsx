@@ -15,7 +15,15 @@ type Result = {
   active_session_id: string | null;
   is_special_today?: boolean;
   special_attended_today?: boolean;
+  max_visits?: number | null;
+  visits_used?: number;
 };
+
+function visitsLeftLabel(r: Result): string | null {
+  if (r.max_visits == null) return null;
+  const left = Math.max(r.max_visits - (r.visits_used ?? 0), 0);
+  return `${left} visit${left === 1 ? "" : "s"} left`;
+}
 
 export default function QuickCheckin() {
   const supabase = createClient();
@@ -181,6 +189,7 @@ export default function QuickCheckin() {
                   </div>
                   <p className="text-[11px] text-brand-nightText/40 truncate">
                     {r.parent_name}
+                    {visitsLeftLabel(r) && ` · ${visitsLeftLabel(r)}`}
                   </p>
                 </div>
                 {r.currently_checked_in ? (
@@ -244,6 +253,7 @@ export default function QuickCheckin() {
               </div>
               <p className="text-xs text-brand-nightText/40 truncate">
                 {r.parent_name} · ···{r.phone_last4}
+                {visitsLeftLabel(r) && ` · ${visitsLeftLabel(r)}`}
               </p>
             </div>
 
