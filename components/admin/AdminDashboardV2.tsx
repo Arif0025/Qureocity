@@ -17,7 +17,7 @@ import QuickCheckin from "@/components/employee/QuickCheckin";
 import CustomerSearch from "@/components/shared/CustomerSearch";
 import MembershipRegistrations from "./MembershipRegistrations";
 import PlansManager from "./PlansManager";
-import BroadcastWhatsApp from "./BroadcastWhatsapp";
+import BroadcastWhatsApp from "./BroadcastWhatsApp";
 import { SessionRow } from "./home/KidsCheckedInCard";
 
 function BackToHomeButton({ onClick }: { onClick: () => void }) {
