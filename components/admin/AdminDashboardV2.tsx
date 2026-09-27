@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { Suspense } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Home as HomeIcon } from "lucide-react";
@@ -8,13 +8,16 @@ import Sidebar, { AdminTabId } from "./Sidebar";
 import HomeOverview from "./home/HomeOverview";
 import StaffRoster from "./staff/StaffRoster";
 import QrModeToggle from "./QrModeToggle";
+import NotificationRulesManager from "./NotificationRulesManager";
+import NotificationsCard from "@/components/shared/NotificationsCard";
+import PushToast from "@/components/shared/PushToast";
 import SubscriptionsManager from "./SubscriptionsManager";
 import AdminPasswordCard from "./AdminPasswordCard";
 import QuickCheckin from "@/components/employee/QuickCheckin";
 import CustomerSearch from "@/components/shared/CustomerSearch";
 import MembershipRegistrations from "./MembershipRegistrations";
 import PlansManager from "./PlansManager";
-import BroadcastWhatsApp from "./BroadcastWhatsApp";
+import BroadcastWhatsApp from "./BroadcastWhatsapp";
 import { SessionRow } from "./home/KidsCheckedInCard";
 
 function BackToHomeButton({ onClick }: { onClick: () => void }) {
@@ -100,43 +103,55 @@ function AdminDashboardV2Inner({
     "broadcast",
     "settings",
   ];
-  const tabFromUrl = searchParams.get("tab") as AdminTabId | null;
-  const [tab, setTabState] = useState<AdminTabId>(
-    tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : "home",
-  );
 
-  const [membershipsSubtab, setMembershipsSubtab] =
-    useState<(typeof MEMBERSHIPS_SUBTABS)[number]["id"]>("subscribers");
-  const [customerSearchQuery, setCustomerSearchQuery] = useState(
-    searchParams.get("customer") ?? "",
-  );
-  const [directoryNewOnly, setDirectoryNewOnly] = useState(false);
-  const [membershipsFilter, setMembershipsFilter] = useState<
-    "expiring_soon" | "new_this_month" | undefined
-  >(undefined);
-  const [plansTypeFilter, setPlansTypeFilter] = useState<
-    "recurring" | "special"
-  >("recurring");
-  const [plansFocusId, setPlansFocusId] = useState<string | null>(null);
-  const [staffFocusEmployeeId, setStaffFocusEmployeeId] = useState<
-    string | null
-  >(null);
+  // The URL is the single source of truth for which view is showing, so
+  // the browser / phone Back button walks back through the views the
+  // user actually visited instead of jumping out of the app. Every
+  // piece of view state that a link like "Expiring soon" or "Open plan"
+  // sets lives in a search param:
+  //   tab      section (home, directory, memberships, ...)
+  //   sub      memberships sub-tab (subscribers | plans)
+  //   mf       memberships filter (expiring_soon | new_this_month)
+  //   pt/plan  plans type filter / plan to expand
+  //   staff    staff member to expand
+  //   new      directory "new this month" filter (1)
+  //   customer directory search / focus key
+  const rawTab = searchParams.get("tab");
+  const tab: AdminTabId = VALID_TABS.includes(rawTab as AdminTabId)
+    ? (rawTab as AdminTabId)
+    : "home";
+  const membershipsSubtab: "subscribers" | "plans" =
+    searchParams.get("sub") === "plans" ? "plans" : "subscribers";
+  const rawFilter = searchParams.get("mf");
+  const membershipsFilter =
+    rawFilter === "expiring_soon" || rawFilter === "new_this_month"
+      ? rawFilter
+      : undefined;
+  const plansTypeFilter: "recurring" | "special" =
+    searchParams.get("pt") === "special" ? "special" : "recurring";
+  const plansFocusId = searchParams.get("plan");
+  const staffFocusEmployeeId = searchParams.get("staff");
+  const directoryNewOnly = searchParams.get("new") === "1";
+  const customerSearchQuery = searchParams.get("customer") ?? "";
 
-  // Keep the URL in sync so a refresh (or someone bookmarking/sharing a
-  // link) lands back on the same section instead of resetting to Home.
-  const setTab = (id: AdminTabId) => {
-    setTabState(id);
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("tab", id);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  };
-
-  useEffect(() => {
-    if (tabFromUrl && VALID_TABS.includes(tabFromUrl) && tabFromUrl !== tab) {
-      setTabState(tabFromUrl);
+  // Moving to a view pushes a new history entry (not replace). Params
+  // from the previous view are dropped so stale filters can't leak in.
+  const navigate = (
+    nextTab: AdminTabId,
+    extra: Record<string, string | undefined> = {},
+  ) => {
+    const params = new URLSearchParams();
+    params.set("tab", nextTab);
+    for (const [key, value] of Object.entries(extra)) {
+      if (value) params.set(key, value);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabFromUrl]);
+    const next = `${pathname}?${params.toString()}`;
+    // Re-selecting the view you're already on shouldn't stack a
+    // duplicate entry that makes Back appear to do nothing.
+    if (next === `${pathname}?${searchParams.toString()}`) return;
+    router.push(next, { scroll: false });
+  };
+  const setTab = (id: AdminTabId) => navigate(id);
 
   const supabase = createClient();
 
@@ -145,50 +160,29 @@ function AdminDashboardV2Inner({
     router.push("/employee/login");
   };
 
-  const openStaffEmployee = (employeeId: string) => {
-    setStaffFocusEmployeeId(employeeId);
-    setTab("staff");
-  };
+  const openStaffEmployee = (employeeId: string) =>
+    navigate("staff", { staff: employeeId });
 
-  const goToPending = () => {
-    setTab("pending");
-  };
+  const goToPending = () => navigate("pending");
 
-  const goToNewFamilies = () => {
-    setDirectoryNewOnly(true);
-    setTab("directory");
-  };
-  const goToNewMemberships = () => {
-    setMembershipsFilter("new_this_month");
-    setMembershipsSubtab("subscribers");
-    setTab("memberships");
-  };
-  const goToExpiring = () => {
-    setMembershipsFilter("expiring_soon");
-    setMembershipsSubtab("subscribers");
-    setTab("memberships");
-  };
-  const goToPlan = (
-    planId: string | null,
-    planType: "recurring" | "special",
-  ) => {
-    setPlansTypeFilter(planType);
-    setPlansFocusId(planId);
-    setMembershipsSubtab("plans");
-    setTab("memberships");
-  };
+  const goToNewFamilies = () => navigate("directory", { new: "1" });
+  const goToNewMemberships = () =>
+    navigate("memberships", { sub: "subscribers", mf: "new_this_month" });
+  const goToExpiring = () =>
+    navigate("memberships", { sub: "subscribers", mf: "expiring_soon" });
+  const goToPlan = (planId: string | null, planType: "recurring" | "special") =>
+    navigate("memberships", {
+      sub: "plans",
+      pt: planType,
+      plan: planId ?? undefined,
+    });
 
-  const openCustomerDirectory = (customerKey: string) => {
-    setCustomerSearchQuery(customerKey);
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("tab", "directory");
-    params.set("customer", customerKey);
-    setTabState("directory");
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  };
+  const openCustomerDirectory = (customerKey: string) =>
+    navigate("directory", { customer: customerKey });
 
   return (
     <div className="dark-ui min-h-screen bg-brand-nightBg md:flex">
+      <PushToast />
       <Sidebar
         active={tab}
         onSelect={setTab}
@@ -279,6 +273,7 @@ function AdminDashboardV2Inner({
                 phone.
               </p>
               <CustomerSearch
+                key={`${customerSearchQuery}|${directoryNewOnly ? "new" : "all"}`}
                 isAdmin={true}
                 initialQuery={customerSearchQuery}
                 focusCustomerPhone={customerSearchQuery}
@@ -302,7 +297,7 @@ function AdminDashboardV2Inner({
                 {MEMBERSHIPS_SUBTABS.map((st) => (
                   <button
                     key={st.id}
-                    onClick={() => setMembershipsSubtab(st.id)}
+                    onClick={() => navigate("memberships", { sub: st.id })}
                     className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
                       membershipsSubtab === st.id
                         ? "border-brand-skyLight text-brand-skyLight"
@@ -314,7 +309,10 @@ function AdminDashboardV2Inner({
                 ))}
               </div>
               {membershipsSubtab === "subscribers" && (
-                <SubscriptionsManager initialFilter={membershipsFilter} />
+                <SubscriptionsManager
+                  key={membershipsFilter ?? "all"}
+                  initialFilter={membershipsFilter}
+                />
               )}
               {membershipsSubtab === "plans" && (
                 <PlansManager
@@ -362,6 +360,18 @@ function AdminDashboardV2Inner({
               <div className="max-w-sm space-y-4">
                 <QrModeToggle initialMode={qrMode} />
                 <AdminPasswordCard />
+              </div>
+
+              <h2 className="text-base font-bold text-brand-nightText mt-10 mb-1">
+                Notifications
+              </h2>
+              <p className="text-brand-nightText/50 text-sm mb-4">
+                Alerts for check-ins, check-outs, sessions running out and staff
+                punches — delivered even when the app is closed.
+              </p>
+              <div className="max-w-2xl space-y-4">
+                <NotificationsCard />
+                <NotificationRulesManager />
               </div>
             </>
           )}

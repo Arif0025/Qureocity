@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, Suspense } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -23,6 +23,8 @@ import AttendanceSummaryCard from "./AttendanceSummaryCard";
 import ShiftDetailsCard from "./ShiftDetailsCard";
 import { useTheme } from "@/lib/hooks/useTheme";
 import ThemeToggle from "@/components/shared/ThemeToggle";
+import NotificationsCard from "@/components/shared/NotificationsCard";
+import PushToast from "@/components/shared/PushToast";
 
 function ChangePasswordCard() {
   const supabase = createClient();
@@ -159,14 +161,14 @@ function EmployeePanelInner({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const VALID_TABS = TAB_META.map((t) => t.id) as Tab[];
-  const tabFromUrl = searchParams.get("tab") as Tab | null;
-  const [tab, setTabState] = useState<Tab>(
-    tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : "home",
-  );
-  const [customerSearchQuery, setCustomerSearchQuery] = useState(
-    searchParams.get("customer") ?? "",
-  );
+  const VALID_TABS = [...TAB_META.map((t) => t.id), "floor"] as Tab[];
+  // URL is the source of truth for the current view, so Back steps
+  // through the views visited instead of leaving the panel.
+  const rawTab = searchParams.get("tab");
+  const tab: Tab = VALID_TABS.includes(rawTab as Tab)
+    ? (rawTab as Tab)
+    : "home";
+  const customerSearchQuery = searchParams.get("customer") ?? "";
   const { theme } = useTheme();
   const logoClass =
     theme === "light"
@@ -179,19 +181,15 @@ function EmployeePanelInner({
     .join("")
     .toUpperCase();
 
-  const setTab = (id: Tab) => {
-    setTabState(id);
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("tab", id);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  const navigate = (nextTab: Tab, extra: { customer?: string } = {}) => {
+    const params = new URLSearchParams();
+    params.set("tab", nextTab);
+    if (extra.customer) params.set("customer", extra.customer);
+    const next = `${pathname}?${params.toString()}`;
+    if (next === `${pathname}?${searchParams.toString()}`) return;
+    router.push(next, { scroll: false });
   };
-
-  useEffect(() => {
-    if (tabFromUrl && VALID_TABS.includes(tabFromUrl) && tabFromUrl !== tab) {
-      setTabState(tabFromUrl);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabFromUrl]);
+  const setTab = (id: Tab) => navigate(id);
 
   const supabase = createClient();
 
@@ -200,10 +198,8 @@ function EmployeePanelInner({
     router.push("/employee/login");
   };
 
-  const openCustomerDirectory = (customerKey: string) => {
-    setCustomerSearchQuery(customerKey);
-    setTab("search");
-  };
+  const openCustomerDirectory = (customerKey: string) =>
+    navigate("search", { customer: customerKey });
 
   const renderActiveTab = () => {
     switch (tab) {
@@ -231,13 +227,14 @@ function EmployeePanelInner({
             <AttendanceSummaryCard key="activity" employeeId={employeeId} />
             <AttendanceCalendarTab employeeId={employeeId} />
             <ShiftDetailsCard employeeId={employeeId} />
+            <NotificationsCard />
             <ChangePasswordCard />
           </div>
         );
       case "search":
         return (
           <CustomerSearch
-            key="search"
+            key={`search:${customerSearchQuery}`}
             isAdmin={false}
             initialQuery={customerSearchQuery}
             focusCustomerPhone={customerSearchQuery}
@@ -351,6 +348,7 @@ function EmployeePanelInner({
           })}
         </div>
       </nav>
+      <PushToast />
     </div>
   );
 }
