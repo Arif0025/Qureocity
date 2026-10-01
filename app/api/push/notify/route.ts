@@ -14,6 +14,7 @@ type Recipient = {
   endpoint: string;
   p256dh: string;
   auth_secret: string;
+  device_label: string | null;
 };
 
 function secretMatches(header: string | null): boolean {
@@ -104,6 +105,20 @@ export async function POST(req: NextRequest) {
           p_endpoint: r.endpoint,
         });
       }
+      // Best-effort: a logging failure must never affect the send itself.
+      await supabase
+        .rpc("push_log_send", {
+          p_event_type: event,
+          p_is_test: false,
+          p_user_id: r.user_id,
+          p_device_label: r.device_label,
+          p_endpoint: r.endpoint,
+          p_result: result,
+        })
+        .then(
+          () => {},
+          (err) => console.error("[push] log_send failed", err),
+        );
       return result;
     }),
   );

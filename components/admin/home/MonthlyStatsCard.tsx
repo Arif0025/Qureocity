@@ -16,6 +16,8 @@ type Stats = {
   newSubscriptions: number;
   walkIns: number;
   memberVisits: number;
+  specialVisits: number;
+  totalVisits: number;
   activeMembers: number;
   expiringSoon: number;
 };
@@ -51,8 +53,7 @@ export default function MonthlyStatsCard({
       const [
         { count: customers },
         { count: subs },
-        { count: totalSessions },
-        { data: sessionChildIds },
+        { data: typeSummary },
         { count: activeMembers },
         { count: expiringSoon },
       ] = await Promise.all([
@@ -64,14 +65,12 @@ export default function MonthlyStatsCard({
           .from("child_subscriptions")
           .select("child_id", { count: "exact", head: true })
           .gte("started_on", monthStartDate),
-        supabase
-          .from("play_sessions")
-          .select("id", { count: "exact", head: true })
-          .gte("start_time", monthStartISO),
-        supabase
-          .from("play_sessions")
-          .select("child_id")
-          .gte("start_time", monthStartISO),
+        // Single accurate split (0073): confirmed visits only, and a
+        // membership visit is one where the child's plan window actually
+        // covered that day — not just "has an active subscription now".
+        supabase.rpc("checkin_type_summary", {
+          p_since: monthStartISO,
+        }),
         supabase
           .from("child_subscriptions")
           .select("child_id", { count: "exact", head: true })
@@ -85,31 +84,22 @@ export default function MonthlyStatsCard({
           .lte("expires_on", sevenDaysOut),
       ]);
 
-      // How many of this month's visits belong to a kid with an active
-      // membership vs a pure walk-in — needs a second query since
-      // Supabase can't do a "count where related row exists" in one go
-      // without a view. Cheap enough at this scale (child ids only).
-      let memberVisits = 0;
-      const childIds = ((sessionChildIds as { child_id: string }[]) ?? []).map(
-        (r) => r.child_id,
+      const byType = new Map(
+        ((typeSummary as { visit_type: string; cnt: number }[]) ?? []).map(
+          (r) => [r.visit_type, r.cnt],
+        ),
       );
-      if (childIds.length > 0) {
-        const { data: activeSubs } = await supabase
-          .from("child_subscriptions")
-          .select("child_id")
-          .eq("active", true)
-          .in("child_id", Array.from(new Set(childIds)));
-        const activeIds = new Set(
-          ((activeSubs as { child_id: string }[]) ?? []).map((r) => r.child_id),
-        );
-        memberVisits = childIds.filter((id) => activeIds.has(id)).length;
-      }
+      const walkIns = byType.get("walk_in") ?? 0;
+      const memberVisits = byType.get("membership") ?? 0;
+      const specialVisits = byType.get("special") ?? 0;
 
       setStats({
         newCustomers: customers ?? 0,
         newSubscriptions: subs ?? 0,
-        walkIns: totalSessions ?? 0,
+        walkIns,
         memberVisits,
+        specialVisits,
+        totalVisits: walkIns + memberVisits + specialVisits,
         activeMembers: activeMembers ?? 0,
         expiringSoon: expiringSoon ?? 0,
       });
@@ -117,8 +107,8 @@ export default function MonthlyStatsCard({
   }, [supabase]);
 
   const memberSharePct =
-    stats && stats.walkIns > 0
-      ? Math.round((stats.memberVisits / stats.walkIns) * 100)
+    stats && stats.totalVisits > 0
+      ? Math.round((stats.memberVisits / stats.totalVisits) * 100)
       : null;
 
   return (

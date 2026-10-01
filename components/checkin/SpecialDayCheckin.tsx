@@ -19,6 +19,7 @@ type Plan = {
   description: string | null;
   code: string;
   event_date: string;
+  event_dates: string[];
   hours_per_visit: number;
   price: number;
   min_age: number | null;
@@ -93,9 +94,17 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
         setStep("notFound");
         return;
       }
-      const p = data as Plan;
+      const p = {
+        ...(data as Plan),
+        event_dates: (data as Plan).event_dates?.length
+          ? (data as Plan).event_dates
+          : [(data as Plan).event_date],
+      };
       const today = todayISTDateString();
-      if (!p.active || p.event_date < today) {
+      const availableDates = p.event_dates
+        .filter((date) => date >= today)
+        .sort();
+      if (!p.active || availableDates.length === 0) {
         setPlan(p);
         setStep("ended");
         return;
@@ -163,7 +172,7 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
     try {
       for (const childId of selectedIds) {
         const { data, error: err } = await supabase.rpc(
-          "submit_membership_renewal",
+          "submit_special_renewal",
           {
             p_phone: digits,
             p_child_id: childId,
@@ -196,7 +205,7 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
     try {
       const digits = phone.replace(/\D/g, "");
       const { data, error: err } = await supabase.rpc(
-        "submit_membership_registration",
+        "submit_special_registration",
         {
           p_child_name: addChildName.trim(),
           p_date_of_birth: addChildDob,
@@ -244,7 +253,7 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
     setLoading(true);
     try {
       const { data, error: err } = await supabase.rpc(
-        "submit_membership_registration",
+        "submit_special_registration",
         {
           p_child_name: newChildName.trim(),
           p_date_of_birth: newChildDob,
@@ -349,7 +358,10 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
           )}
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-brand-ink/55">
             <span className="flex items-center gap-1">
-              <Calendar size={12} /> {formatEventDate(plan.event_date)}
+              <Calendar size={12} />{" "}
+              {plan.event_dates.length === 1
+                ? formatEventDate(plan.event_dates[0])
+                : `${formatEventDate(plan.event_dates[0])} + ${plan.event_dates.length - 1} more`}
             </span>
             <span className="flex items-center gap-1">
               <Clock size={12} /> {plan.hours_per_visit} hrs
@@ -373,11 +385,11 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
           {step === "phone" && (
             <>
               <h2 className="text-lg font-bold text-brand-ink mb-1">
-                Register for this day
+                Register for one visit
               </h2>
               <p className="text-sm text-brand-ink/50 mb-5">
-                Already a member? Enter your mobile number and we'll pull up
-                your kids.
+                Your registration can be used once on any remaining event date.
+                Enter your mobile number and we'll pull up your kids.
               </p>
               <input
                 type="tel"
@@ -437,7 +449,7 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
                         </span>
                         {alreadyIn && (
                           <span className="block text-[11px] font-normal text-brand-leaf">
-                            Already registered for this day
+                            Already registered for this event
                           </span>
                         )}
                         {!alreadyIn && !eligible && (
@@ -535,7 +547,7 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
                 First time here — welcome!
               </h2>
               <p className="text-sm text-brand-ink/50 mb-4">
-                Just the basics to get your child registered for this day.
+                Just the basics to get your child registered for this event.
               </p>
               <div className="space-y-3">
                 <input
@@ -578,7 +590,7 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
                 disabled={loading}
                 className="w-full min-h-[52px] mt-5 rounded-xl2 bg-brand-sky text-white font-bold disabled:opacity-50"
               >
-                {loading ? "Submitting…" : "Register for this day"}
+                {loading ? "Submitting…" : "Register for one visit"}
               </button>
               <button
                 onClick={() => setStep("phone")}

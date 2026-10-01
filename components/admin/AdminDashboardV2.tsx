@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Home as HomeIcon } from "lucide-react";
@@ -9,10 +9,14 @@ import HomeOverview from "./home/HomeOverview";
 import StaffRoster from "./staff/StaffRoster";
 import QrModeToggle from "./QrModeToggle";
 import NotificationRulesManager from "./NotificationRulesManager";
+import PushDeliveryLog from "./PushDeliveryLog";
 import NotificationsCard from "@/components/shared/NotificationsCard";
 import PushToast from "@/components/shared/PushToast";
+import GlobalSearch, { SearchNavItem } from "@/components/shared/GlobalSearch";
+import HelpTab from "@/components/shared/HelpTab";
 import SubscriptionsManager from "./SubscriptionsManager";
 import AdminPasswordCard from "./AdminPasswordCard";
+import KioskAccessCard from "./KioskAccessCard";
 import QuickCheckin from "@/components/employee/QuickCheckin";
 import CustomerSearch from "@/components/shared/CustomerSearch";
 import MembershipRegistrations from "./MembershipRegistrations";
@@ -102,6 +106,7 @@ function AdminDashboardV2Inner({
     "pending",
     "broadcast",
     "settings",
+    "help",
   ];
 
   // The URL is the single source of truth for which view is showing, so
@@ -116,6 +121,7 @@ function AdminDashboardV2Inner({
   //   staff    staff member to expand
   //   new      directory "new this month" filter (1)
   //   customer directory search / focus key
+  //   article  help article slug (tab=help)
   const rawTab = searchParams.get("tab");
   const tab: AdminTabId = VALID_TABS.includes(rawTab as AdminTabId)
     ? (rawTab as AdminTabId)
@@ -133,6 +139,7 @@ function AdminDashboardV2Inner({
   const staffFocusEmployeeId = searchParams.get("staff");
   const directoryNewOnly = searchParams.get("new") === "1";
   const customerSearchQuery = searchParams.get("customer") ?? "";
+  const helpArticleSlug = searchParams.get("article");
 
   // Moving to a view pushes a new history entry (not replace). Params
   // from the previous view are dropped so stale filters can't leak in.
@@ -180,6 +187,34 @@ function AdminDashboardV2Inner({
   const openCustomerDirectory = (customerKey: string) =>
     navigate("directory", { customer: customerKey });
 
+  const openHelpArticle = (slug: string | null) =>
+    navigate("help", { article: slug ?? undefined });
+
+  const [searchOpen, setSearchOpen] = useState(false);
+  const ADMIN_SEARCH_NAV: SearchNavItem[] = [
+    { id: "home", label: "Overview", keywords: ["dashboard", "today"] },
+    {
+      id: "directory",
+      label: "Directory",
+      keywords: ["customers", "families"],
+    },
+    {
+      id: "memberships",
+      label: "Memberships",
+      keywords: ["plans", "subscriptions"],
+    },
+    { id: "staff", label: "Staff", keywords: ["team", "roster", "shifts"] },
+    { id: "clubcheckin", label: "Club check-in", keywords: ["quick checkin"] },
+    { id: "pending", label: "Pending", keywords: ["awaiting payment"] },
+    { id: "broadcast", label: "Broadcast", keywords: ["whatsapp", "message"] },
+    {
+      id: "settings",
+      label: "Settings",
+      keywords: ["notifications", "qr", "password"],
+    },
+    { id: "help", label: "Help", keywords: ["faq", "how to"] },
+  ];
+
   return (
     <div className="dark-ui min-h-screen bg-brand-nightBg md:flex">
       <PushToast />
@@ -188,6 +223,18 @@ function AdminDashboardV2Inner({
         onSelect={setTab}
         employeeName={employeeName}
         onSignOut={handleSignOut}
+        onSearchClick={() => setSearchOpen(true)}
+      />
+      <GlobalSearch
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        isAdmin={true}
+        staff={staff}
+        navItems={ADMIN_SEARCH_NAV}
+        onNavigate={(id) => navigate(id as AdminTabId)}
+        onOpenCustomer={openCustomerDirectory}
+        onOpenStaffEmployee={openStaffEmployee}
+        onOpenHelp={openHelpArticle}
       />
 
       <main className="flex-1 min-w-0 px-5 md:px-10 py-6 md:py-10 pb-24 md:pb-10">
@@ -346,6 +393,14 @@ function AdminDashboardV2Inner({
             </>
           )}
 
+          {tab === "help" && (
+            <HelpTab
+              isAdmin={true}
+              initialSlug={helpArticleSlug}
+              onOpenArticle={openHelpArticle}
+            />
+          )}
+
           {tab === "settings" && (
             <>
               <div className="flex items-start justify-between gap-3 mb-1">
@@ -359,6 +414,7 @@ function AdminDashboardV2Inner({
               </p>
               <div className="max-w-sm space-y-4">
                 <QrModeToggle initialMode={qrMode} />
+                {isAdmin && <KioskAccessCard />}
                 <AdminPasswordCard />
               </div>
 
@@ -372,6 +428,7 @@ function AdminDashboardV2Inner({
               <div className="max-w-2xl space-y-4">
                 <NotificationsCard />
                 <NotificationRulesManager />
+                <PushDeliveryLog />
               </div>
             </>
           )}

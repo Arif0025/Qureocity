@@ -9,6 +9,7 @@ export type PushContext = {
   ended_at?: string | null;
   duration_mins?: number | null;
   minutes_left?: number | null;
+  minutes_overdue?: number | null;
   staff_on_site?: string[];
   employee_id?: string;
   employee_name?: string;
@@ -104,6 +105,20 @@ export function buildMessage(
           : leftText,
         url: floorUrl(role),
         tag: `session_ending:${ctx.session_id ?? "x"}`,
+      };
+    }
+
+    case "session_overdue": {
+      const mins = ctx.minutes_overdue ?? 0;
+      return {
+        title: showName
+          ? `${ctx.child_name} hasn't been checked out`
+          : "A child hasn't been checked out",
+        body: `${mins} min past their session end — ${
+          ctx.end_time ? `ended ${clock(ctx.end_time)}` : "time's up"
+        }`,
+        url: floorUrl(role),
+        tag: `session_overdue:${ctx.session_id ?? "x"}`,
       };
     }
 

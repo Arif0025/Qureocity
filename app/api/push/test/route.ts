@@ -41,9 +41,15 @@ export async function POST(req: NextRequest) {
   if (!sub) {
     return NextResponse.json({ error: "Device not found" }, { status: 404 });
   }
+  const subscription = sub as {
+    endpoint: string;
+    p256dh: string;
+    auth_secret: string;
+    device_label: string | null;
+  };
 
   const result = await sendPush(
-    sub as { endpoint: string; p256dh: string; auth_secret: string },
+    subscription,
     {
       title: "Notifications are on",
       body: "You'll get QureoCity alerts on this device.",
@@ -53,6 +59,20 @@ export async function POST(req: NextRequest) {
     },
     300,
   );
+
+  await supabase
+    .rpc("push_log_send", {
+      p_event_type: "manual_test",
+      p_is_test: true,
+      p_user_id: user.id,
+      p_device_label: subscription.device_label,
+      p_endpoint: subscription.endpoint,
+      p_result: result,
+    })
+    .then(
+      () => {},
+      (err) => console.error("[push] log_send failed", err),
+    );
 
   if (result !== "sent") {
     return NextResponse.json(

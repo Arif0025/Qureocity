@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { refreshSubscriptionIfNeeded } from "@/lib/push/client";
 
 type Toast = { id: number; title: string; body: string; url: string };
 
@@ -11,6 +12,13 @@ type Toast = { id: number; title: string; body: string; url: string };
 export default function PushToast() {
   const router = useRouter();
   const [toasts, setToasts] = useState<Toast[]>([]);
+
+  // Runs once per app load, for whoever has notifications already
+  // granted — quietly repairs a subscription the browser silently
+  // dropped, instead of waiting for the next failed send to notice.
+  useEffect(() => {
+    refreshSubscriptionIfNeeded();
+  }, []);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;

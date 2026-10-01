@@ -18,8 +18,40 @@ type Settings = {
   role: string;
   device_count: number;
   this_device_registered: boolean;
+  last_sent_at: string | null;
+  last_failed_at: string | null;
   events: { event_type: PushEventType; enabled: boolean }[];
 };
+
+function isAndroid(): boolean {
+  return (
+    typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent)
+  );
+}
+
+function androidBrand(): string | null {
+  if (typeof navigator === "undefined") return null;
+  const ua = navigator.userAgent;
+  if (/; ?(Mi |Redmi|POCO)/i.test(ua)) return "Xiaomi/Redmi/POCO (MIUI)";
+  if (/; ?vivo/i.test(ua)) return "Vivo";
+  if (/; ?(realme)/i.test(ua)) return "Realme";
+  if (/; ?(CPH|OPPO)/i.test(ua)) return "Oppo";
+  if (/; ?(SM-|Galaxy)/i.test(ua)) return "Samsung";
+  return null;
+}
+
+function timeAgo(iso: string | null): string | null {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 0) return "just now";
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hr${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
 
 // Personal notification settings — works for admins and employees alike.
 // Off by default: nothing is sent to a device until its owner turns it on
@@ -167,9 +199,24 @@ export default function NotificationsCard() {
       ) : (
         <>
           <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-semibold text-brand-nightText">
-              {deviceOn ? "On for this device" : "Off for this device"}
-            </p>
+            <div>
+              <p className="text-sm font-semibold text-brand-nightText">
+                {deviceOn ? "On for this device" : "Off for this device"}
+              </p>
+              {deviceOn &&
+                (settings.last_sent_at || settings.last_failed_at) && (
+                  <p className="text-xs text-brand-nightText/40 mt-0.5">
+                    {settings.last_sent_at
+                      ? `Last notification sent ${timeAgo(settings.last_sent_at)}`
+                      : "No notification has reached this device yet"}
+                    {settings.last_failed_at &&
+                      (!settings.last_sent_at ||
+                        new Date(settings.last_failed_at) >
+                          new Date(settings.last_sent_at)) &&
+                      " · a recent attempt failed"}
+                  </p>
+                )}
+            </div>
             <Toggle
               checked={deviceOn}
               disabled={busy}
@@ -177,6 +224,28 @@ export default function NotificationsCard() {
               label="Notifications on this device"
             />
           </div>
+
+          {deviceOn && isAndroid() && (
+            <details className="mt-3 text-xs text-brand-nightText/50">
+              <summary className="cursor-pointer select-none hover:text-brand-nightText transition-colors">
+                Notifications arriving inconsistently on this phone?
+              </summary>
+              <div className="mt-2 pl-1 space-y-1">
+                <p>
+                  {androidBrand()
+                    ? `${androidBrand()} phones often restrict background apps by default, which can silently block notifications even when this toggle is on.`
+                    : "Some Android phones restrict background apps by default, which can silently block notifications even when this toggle is on."}
+                </p>
+                <p>
+                  In your phone&apos;s Settings, find Chrome (or your browser)
+                  under Apps, then Battery, and choose &quot;No
+                  restrictions&quot; or &quot;Unrestricted&quot;. On Xiaomi,
+                  Vivo, Oppo or Realme phones, also check for an
+                  &quot;Autostart&quot; setting and turn it on for Chrome.
+                </p>
+              </div>
+            </details>
+          )}
 
           {deviceOn && (
             <div className="mt-3 border-t border-white/10 pt-3">
@@ -212,6 +281,7 @@ export default function NotificationsCard() {
                       ? "Test message sent."
                       : "The test message didn't go through.",
                   );
+                  await load();
                   setBusy(false);
                 }}
                 className="mt-2 text-sm font-semibold text-brand-nightText/70 hover:text-brand-sky transition-colors disabled:opacity-50"

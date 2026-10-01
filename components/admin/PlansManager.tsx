@@ -10,7 +10,11 @@ import {
   X,
   ArrowLeft,
   Link as LinkIcon,
+  QrCode,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
+import SpecialPlanQrModal from "./SpecialPlanQrModal";
 
 type Plan = {
   id: string;
@@ -18,6 +22,7 @@ type Plan = {
   description: string | null;
   plan_type: "recurring" | "special";
   event_date: string | null;
+  event_dates: string[];
   code: string | null;
   validity_value: number;
   validity_unit: "days" | "weeks" | "months";
@@ -37,6 +42,7 @@ type FormState = {
   description: string;
   plan_type: "recurring" | "special";
   event_date: string;
+  event_dates: string[];
   code: string;
   validity_value: string;
   validity_unit: "days" | "weeks" | "months";
@@ -54,6 +60,7 @@ const EMPTY_FORM: FormState = {
   description: "",
   plan_type: "recurring",
   event_date: "",
+  event_dates: [],
   code: "",
   validity_value: "1",
   validity_unit: "months",
@@ -72,6 +79,11 @@ function planToForm(p: Plan): FormState {
     description: p.description ?? "",
     plan_type: p.plan_type ?? "recurring",
     event_date: p.event_date ?? "",
+    event_dates: p.event_dates?.length
+      ? p.event_dates
+      : p.event_date
+        ? [p.event_date]
+        : [],
     code: p.code ?? "",
     validity_value: String(p.validity_value),
     validity_unit: p.validity_unit,
@@ -132,6 +144,19 @@ function formatDate(d: string): string {
   });
 }
 
+function dateKey(year: number, month: number, day: number): string {
+  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function monthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthDate(value: string): Date {
+  const [year, month] = value.split("-").map(Number);
+  return new Date(year, month - 1, 1);
+}
+
 export default function PlansManager({
   initialTypeFilter,
   initialExpandedPlanId,
@@ -153,6 +178,7 @@ export default function PlansManager({
     initialExpandedPlanId ?? null,
   );
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [qrPlan, setQrPlan] = useState<Plan | null>(null);
   const [unregisteringPassId, setUnregisteringPassId] = useState<string | null>(
     null,
   );
@@ -161,6 +187,9 @@ export default function PlansManager({
   );
   const [viewType, setViewType] = useState<"recurring" | "special">(
     initialTypeFilter ?? "recurring",
+  );
+  const [calendarMonth, setCalendarMonth] = useState(() =>
+    monthKey(new Date()),
   );
 
   const load = async () => {
@@ -209,12 +238,19 @@ export default function PlansManager({
 
   const startCreate = () => {
     setForm({ ...EMPTY_FORM, plan_type: viewType });
+    setCalendarMonth(monthKey(new Date()));
     setCreating(true);
     setEditingId(null);
   };
 
   const startEdit = (p: Plan) => {
     setForm(planToForm(p));
+    const firstEventDate = p.event_dates?.[0] ?? p.event_date;
+    setCalendarMonth(
+      firstEventDate
+        ? monthKey(new Date(`${firstEventDate}T00:00:00`))
+        : monthKey(new Date()),
+    );
     setEditingId(p.id);
     setCreating(false);
   };
@@ -234,11 +270,22 @@ export default function PlansManager({
     }));
   };
 
+  const toggleEventDate = (date: string) => {
+    setForm((current) => ({
+      ...current,
+      event_dates: current.event_dates.includes(date)
+        ? current.event_dates.filter((item) => item !== date)
+        : [...current.event_dates, date].sort(),
+    }));
+  };
+
   const save = async () => {
     setError(null);
     if (!form.name.trim()) return setError("Name is required.");
     if (form.plan_type === "special") {
-      if (!form.event_date) return setError("Pick the special day's date.");
+      const eventDates = [...new Set(form.event_dates.filter(Boolean))].sort();
+      if (eventDates.length === 0)
+        return setError("Pick at least one event date.");
       if (!form.code.trim())
         return setError(
           "Give this special day a short code (e.g. HAL) — it's used for receipt numbers and its sign-up link.",
@@ -248,14 +295,18 @@ export default function PlansManager({
     } else if (form.allowed_weekdays.length === 0) {
       return setError("Select at least one allowed day.");
     }
-    const eventWeekday = form.event_date
-      ? new Date(form.event_date + "T00:00:00").getDay()
+    const eventWeekday = form.event_dates[0]
+      ? new Date(form.event_dates[0] + "T00:00:00").getDay()
       : null;
     const payload = {
       name: form.name.trim(),
       description: form.description.trim() || null,
       plan_type: form.plan_type,
-      event_date: form.plan_type === "special" ? form.event_date : null,
+      event_date: form.plan_type === "special" ? form.event_dates[0] : null,
+      event_dates:
+        form.plan_type === "special"
+          ? [...new Set(form.event_dates.filter(Boolean))].sort()
+          : [],
       code:
         form.plan_type === "special" ? form.code.trim().toUpperCase() : null,
       validity_value:
@@ -354,7 +405,7 @@ export default function PlansManager({
               </p>
               <p className="text-sm text-brand-nightText/45 mt-1">
                 {selectedPlan.plan_type === "special"
-                  ? `Special day · ${selectedPlan.event_date ? formatDate(selectedPlan.event_date) : "Date not set"}`
+                  ? `Special day · ${selectedPlan.event_dates?.length ?? 0} date${selectedPlan.event_dates?.length === 1 ? "" : "s"}`
                   : "Monthly membership roster"}
               </p>
             </div>
@@ -668,19 +719,100 @@ export default function PlansManager({
           {form.plan_type === "special" && (
             <div>
               <label className="text-xs text-brand-nightText/50 block mb-1">
-                Event date
+                Event dates
               </label>
-              <input
-                type="date"
-                value={form.event_date}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, event_date: e.target.value }))
-                }
-                className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
-              />
+              <div className="max-w-[280px] mx-auto rounded-xl border border-white/10 bg-brand-nightSurface2 p-2">
+                <div className="flex items-center justify-between mb-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const date = monthDate(calendarMonth);
+                      date.setMonth(date.getMonth() - 1);
+                      setCalendarMonth(monthKey(date));
+                    }}
+                    className="p-1 text-brand-nightText/50 hover:text-brand-nightText"
+                    aria-label="Previous month"
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
+                  <p className="text-xs font-semibold text-brand-nightText">
+                    {monthDate(calendarMonth).toLocaleDateString("en-IN", {
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const date = monthDate(calendarMonth);
+                      date.setMonth(date.getMonth() + 1);
+                      setCalendarMonth(monthKey(date));
+                    }}
+                    className="p-1 text-brand-nightText/50 hover:text-brand-nightText"
+                    aria-label="Next month"
+                  >
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+                <div className="grid grid-cols-7 gap-0.5 text-center">
+                  {WEEKDAY_LABELS.map((label) => (
+                    <span
+                      key={label}
+                      className="text-[9px] font-semibold text-brand-nightText/35 py-0.5"
+                    >
+                      {label.slice(0, 2)}
+                    </span>
+                  ))}
+                  {(() => {
+                    const visibleMonth = monthDate(calendarMonth);
+                    const year = visibleMonth.getFullYear();
+                    const month = visibleMonth.getMonth();
+                    const firstDay = new Date(year, month, 1).getDay();
+                    const daysInMonth = new Date(year, month + 1, 0).getDate();
+                    const cells = [];
+                    for (let index = 0; index < firstDay; index++) {
+                      cells.push(<span key={`empty-${index}`} />);
+                    }
+                    for (let day = 1; day <= daysInMonth; day++) {
+                      const date = dateKey(year, month, day);
+                      const selected = form.event_dates.includes(date);
+                      cells.push(
+                        <button
+                          key={date}
+                          type="button"
+                          onClick={() => toggleEventDate(date)}
+                          aria-pressed={selected}
+                          className={`aspect-square rounded-md text-[11px] font-semibold transition-colors ${selected ? "bg-brand-sky text-white" : "text-brand-nightText/65 hover:bg-brand-sky/15 hover:text-brand-nightText"}`}
+                        >
+                          {day}
+                        </button>,
+                      );
+                    }
+                    return cells;
+                  })()}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {form.event_dates.length === 0 ? (
+                  <span className="text-[11px] text-brand-nightText/35">
+                    No dates selected
+                  </span>
+                ) : (
+                  form.event_dates.map((date) => (
+                    <button
+                      key={date}
+                      type="button"
+                      onClick={() => toggleEventDate(date)}
+                      className="rounded-full bg-brand-sky/10 px-2 py-0.5 text-[10px] font-semibold text-brand-skyLight"
+                    >
+                      {formatDate(date)} ×
+                    </button>
+                  ))
+                )}
+              </div>
               <p className="text-[11px] text-brand-nightText/35 mt-1">
-                Anyone who registers or renews with this plan will show up in
-                Quick Check-In automatically on this date.
+                Select any combination of dates. Each registration is for one
+                visit, claimed on the first check-in.
               </p>
             </div>
           )}
@@ -937,7 +1069,10 @@ export default function PlansManager({
                               month: "short",
                               year: "numeric",
                             })
-                          : "No date set"}{" "}
+                          : "No date set"}
+                        {p.event_dates?.length > 1
+                          ? ` + ${p.event_dates.length - 1} more`
+                          : ""}{" "}
                         · {p.hours_per_visit} hrs · ₹{p.price}
                         {(p.min_age != null || p.max_age != null) &&
                           ` · Age ${p.min_age ?? "0"}–${p.max_age ?? "∞"}`}
@@ -961,6 +1096,15 @@ export default function PlansManager({
                             {copiedId === p.id
                               ? "Link copied!"
                               : "Copy sign-up link"}
+                          </button>
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setQrPlan(p);
+                            }}
+                            className="text-[11px] font-semibold text-brand-nightText/40 hover:text-brand-sky flex items-center gap-1"
+                          >
+                            <QrCode size={11} /> Open QR
                           </button>
                         </div>
                       )}
@@ -1019,6 +1163,13 @@ export default function PlansManager({
             </div>
           ))}
         </div>
+      )}
+      {qrPlan?.code && (
+        <SpecialPlanQrModal
+          name={qrPlan.name}
+          code={qrPlan.code}
+          onClose={() => setQrPlan(null)}
+        />
       )}
     </div>
   );

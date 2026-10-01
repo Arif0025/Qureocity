@@ -10,6 +10,7 @@ type SpecialDay = {
   plan_name: string;
   code: string | null;
   event_date: string;
+  event_dates: string[];
   description: string | null;
   member_count: number;
 };
@@ -39,10 +40,9 @@ export default function SpecialDaysCard({
       const [{ data: plans }, { data: members }] = await Promise.all([
         supabase
           .from("membership_plans")
-          .select("id, name, code, event_date, description")
+          .select("id, name, code, event_date, event_dates, description")
           .eq("plan_type", "special")
           .eq("active", true)
-          .gte("event_date", today)
           .order("event_date", { ascending: true })
           .limit(6),
         supabase.rpc("admin_list_plan_members"),
@@ -52,14 +52,19 @@ export default function SpecialDaysCard({
         countByPlan[row.plan_id] = row.member_count ?? 0;
       }
       setDays(
-        (plans ?? []).map((p: any) => ({
-          plan_id: p.id,
-          plan_name: p.name,
-          code: p.code,
-          event_date: p.event_date,
-          description: p.description,
-          member_count: countByPlan[p.id] ?? 0,
-        })),
+        (plans ?? [])
+          .map((p: any) => ({
+            plan_id: p.id,
+            plan_name: p.name,
+            code: p.code,
+            event_date: p.event_date,
+            event_dates: p.event_dates?.length ? p.event_dates : [p.event_date],
+            description: p.description,
+            member_count: countByPlan[p.id] ?? 0,
+          }))
+          .filter((plan) =>
+            plan.event_dates.some((date: string) => date >= today),
+          ),
       );
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -114,6 +119,8 @@ export default function SpecialDaysCard({
                 )}
                 <p className="text-xs text-brand-nightText/40 flex items-center gap-1.5 mt-0.5">
                   <Calendar size={11} /> {formatEventDate(d.event_date)}
+                  {d.event_dates.length > 1 &&
+                    ` + ${d.event_dates.length - 1} more`}
                   <span className="text-brand-nightText/25">·</span>
                   <Users size={11} /> {d.member_count} registered
                 </p>

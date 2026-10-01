@@ -11,6 +11,7 @@ type Plan = {
   description: string | null;
   code: string;
   event_date: string;
+  event_dates: string[];
   hours_per_visit: number;
   price: number;
 };
@@ -36,9 +37,17 @@ export default function SpecialDaysBrowser() {
         .select("*")
         .eq("active", true)
         .eq("plan_type", "special")
-        .gte("event_date", today)
         .order("event_date", { ascending: true });
-      setPlans((data as Plan[]) ?? []);
+      setPlans(
+        ((data as Plan[]) ?? [])
+          .map((plan) => ({
+            ...plan,
+            event_dates: plan.event_dates?.length
+              ? plan.event_dates
+              : [plan.event_date],
+          }))
+          .filter((plan) => plan.event_dates.some((date) => date >= today)),
+      );
       setLoading(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -56,7 +65,7 @@ export default function SpecialDaysBrowser() {
           Upcoming special days
         </h1>
         <p className="text-sm text-brand-ink/50 text-center mb-6">
-          Pick a day to register your child
+          Register once and visit on any event date
         </p>
 
         {loading ? (
@@ -91,7 +100,10 @@ export default function SpecialDaysBrowser() {
                 )}
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-brand-ink/55">
                   <span className="flex items-center gap-1">
-                    <Calendar size={12} /> {formatEventDate(p.event_date)}
+                    <Calendar size={12} />{" "}
+                    {p.event_dates.length === 1
+                      ? formatEventDate(p.event_dates[0])
+                      : `${formatEventDate(p.event_dates[0])} + ${p.event_dates.length - 1} more`}
                   </span>
                   <span className="flex items-center gap-1">
                     <Clock size={12} /> {p.hours_per_visit} hrs

@@ -10,6 +10,8 @@ import {
   MessageCircle,
   Settings,
   BadgeCheck,
+  Search,
+  HelpCircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { usePendingRegistrationsCount } from "@/lib/hooks/usePendingRegistrationsCount";
@@ -24,7 +26,8 @@ export type AdminTabId =
   | "clubcheckin"
   | "pending"
   | "broadcast"
-  | "settings";
+  | "settings"
+  | "help";
 
 const NAV_ITEMS: { id: AdminTabId; label: string; icon: typeof LayoutGrid }[] =
   [
@@ -34,6 +37,7 @@ const NAV_ITEMS: { id: AdminTabId; label: string; icon: typeof LayoutGrid }[] =
     { id: "staff", label: "Staff", icon: UserRound },
     { id: "broadcast", label: "Broadcast", icon: MessageCircle },
     { id: "settings", label: "Settings", icon: Settings },
+    { id: "help", label: "Help", icon: HelpCircle },
   ];
 
 // Order tuned for the mobile bottom bar specifically: the two
@@ -60,11 +64,13 @@ export default function Sidebar({
   onSelect,
   employeeName,
   onSignOut,
+  onSearchClick,
 }: {
   active: AdminTabId;
   onSelect: (id: AdminTabId) => void;
   employeeName: string;
   onSignOut: () => void;
+  onSearchClick: () => void;
 }) {
   const router = useRouter();
   const pendingCount = usePendingRegistrationsCount();
@@ -85,13 +91,22 @@ export default function Sidebar({
 
   const NavContent = (
     <>
-      <div className="px-5 pt-6 pb-8">
+      <div className="px-5 pt-6 pb-8 flex items-center justify-between">
         <button type="button" onClick={() => router.push("/")}>
           <img
             src="/logo-full.png"
             alt="QureoCity"
             className={`h-7 ${logoClass}`}
           />
+        </button>
+        <button
+          type="button"
+          onClick={onSearchClick}
+          title="Search"
+          aria-label="Search"
+          className="text-brand-nightText/40 hover:text-brand-nightText p-1.5 rounded-lg transition-colors"
+        >
+          <Search size={18} />
         </button>
       </div>
 
@@ -189,6 +204,14 @@ export default function Sidebar({
           />
         </button>
         <div className="flex items-center gap-1">
+          <button
+            onClick={onSearchClick}
+            title="Search"
+            aria-label="Search"
+            className="text-brand-nightText/50 hover:text-brand-nightText p-2 rounded-lg transition-colors"
+          >
+            <Search size={18} />
+          </button>
           <ThemeToggle compact />
           <button
             onClick={onSignOut}

@@ -172,3 +172,49 @@ export async function sendTestNotification(endpoint: string): Promise<boolean> {
     return false;
   }
 }
+
+// Called once on every app load (see PushToast). Permission being
+// "granted" doesn't guarantee the push subscription is still alive —
+// browsers can silently drop one (storage pressure, a key rotation, the
+// person clearing site data on one device but not another). Previously
+// that was only ever discovered the next time a real send failed and
+// got pruned, so a device could sit "on" but dead for days without
+// anyone noticing. This re-establishes it quietly in the background —
+// no prompt, since permission is already granted — and keeps the
+// server's copy (last_seen_at, keys) current either way.
+export async function refreshSubscriptionIfNeeded(): Promise<void> {
+  if (getPushSupport() !== "ready" || getPermission() !== "granted") return;
+
+  try {
+    const reg = await navigator.serviceWorker.register("/sw.js", {
+      scope: "/",
+    });
+    await navigator.serviceWorker.ready;
+
+    const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    let sub = await reg.pushManager.getSubscription();
+
+    if (!sub && publicKey) {
+      // Permission is already granted, so re-subscribing needs no
+      // prompt — this silently repairs a subscription the browser lost.
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+    }
+    if (!sub) return;
+
+    const json = sub.toJSON();
+    const supabase = createClient();
+    await supabase.rpc("push_save_subscription", {
+      p_endpoint: sub.endpoint,
+      p_p256dh: json.keys?.p256dh ?? "",
+      p_auth_secret: json.keys?.auth ?? "",
+      p_user_agent: navigator.userAgent,
+      p_device_label: deviceLabel(),
+    });
+  } catch (err) {
+    // Silent by design — this is a background repair, not a user action.
+    console.error("[push] background refresh failed", err);
+  }
+}

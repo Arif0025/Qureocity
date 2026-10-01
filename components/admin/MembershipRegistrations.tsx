@@ -25,6 +25,7 @@ type Registration = {
   plan_name: string | null;
   plan_type: "recurring" | "special" | null;
   plan_event_date: string | null;
+  special_event_date: string | null;
   how_heard: string | null;
   photo_consent: boolean;
   whatsapp_consent: boolean;
@@ -155,7 +156,7 @@ export default function MembershipRegistrations() {
                 <p className="text-xs text-brand-nightText/40 truncate">
                   {r.parent_name} · {r.plan_name ?? "No plan selected"}
                   {r.plan_event_date &&
-                    ` · ${new Date(r.plan_event_date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`}
+                    ` · ${new Date((r.special_event_date ?? r.plan_event_date) + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`}
                 </p>
               </div>
               <span className="text-[11px] font-mono text-brand-nightText/35 shrink-0">

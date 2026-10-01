@@ -39,11 +39,16 @@ export default function NotificationRulesManager() {
   const [saved, setSaved] = useState<Record<string, Rule>>({});
   const [draft, setDraft] = useState<Record<string, Rule>>({});
   const [minutesText, setMinutesText] = useState("10");
+  const [repeatText, setRepeatText] = useState("15");
   const [people, setPeople] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingEvent, setSavingEvent] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [broadcasting, setBroadcasting] = useState<string | null>(null);
+  const [broadcastNotes, setBroadcastNotes] = useState<Record<string, string>>(
+    {},
+  );
 
   const load = useCallback(async () => {
     const { data, error: rpcError } = await supabase.rpc(
@@ -61,6 +66,9 @@ export default function NotificationRulesManager() {
     setDraft(JSON.parse(JSON.stringify(map)));
     setMinutesText(
       String((map.session_ending?.params?.minutes_before as number) ?? 10),
+    );
+    setRepeatText(
+      String((map.session_overdue?.params?.repeat_minutes as number) ?? 15),
     );
     setPeople(overview.people);
     setLoading(false);
@@ -94,6 +102,12 @@ export default function NotificationRulesManager() {
         params: { ...rule.params, minutes_before: Number(minutesText) },
       };
     }
+    if (event === "session_overdue" && rule) {
+      return {
+        ...rule,
+        params: { ...rule.params, repeat_minutes: Number(repeatText) },
+      };
+    }
     return rule;
   };
 
@@ -109,6 +123,17 @@ export default function NotificationRulesManager() {
         setNotes((n) => ({
           ...n,
           [event]: "Minutes remaining must be a whole number from 1 to 120.",
+        }));
+        return;
+      }
+    }
+    if (event === "session_overdue") {
+      const m = Number(repeatText);
+      if (!Number.isInteger(m) || m < 1 || m > 120) {
+        setNotes((n) => ({
+          ...n,
+          [event]:
+            "Reminder frequency must be a whole number from 1 to 120 minutes.",
         }));
         return;
       }
@@ -132,6 +157,47 @@ export default function NotificationRulesManager() {
     }
     setNotes((n) => ({ ...n, [event]: "Saved." }));
     await load();
+  };
+
+  const sendBroadcastTest = async (event: PushEventType) => {
+    setBroadcasting(event);
+    setBroadcastNotes((n) => ({ ...n, [event]: "" }));
+    try {
+      const res = await fetch("/api/push/broadcast-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        sent?: number;
+        total?: number;
+        failed?: number;
+        error?: string;
+      };
+      if (!res.ok) {
+        setBroadcastNotes((n) => ({
+          ...n,
+          [event]: data.error ?? "That test couldn't be sent.",
+        }));
+      } else if (!data.total) {
+        setBroadcastNotes((n) => ({
+          ...n,
+          [event]:
+            "Nobody is currently eligible for this — turn it on for at least one device first.",
+        }));
+      } else {
+        setBroadcastNotes((n) => ({
+          ...n,
+          [event]: `Sent to ${data.sent} of ${data.total} eligible device${data.total === 1 ? "" : "s"}${data.failed ? ` — ${data.failed} didn't go through` : ""}.`,
+        }));
+      }
+    } catch {
+      setBroadcastNotes((n) => ({
+        ...n,
+        [event]: "Couldn't reach the server.",
+      }));
+    }
+    setBroadcasting(null);
   };
 
   if (loading) {
@@ -228,6 +294,23 @@ export default function NotificationRulesManager() {
                   </label>
                 )}
 
+                {event === "session_overdue" && (
+                  <label className="block">
+                    <span className="text-xs font-semibold text-brand-nightText/50 uppercase tracking-wide">
+                      Remind again every this many minutes, until checked out
+                    </span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={120}
+                      value={repeatText}
+                      onChange={(e) => setRepeatText(e.target.value)}
+                      className="mt-1 w-28 min-h-[44px] rounded-xl2 border-2 border-white/15 bg-brand-nightSurface2 text-brand-nightText px-4 text-base"
+                    />
+                  </label>
+                )}
+
                 {event === "child_checkin" && (
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm text-brand-nightText">
@@ -277,7 +360,7 @@ export default function NotificationRulesManager() {
               </div>
             )}
 
-            <div className="mt-4 flex items-center gap-3">
+            <div className="mt-4 flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={() => save(event)}
@@ -297,7 +380,24 @@ export default function NotificationRulesManager() {
                   {notes[event]}
                 </p>
               )}
+              {rule.enabled && (
+                <button
+                  type="button"
+                  onClick={() => sendBroadcastTest(event)}
+                  disabled={broadcasting === event}
+                  className="min-h-[44px] px-4 rounded-xl2 border-2 border-white/15 text-brand-nightText/70 hover:border-brand-sky/50 hover:text-brand-nightText text-sm font-semibold transition-colors disabled:opacity-40"
+                >
+                  {broadcasting === event
+                    ? "Sending…"
+                    : "Test with everyone eligible"}
+                </button>
+              )}
             </div>
+            {broadcastNotes[event] && (
+              <p className="mt-2 text-xs text-brand-nightText/50">
+                {broadcastNotes[event]}
+              </p>
+            )}
           </div>
         );
       })}

@@ -80,8 +80,12 @@ function CountdownRing({ remainingMs }: { remainingMs: number }) {
 
 export default function DeskQrDisplay({
   mode,
+  compact = false,
+  kioskName,
 }: {
   mode: "static" | "dynamic";
+  compact?: boolean;
+  kioskName?: string;
 }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -122,7 +126,9 @@ export default function DeskQrDisplay({
   }, [mode]);
 
   return (
-    <div className="min-h-screen bg-brand-cloud flex flex-col items-center justify-center px-4 relative overflow-hidden">
+    <div
+      className={`${compact ? "min-h-[420px] lg:min-h-screen" : "min-h-screen"} bg-brand-cloud flex flex-col items-center justify-center px-4 relative overflow-hidden`}
+    >
       <div className="pointer-events-none absolute -top-20 -left-20 w-72 h-72 rounded-full bg-brand-sun/20 blur-2xl" />
       <div className="pointer-events-none absolute bottom-0 -right-20 w-80 h-80 rounded-full bg-brand-sky/10 blur-2xl" />
 
@@ -134,6 +140,10 @@ export default function DeskQrDisplay({
       >
         <img src="/logo-full.png" alt="QureoCity" className="h-14" />
       </button>
+
+      {kioskName && (
+        <p className="text-xs text-brand-ink/40 mb-4">Kiosk: {kioskName}</p>
+      )}
 
       <div className="bg-white rounded-xl2 shadow-lg p-10 text-center relative">
         <p className="text-brand-ink/60 font-semibold mb-6">

@@ -25,6 +25,8 @@ import { useTheme } from "@/lib/hooks/useTheme";
 import ThemeToggle from "@/components/shared/ThemeToggle";
 import NotificationsCard from "@/components/shared/NotificationsCard";
 import PushToast from "@/components/shared/PushToast";
+import GlobalSearch, { SearchNavItem } from "@/components/shared/GlobalSearch";
+import HelpTab from "@/components/shared/HelpTab";
 
 function ChangePasswordCard() {
   const supabase = createClient();
@@ -142,7 +144,7 @@ const TAB_META = [
   { id: "activity", label: "Attendance", icon: CalendarClock },
 ] as const;
 
-type Tab = (typeof TAB_META)[number]["id"] | "floor";
+type Tab = (typeof TAB_META)[number]["id"] | "floor" | "help";
 
 function EmployeePanelInner({
   employeeId,
@@ -161,7 +163,7 @@ function EmployeePanelInner({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const VALID_TABS = [...TAB_META.map((t) => t.id), "floor"] as Tab[];
+  const VALID_TABS = [...TAB_META.map((t) => t.id), "floor", "help"] as Tab[];
   // URL is the source of truth for the current view, so Back steps
   // through the views visited instead of leaving the panel.
   const rawTab = searchParams.get("tab");
@@ -169,6 +171,7 @@ function EmployeePanelInner({
     ? (rawTab as Tab)
     : "home";
   const customerSearchQuery = searchParams.get("customer") ?? "";
+  const helpArticleSlug = searchParams.get("article");
   const { theme } = useTheme();
   const logoClass =
     theme === "light"
@@ -181,10 +184,14 @@ function EmployeePanelInner({
     .join("")
     .toUpperCase();
 
-  const navigate = (nextTab: Tab, extra: { customer?: string } = {}) => {
+  const navigate = (
+    nextTab: Tab,
+    extra: { customer?: string; article?: string } = {},
+  ) => {
     const params = new URLSearchParams();
     params.set("tab", nextTab);
     if (extra.customer) params.set("customer", extra.customer);
+    if (extra.article) params.set("article", extra.article);
     const next = `${pathname}?${params.toString()}`;
     if (next === `${pathname}?${searchParams.toString()}`) return;
     router.push(next, { scroll: false });
@@ -200,6 +207,31 @@ function EmployeePanelInner({
 
   const openCustomerDirectory = (customerKey: string) =>
     navigate("search", { customer: customerKey });
+
+  const openHelpArticle = (slug: string | null) =>
+    navigate("help", { article: slug ?? undefined });
+
+  const [searchOpen, setSearchOpen] = useState(false);
+  const EMPLOYEE_SEARCH_NAV: SearchNavItem[] = [
+    { id: "home", label: "Home", keywords: ["kids on site", "today"] },
+    {
+      id: "quickcheckin",
+      label: "Club check-in",
+      keywords: ["check in", "checkout"],
+    },
+    {
+      id: "punch",
+      label: "Punch",
+      keywords: ["clock in", "clock out", "shift"],
+    },
+    { id: "search", label: "Search", keywords: ["customer", "directory"] },
+    {
+      id: "activity",
+      label: "Attendance",
+      keywords: ["notifications", "password"],
+    },
+    { id: "help", label: "Help", keywords: ["faq", "how to"] },
+  ];
 
   const renderActiveTab = () => {
     switch (tab) {
@@ -221,6 +253,15 @@ function EmployeePanelInner({
         return <QuickCheckin key="quickcheckin" />;
       case "floor":
         return <LiveFloorView key="floor" initialSessions={initialSessions} />;
+      case "help":
+        return (
+          <HelpTab
+            key="help"
+            isAdmin={false}
+            initialSlug={helpArticleSlug}
+            onOpenArticle={openHelpArticle}
+          />
+        );
       case "activity":
         return (
           <div className="space-y-4">
@@ -282,6 +323,15 @@ function EmployeePanelInner({
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              title="Search"
+              aria-label="Search"
+              className="text-brand-nightText/40 hover:text-brand-nightText p-2 rounded-lg transition-colors"
+            >
+              <SearchIcon size={16} />
+            </button>
             <ThemeToggle compact />
             <button
               onClick={handleSignOut}
@@ -349,6 +399,15 @@ function EmployeePanelInner({
         </div>
       </nav>
       <PushToast />
+      <GlobalSearch
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        isAdmin={false}
+        navItems={EMPLOYEE_SEARCH_NAV}
+        onNavigate={(id) => navigate(id as Tab)}
+        onOpenCustomer={openCustomerDirectory}
+        onOpenHelp={openHelpArticle}
+      />
     </div>
   );
 }

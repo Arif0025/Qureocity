@@ -7,6 +7,7 @@ export const PUSH_EVENTS = [
   "child_checkin",
   "child_checkout",
   "session_ending",
+  "session_overdue",
   "staff_punch_in",
   "staff_punch_out",
 ] as const;
@@ -31,6 +32,11 @@ export const PUSH_EVENT_META: Record<
     label: "Child's time nearing end",
     description: "A child's play session is about to run out.",
   },
+  session_overdue: {
+    label: "Child not checked out on time",
+    description:
+      "A child's session time has passed and they haven't been checked out — repeats until they are.",
+  },
   staff_punch_in: {
     label: "Staff punched in",
     description: "A staff member has just punched in.",
@@ -52,6 +58,7 @@ export const CHILD_EVENTS: PushEventType[] = [
   "child_checkin",
   "child_checkout",
   "session_ending",
+  "session_overdue",
 ];
 
 export type PushMessage = {

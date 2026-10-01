@@ -4,6 +4,14 @@ import {
   createServerSupabase,
   createServiceRoleClient,
 } from "@/lib/supabase/server";
+import crypto from "crypto";
+import { cookies } from "next/headers";
+import {
+  hashKioskPassword,
+  hashToken,
+  KIOSK_COOKIE,
+  verifyKioskPassword,
+} from "@/lib/kioskAuth";
 
 // NOTE: these return { error } instead of throwing. Next.js redacts
 // thrown Server Action errors down to a generic "digest" message in
@@ -147,5 +155,114 @@ export async function setQrMode(
     .eq("id", true);
   if (error) return { error: error.message };
 
+  return {};
+}
+
+async function requireAdmin() {
+  const supabase = createServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated." } as const;
+
+  const { data: caller } = await supabase
+    .from("employees")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (caller?.role !== "admin")
+    return { error: "Only admins can manage kiosk access." } as const;
+  return { supabase } as const;
+}
+
+export async function setKioskPassword(
+  password: string,
+): Promise<{ error?: string }> {
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth;
+  if (password.length < 8) return { error: "Use at least 8 characters." };
+
+  const admin = createServiceRoleClient();
+  const { error } = await admin
+    .from("app_settings")
+    .update({ kiosk_password_hash: hashKioskPassword(password) })
+    .eq("id", true);
+  if (error) return { error: error.message };
+
+  await admin
+    .from("kiosk_sessions")
+    .update({ revoked_at: new Date().toISOString() })
+    .is("revoked_at", null);
+  return {};
+}
+
+export async function listKioskSessions(): Promise<{
+  sessions?: {
+    id: string;
+    name: string;
+    created_at: string;
+    last_seen_at: string;
+  }[];
+  error?: string;
+}> {
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth;
+  const admin = createServiceRoleClient();
+  const { data, error } = await admin
+    .from("kiosk_sessions")
+    .select("id, name, created_at, last_seen_at")
+    .is("revoked_at", null)
+    .order("last_seen_at", { ascending: false });
+  if (error) return { error: error.message };
+  return { sessions: data ?? [] };
+}
+
+export async function revokeKioskSession(
+  sessionId: string,
+): Promise<{ error?: string }> {
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth;
+  const { error } = await createServiceRoleClient()
+    .from("kiosk_sessions")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("id", sessionId);
+  return error ? { error: error.message } : {};
+}
+
+export async function loginKiosk(
+  name: string,
+  password: string,
+): Promise<{ error?: string }> {
+  const trimmedName = name.trim();
+  if (!trimmedName) return { error: "Enter a kiosk name." };
+
+  const admin = createServiceRoleClient();
+  const { data: settings } = await admin
+    .from("app_settings")
+    .select("kiosk_password_hash")
+    .eq("id", true)
+    .single();
+  if (
+    !settings?.kiosk_password_hash ||
+    !verifyKioskPassword(password, settings.kiosk_password_hash)
+  ) {
+    return { error: "That password is not correct." };
+  }
+
+  const token = crypto.randomBytes(32).toString("hex");
+  const { error } = await admin.from("kiosk_sessions").insert({
+    name: trimmedName.slice(0, 80),
+    token_hash: hashToken(token),
+  });
+  if (error)
+    return { error: "Unable to start kiosk access. Please try again." };
+
+  cookies().set(KIOSK_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/desk",
+    maxAge: 60 * 60 * 24 * 365,
+  });
   return {};
 }
