@@ -1,6 +1,4 @@
 import type { PushEventType, PushMessage } from "./events";
-import { createWhatsAppActionToken } from "./whatsapp-action";
-import { renderMessageTemplate } from "@/lib/message-template-format";
 
 // What push_event_context() (migration 0072) returns for an event.
 export type PushContext = {
@@ -19,6 +17,7 @@ export type PushContext = {
   registration_type?: "new" | "renewal" | "special";
   parent_name?: string;
   customer_phone?: string;
+  date_of_birth?: string;
   checkout_message_template?: string;
   plan_name?: string;
   receipt_number?: string;
@@ -87,37 +86,31 @@ export function buildMessage(
             : "No staff punched in",
         );
       }
+      const messageUrl = role === "admin" && ctx.session_id
+        ? `/admin?tab=home&message_session=${encodeURIComponent(ctx.session_id)}`
+        : null;
       return {
         title: showName ? `${ctx.child_name} checked in` : "New check-in",
         body: parts.join(" · "),
-        url: floorUrl(role),
+        url: messageUrl ?? floorUrl(role),
         tag: "child_checkin",
         group: { plural: "new check-ins" },
+        ...(messageUrl ? { actions: [{ action: "message", title: "Message" }], actionUrls: { message: messageUrl } } : {}),
       };
     }
 
     case "child_checkout": {
-      const childLabel = showName ? ctx.child_name : "your child";
-      const defaultMessage = renderMessageTemplate(
-        ctx.checkout_message_template ?? "Hi {{parent_name}}! This is {{business_name}} — {{child_name}} has finished today's visit. Let us know if you need anything.",
-        {
-          parent_name: ctx.parent_name || "there",
-          business_name: "QureoCity",
-          child_name: childLabel,
-          checkout_time: clock(ctx.ended_at) || "just now",
-        },
-      );
-      const actionToken = role === "admin" && ctx.customer_phone
-        ? createWhatsAppActionToken(ctx.customer_phone, defaultMessage)
+      const messageUrl = role === "admin" && ctx.session_id
+        ? `/admin?tab=home&message_session=${encodeURIComponent(ctx.session_id)}`
         : null;
       return {
         title: showName ? `${ctx.child_name} checked out` : "Child checked out",
         body: ctx.ended_at ? `At ${clock(ctx.ended_at)}` : "Just now",
-        url: floorUrl(role),
+        url: messageUrl ?? floorUrl(role),
         tag: `child_checkout:${ctx.session_id ?? "x"}`,
-        ...(actionToken ? {
-          actions: [{ action: "whatsapp", title: "Message" }],
-          actionUrls: { whatsapp: `/api/push/whatsapp?action=${actionToken}` },
+        ...(messageUrl ? {
+          actions: [{ action: "message", title: "Message" }],
+          actionUrls: { message: messageUrl },
         } : {}),
       };
     }
@@ -125,6 +118,9 @@ export function buildMessage(
     case "session_ending": {
       const left = ctx.minutes_left;
       const leftText = left == null ? "Ending soon" : `${left} min left`;
+      const messageUrl = role === "admin" && ctx.session_id
+        ? `/admin?tab=home&message_session=${encodeURIComponent(ctx.session_id)}`
+        : null;
       return {
         title: showName
           ? `${ctx.child_name}'s time is almost up`
@@ -132,13 +128,17 @@ export function buildMessage(
         body: ctx.end_time
           ? `${leftText} · ends ${clock(ctx.end_time)}`
           : leftText,
-        url: floorUrl(role),
+        url: messageUrl ?? floorUrl(role),
         tag: `session_ending:${ctx.session_id ?? "x"}`,
+        ...(messageUrl ? { actions: [{ action: "message", title: "Message" }], actionUrls: { message: messageUrl } } : {}),
       };
     }
 
     case "session_overdue": {
       const mins = ctx.minutes_overdue ?? 0;
+      const messageUrl = role === "admin" && ctx.session_id
+        ? `/admin?tab=home&message_session=${encodeURIComponent(ctx.session_id)}`
+        : null;
       return {
         title: showName
           ? `${ctx.child_name} hasn't been checked out`
@@ -146,8 +146,18 @@ export function buildMessage(
         body: `${mins} min past their session end — ${
           ctx.end_time ? `ended ${clock(ctx.end_time)}` : "time's up"
         }`,
-        url: floorUrl(role),
+        url: messageUrl ?? floorUrl(role),
         tag: `session_overdue:${ctx.session_id ?? "x"}`,
+        ...(messageUrl ? {
+          actions: [
+            { action: "message", title: "Message" },
+            { action: "notify_staff", title: "Notify staff" },
+          ],
+          actionUrls: {
+            message: messageUrl,
+            notify_staff: `/admin?tab=home&notify_session=${encodeURIComponent(ctx.session_id ?? "")}`,
+          },
+        } : {}),
       };
     }
 
@@ -161,6 +171,10 @@ export function buildMessage(
             : "/employee?tab=home",
         tag: "staff_punch_in",
         group: { plural: "staff punch-ins" },
+        ...(role === "admin" && ctx.employee_id ? {
+          actions: [{ action: "notify", title: "Notify" }],
+          actionUrls: { notify: `/admin?tab=staff&staff=${encodeURIComponent(ctx.employee_id)}&notify=1` },
+        } : {}),
       };
 
     case "staff_punch_out": {
@@ -178,6 +192,10 @@ export function buildMessage(
             : "/employee?tab=home",
         tag: "staff_punch_out",
         group: { plural: "staff punch-outs" },
+        ...(role === "admin" && ctx.employee_id ? {
+          actions: [{ action: "notify", title: "Notify" }],
+          actionUrls: { notify: `/admin?tab=staff&staff=${encodeURIComponent(ctx.employee_id)}&notify=1` },
+        } : {}),
       };
     }
 

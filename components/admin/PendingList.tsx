@@ -137,6 +137,7 @@ export default function PendingList({
   const responseValues = responseRegistration ? {
     parent_name: responseRegistration.parent_name,
     child_name: responseRegistration.child_name,
+    date_of_birth: responseRegistration.date_of_birth,
     plan_name: responseRegistration.plan_name ?? (responseIsSpecial ? "the event" : "membership"),
     request_type: responseLabel,
     event_date: responseRegistration.special_event_date ?? responseRegistration.plan_event_date ?? "",

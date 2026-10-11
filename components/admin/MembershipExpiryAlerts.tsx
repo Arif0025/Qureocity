@@ -17,6 +17,7 @@ type ExpiryRow = {
   plan_name: string;
   expires_on: string;
   days_remaining: number;
+  date_of_birth: string;
 };
 
 const PAGE_SIZE = 30;
@@ -101,7 +102,7 @@ export default function MembershipExpiryAlerts({ embedded = false }: { embedded?
               <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${status === "expired" ? "bg-brand-coral/10 text-brand-coral" : "bg-brand-sun/10 text-brand-sun"}`}><CalendarClock size={15} /></span>
               <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="truncate text-sm font-semibold text-brand-nightText">{row.child_name}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${status === "expired" ? "bg-brand-coral/10 text-brand-coral" : "bg-brand-sun/10 text-brand-sun"}`}>{status === "expired" ? "Expired" : row.days_remaining === 0 ? "Expires today" : `${row.days_remaining}d left`}</span></div><p className="mt-0.5 truncate text-xs text-brand-nightText/50">{row.plan_name} · ends {dateText}</p><p className="mt-0.5 truncate text-xs text-brand-nightText/40">{row.parent_name}{phone ? ` · ${phone}` : " · No phone number"}</p></div>
               {phone && <div className="flex shrink-0 items-center gap-1.5"><a href={`tel:${phone}`} aria-label={`Call ${row.parent_name}`} className="grid h-9 w-9 place-items-center rounded-lg border border-brand-sky/25 text-brand-skyLight hover:bg-brand-sky/10"><Phone size={15} /></a><button type="button" onClick={() => setMessageTo(row)} aria-label={`Message ${row.parent_name}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-brand-sky px-3 text-xs font-semibold text-brand-ink hover:brightness-105"><MessageCircle size={14} />Message</button></div>}
-              {messageTo?.child_id === row.child_id && <ContactMessageSheet open onClose={() => setMessageTo(null)} title={`Membership reminder for ${row.child_name}`} phone={phone ?? ""} initialMessage={message} templateKey="membership_expiry" templateValues={{ parent_name: row.parent_name, child_name: row.child_name, expiry_date: dateText, business_name: "QureoCity" }} canManageTemplates />}
+              {messageTo?.child_id === row.child_id && <ContactMessageSheet open onClose={() => setMessageTo(null)} title={`Membership reminder for ${row.child_name}`} phone={phone ?? ""} initialMessage={message} templateKey="membership_expiry" templateValues={{ parent_name: row.parent_name, child_name: row.child_name, date_of_birth: row.date_of_birth, expiry_date: dateText, business_name: "QureoCity" }} canManageTemplates />}
             </article>;
           })}</div>}
         {hasMore && <button type="button" disabled={loading} onClick={() => void loadPage(status, rows.length)} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/10 text-sm font-semibold text-brand-nightText/70 transition-colors hover:bg-white/[0.04] disabled:opacity-50">{loading && <LoaderCircle size={14} className="animate-spin" />}Load more</button>}

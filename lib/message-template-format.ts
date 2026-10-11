@@ -4,6 +4,7 @@ export const MESSAGE_TEMPLATE_VARIABLES: Record<string, { key: string; label: st
   customer_contact: [
     { key: "parent_name", label: "Parent name" },
     { key: "child_name", label: "Child name" },
+    { key: "date_of_birth", label: "Child date of birth" },
     { key: "business_name", label: "Business name" },
   ],
   membership_expiry: [
@@ -70,6 +71,23 @@ export const MESSAGE_TEMPLATE_EVENTS = [
 
 export type MessageTemplateEvent = (typeof MESSAGE_TEMPLATE_EVENTS)[number]["key"];
 
+const DOB_TEMPLATE_EVENTS = new Set([
+  "customer_contact", "membership_expiry", "membership_approved", "membership_declined",
+  "special_day_approved", "special_day_declined", "birthday_outreach", "child_checkout_push",
+]);
+
+export function messageTemplateVariablesFor(eventKey: string) {
+  const variables = MESSAGE_TEMPLATE_VARIABLES[eventKey] ?? [];
+  const result = [...variables];
+  if (DOB_TEMPLATE_EVENTS.has(eventKey) && !result.some((item) => item.key === "date_of_birth")) {
+    result.push({ key: "date_of_birth", label: "Child date of birth" });
+  }
+  if (!result.some((item) => item.key === "birthday_date")) {
+    result.push({ key: "birthday_date", label: "Birthday date (from date of birth)" });
+  }
+  return result;
+}
+
 export type SavedMessageTemplate = {
   id: string;
   event_key: MessageTemplateEvent;
@@ -85,11 +103,23 @@ export function templateTokens(body: string): string[] {
 
 export function unsupportedTemplateTokens(eventKey: string, body: string): string[] {
   const allowed = new Set((MESSAGE_TEMPLATE_VARIABLES[eventKey] ?? []).map((item) => item.key));
+  if (DOB_TEMPLATE_EVENTS.has(eventKey)) allowed.add("date_of_birth");
+  // The editor can derive this for any child with a saved DOB.
+  allowed.add("birthday_date");
   return templateTokens(body).filter((token) => !allowed.has(token));
 }
 
 export function missingTemplateValues(body: string, values: MessageTemplateValues): string[] {
   return templateTokens(body).filter((token) => values[token] == null || String(values[token]).trim() === "");
+}
+
+export function birthdayTextFromDob(value: string | number | null | undefined): string | undefined {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const [, , month, day] = value.match(/^(\d{4})-(\d{2})-(\d{2})$/) ?? [];
+  if (!month || !day) return undefined;
+  const date = new Date(2000, Number(month) - 1, Number(day));
+  if (date.getMonth() !== Number(month) - 1 || date.getDate() !== Number(day)) return undefined;
+  return date.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
 export function renderMessageTemplate(body: string, values: MessageTemplateValues): string {

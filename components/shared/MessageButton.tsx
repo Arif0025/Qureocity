@@ -7,11 +7,12 @@ import { tapScale } from "@/lib/motion";
 import ContactMessageSheet from "@/components/shared/ContactMessageSheet";
 
 export default function MessageButton({
-  phone, parentName, childName, showLabel = false, className = "", canManageTemplates = false,
+  phone, parentName, childName, dateOfBirth, showLabel = false, className = "", canManageTemplates = false,
 }: {
   phone: string;
   parentName: string;
   childName?: string;
+  dateOfBirth?: string;
   showLabel?: boolean;
   className?: string;
   canManageTemplates?: boolean;
@@ -23,7 +24,7 @@ export default function MessageButton({
     </motion.button>
     {open && <ContactMessageSheet open onClose={() => setOpen(false)} title={`Message ${parentName}`} phone={phone}
       initialMessage="Hi {{parent_name}}! This is {{business_name}}. How can we help you today?" templateKey="customer_contact"
-      templateValues={{ parent_name: parentName || "there", child_name: childName || "your child", business_name: "QureoCity" }}
+      templateValues={{ parent_name: parentName || "there", child_name: childName || "your child", date_of_birth: dateOfBirth, business_name: "QureoCity" }}
       canManageTemplates={canManageTemplates} />}
   </>;
 }

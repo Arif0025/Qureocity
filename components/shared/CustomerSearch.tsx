@@ -842,7 +842,7 @@ export default function CustomerSearch({
                                 showNumber
                                 showCallButton
                               />
-                              <MessageButton phone={r.phone} parentName={r.parent_name} childName={child.name} canManageTemplates={isAdmin} />
+                              <MessageButton phone={r.phone} parentName={r.parent_name} childName={child.name} dateOfBirth={childDetails?.date_of_birth ?? child.date_of_birth} canManageTemplates={isAdmin} />
                             </div>
                           )}
                           {isAdmin &&

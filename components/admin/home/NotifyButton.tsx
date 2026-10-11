@@ -23,11 +23,13 @@ type View = "menu" | "overtime" | "custom";
 export default function NotifyButton({
   employeeId,
   employeeName,
+  initialOpen = false,
 }: {
   employeeId: string;
   employeeName: string;
+  initialOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const [view, setView] = useState<View>("menu");
   const [overdue, setOverdue] = useState<OverdueChild[] | null>(null);
   const [customText, setCustomText] = useState("");

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
@@ -26,6 +26,8 @@ import AdminDataExport from "./AdminDataExport";
 import ThemeToggle from "@/components/shared/ThemeToggle";
 import { useInAppBackStack } from "@/lib/hooks/useInAppBackStack";
 import { expandCollapse } from "@/lib/motion";
+import ContactMessageSheet from "@/components/shared/ContactMessageSheet";
+import PushOvertimeNotifySheet from "./PushOvertimeNotifySheet";
 
 function SettingsDisclosure({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   const [opened, setOpened] = useState(false);
@@ -132,6 +134,7 @@ function AdminDashboardV2Inner({
     searchParams.get("pt") === "special" ? "special" : "recurring";
   const plansFocusId = searchParams.get("plan");
   const staffFocusEmployeeId = searchParams.get("staff");
+  const staffNotifyEmployeeId = searchParams.get("notify") === "1" ? staffFocusEmployeeId : null;
   const directoryNewOnly = searchParams.get("new") === "1";
   const directoryExpiringOnly = searchParams.get("expiring") === "1";
   const directoryPlanId = searchParams.get("filterplan") ?? undefined;
@@ -166,6 +169,33 @@ function AdminDashboardV2Inner({
   const setTab = (id: AdminTabId) => navigate(id);
 
   const [supabase] = useState(() => createClient());
+  const messageSessionId = searchParams.get("message_session");
+  const overtimeNotifySessionId = searchParams.get("notify_session");
+  const processedMessageSession = useRef<string | null>(null);
+  const [pushMessageCustomer, setPushMessageCustomer] = useState<{
+    phone: string; parent_name: string; child_name: string; date_of_birth: string;
+  } | null>(null);
+  const [pushMessageError, setPushMessageError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isAdmin || !messageSessionId || processedMessageSession.current === messageSessionId) return;
+    processedMessageSession.current = messageSessionId;
+    let active = true;
+    void supabase.rpc("admin_session_message_context", { p_session_id: messageSessionId }).then(({ data, error }) => {
+      if (!active) return;
+      const row = data as { phone?: string; parent_name?: string; child_name?: string; date_of_birth?: string } | null;
+      if (error || !row?.phone) {
+        setPushMessageError(error?.message ?? "Customer contact details are unavailable.");
+        return;
+      }
+      setPushMessageCustomer({
+        phone: row.phone,
+        parent_name: row.parent_name ?? "there",
+        child_name: row.child_name ?? "your child",
+        date_of_birth: row.date_of_birth ?? "",
+      });
+    });
+    return () => { active = false; };
+  }, [isAdmin, messageSessionId, supabase]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -266,6 +296,26 @@ function AdminDashboardV2Inner({
       )}
 
       <main className="flex-1 min-w-0 px-5 md:px-10 py-6 md:py-10 pb-24 md:pb-10">
+        {isAdmin && overtimeNotifySessionId && <PushOvertimeNotifySheet
+          sessionId={overtimeNotifySessionId}
+          staff={staff.map(({ id, name }) => ({ id, name }))}
+          onClose={() => {
+            const params = new URLSearchParams(window.location.search);
+            params.delete("notify_session");
+            window.history.replaceState(null, "", `${pathname}?${params.toString()}`);
+          }}
+        />}
+        {pushMessageCustomer && <ContactMessageSheet
+          open
+          onClose={() => setPushMessageCustomer(null)}
+          title={`Message ${pushMessageCustomer.parent_name}`}
+          phone={pushMessageCustomer.phone}
+          initialMessage="Hi {{parent_name}}! This is {{business_name}}. I’m reaching out about {{child_name}}’s visit. How can we help?"
+          templateKey="customer_contact"
+          templateValues={{ ...pushMessageCustomer, business_name: "QureoCity" }}
+          canManageTemplates
+        />}
+        {pushMessageError && <div role="alert" className="fixed inset-x-4 top-4 z-[80] mx-auto max-w-lg rounded-xl border border-brand-coral/30 bg-brand-nightSurface p-4 text-sm text-brand-coral shadow-xl">{pushMessageError}<button type="button" className="ml-3 underline" onClick={() => setPushMessageError(null)}>Dismiss</button></div>}
         <div className="max-w-6xl mx-auto">
           <PageTransition pageKey={tab}>
             {tab === "home" && (
@@ -360,6 +410,7 @@ function AdminDashboardV2Inner({
                   initialShiftsLoaded={shiftsLoaded}
                   isAdmin={isAdmin}
                   activeEmployeeId={staffFocusEmployeeId}
+                  notifyEmployeeId={staffNotifyEmployeeId}
                 />
               </>
             )}

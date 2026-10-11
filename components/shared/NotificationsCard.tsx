@@ -133,18 +133,6 @@ export default function NotificationsCard() {
         setBusy(false);
         return;
       }
-      // First time on: start with everything open to this person switched
-      // on (they can untick what they don't want right below).
-      if (available.length > 0 && !available.some((e) => e.enabled)) {
-        await Promise.all(
-          available.map((e) =>
-            supabase.rpc("push_set_preference", {
-              p_event: e.event_type,
-              p_enabled: true,
-            }),
-          ),
-        );
-      }
       const tested = await sendTestNotification(result.endpoint);
       setMessage(
         tested
@@ -152,8 +140,12 @@ export default function NotificationsCard() {
           : "Notifications are on for this device, but the test message didn't go through.",
       );
     } else {
-      await disableThisDevice();
-      setMessage("Notifications are off for this device.");
+      try {
+        await disableThisDevice();
+        setMessage("Notifications are off for this device.");
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Could not turn notifications off for this device.");
+      }
     }
 
     await load();

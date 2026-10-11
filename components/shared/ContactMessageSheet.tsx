@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageCircle, MessageSquareText, Save } from "lucide-react";
 import BottomSheet from "@/components/ui/BottomSheet";
 import AnimatedSelect from "@/components/ui/AnimatedSelect";
 import { waMeLink } from "@/lib/whatsapp";
 import { invalidateMessageTemplateCache, loadAllMessageTemplates } from "@/lib/message-template-client";
-import { MESSAGE_TEMPLATE_EVENTS, missingTemplateValues, renderMessageTemplate, unsupportedTemplateTokens, type MessageTemplateEvent, type MessageTemplateValues, type SavedMessageTemplate } from "@/lib/message-template-format";
+import { birthdayTextFromDob, MESSAGE_TEMPLATE_EVENTS, missingTemplateValues, renderMessageTemplate, templateTokens, unsupportedTemplateTokens, type MessageTemplateEvent, type MessageTemplateValues, type SavedMessageTemplate } from "@/lib/message-template-format";
 import { createClient } from "@/lib/supabase/client";
 
 export default function ContactMessageSheet({
@@ -33,6 +33,8 @@ export default function ContactMessageSheet({
   const [saveName, setSaveName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [lookedUpDob, setLookedUpDob] = useState<string | null>(null);
+  const dobLookups = useRef(new Set<string>());
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
@@ -55,8 +57,28 @@ export default function ContactMessageSheet({
     return () => { active = false; };
   }, [open, initialMessage, askBeforeSend, templateKey, preferredTemplateName]);
 
-  const rendered = renderMessageTemplate(message, templateValues);
-  const missing = missingTemplateValues(message, templateValues);
+  useEffect(() => {
+    const childName = String(templateValues.child_name ?? "").trim();
+    const needsDob = templateTokens(message).some((token) => token === "birthday_date" || token === "date_of_birth");
+    if (!open || !needsDob || templateValues.date_of_birth || lookedUpDob || !phone || !childName) return;
+    const key = phone + ":" + childName.toLowerCase();
+    if (dobLookups.current.has(key)) return;
+    dobLookups.current.add(key);
+    let active = true;
+    void supabase.rpc("staff_child_dob_for_contact", { p_phone: phone, p_child_name: childName }).then(({ data }) => {
+      if (!active || typeof data !== "string") return;
+      setLookedUpDob(data);
+    });
+    return () => { active = false; };
+  }, [lookedUpDob, message, open, phone, supabase, templateValues.child_name, templateValues.date_of_birth]);
+
+  const resolvedTemplateValues = {
+    ...templateValues,
+    date_of_birth: templateValues.date_of_birth || lookedUpDob,
+    birthday_date: templateValues.birthday_date || birthdayTextFromDob(templateValues.date_of_birth || lookedUpDob),
+  };
+  const rendered = renderMessageTemplate(message, resolvedTemplateValues);
+  const missing = missingTemplateValues(message, resolvedTemplateValues);
   const activeTemplateKey = selectedId ? templates.find((item) => item.id === selectedId)?.event_key ?? templateKey : templateKey;
   const supported = activeTemplateKey ? unsupportedTemplateTokens(activeTemplateKey, message) : [];
   const eventLabel = MESSAGE_TEMPLATE_EVENTS.find((item) => item.key === templateKey)?.label;

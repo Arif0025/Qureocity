@@ -17,6 +17,7 @@ import EmployeeCalendar from "./EmployeeCalendar";
 import ShiftEditor from "./ShiftEditor";
 import AddEmployeeModal from "../AddEmployeeModal";
 import { Clock3 } from "lucide-react";
+import NotifyButton from "../home/NotifyButton";
 import { expandCollapse } from "@/lib/motion";
 
 type Staff = { id: string; name: string; role: string };
@@ -117,12 +118,14 @@ export default function StaffRoster({
   initialShiftsLoaded,
   isAdmin,
   activeEmployeeId,
+  notifyEmployeeId,
 }: {
   staff: Staff[];
   initialShifts: Shift[];
   initialShiftsLoaded: boolean;
   isAdmin: boolean;
   activeEmployeeId?: string | null;
+  notifyEmployeeId?: string | null;
 }) {
   const [supabase] = useState(() => createClient());
   const [staffList, setStaffList] = useState(staff ?? []);
@@ -684,6 +687,7 @@ export default function StaffRoster({
                     </div>
                   </div>
                 )}
+                {isAdmin && <div className="flex justify-end"><NotifyButton employeeId={s.id} employeeName={s.name} initialOpen={notifyEmployeeId === s.id} /></div>}
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   <div className="rounded-xl border border-white/10 bg-brand-nightSurface2/60 px-3 py-3">
                     <p className="text-[11px] text-brand-nightText/40">

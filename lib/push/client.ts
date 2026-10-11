@@ -2,6 +2,9 @@
 
 import { createClient } from "@/lib/supabase/client";
 
+const PUSH_USER_DISABLED_KEY = "qureocity-push-disabled";
+const PUSH_USER_ENABLED_KEY = "qureocity-push-enabled";
+
 // Browser-side helpers for turning push notifications on/off for THIS
 // device. Everything that needs a user gesture (the permission prompt)
 // is called from a button click in NotificationsCard.
@@ -141,6 +144,10 @@ export async function enableThisDevice(): Promise<
       await sub.unsubscribe();
       return { ok: false, reason: "error", message: error.message };
     }
+    try {
+      localStorage.removeItem(PUSH_USER_DISABLED_KEY);
+      localStorage.setItem(PUSH_USER_ENABLED_KEY, "1");
+    } catch { /* storage can be unavailable */ }
     return { ok: true, endpoint: sub.endpoint };
   } catch (err) {
     return {
@@ -153,12 +160,17 @@ export async function enableThisDevice(): Promise<
 }
 
 export async function disableThisDevice(): Promise<void> {
+  try {
+    localStorage.setItem(PUSH_USER_DISABLED_KEY, "1");
+    localStorage.removeItem(PUSH_USER_ENABLED_KEY);
+  } catch { /* still remove server/browser subscription */ }
   const sub = await getCurrentSubscription();
   if (!sub) return;
   const endpoint = sub.endpoint;
   const supabase = createClient();
-  await supabase.rpc("push_remove_subscription", { p_endpoint: endpoint });
+  const { error } = await supabase.rpc("push_remove_subscription", { p_endpoint: endpoint });
   await sub.unsubscribe();
+  if (error) throw error;
 }
 
 export async function sendTestNotification(endpoint: string): Promise<boolean> {
@@ -185,6 +197,9 @@ export async function sendTestNotification(endpoint: string): Promise<boolean> {
 // server's copy (last_seen_at, keys) current either way.
 export async function refreshSubscriptionIfNeeded(): Promise<void> {
   if (getPushSupport() !== "ready" || getPermission() !== "granted") return;
+  try {
+    if (localStorage.getItem(PUSH_USER_DISABLED_KEY) === "1" || localStorage.getItem(PUSH_USER_ENABLED_KEY) !== "1") return;
+  } catch { /* continue repairing where storage is unavailable */ }
 
   try {
     const reg = await navigator.serviceWorker.register("/sw.js", {

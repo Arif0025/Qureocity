@@ -69,6 +69,7 @@ async function handlePush(data) {
       url: data.url || "/employee",
       count: count,
       actionUrls: data.actionUrls || {},
+      actions: Array.isArray(data.actions) ? data.actions.slice(0, 2) : [],
     },
   };
   // Persistent actions are supported by many desktop/Android browsers.
@@ -95,23 +96,38 @@ self.addEventListener("notificationclick", function (event) {
 });
 
 async function openTarget(url) {
+  var targetUrl = new URL(url, self.location.origin).href;
   var clientList = await self.clients.matchAll({
     type: "window",
     includeUncontrolled: true,
   });
+  clientList = clientList.filter(function (client) {
+    return new URL(client.url).origin === self.location.origin;
+  });
+  // Prefer a visible/focused app tab if there are several open.
+  clientList.sort(function (a, b) {
+    return Number(b.visibilityState === "visible" && b.focused) - Number(a.visibilityState === "visible" && a.focused);
+  });
   for (var i = 0; i < clientList.length; i++) {
     var client = clientList[i];
-    if (new URL(client.url).origin === self.location.origin) {
-      try {
-        await client.focus();
-        if ("navigate" in client) {
-          await client.navigate(url);
+    try {
+      if ("navigate" in client) {
+        var navigatedClient = await client.navigate(targetUrl);
+        if (navigatedClient) {
+          await navigatedClient.focus();
+          return;
         }
-        return;
-      } catch (e) {
-        // fall through to opening a fresh window
       }
+    } catch (e) {
+      // Older browsers may not support WindowClient.navigate reliably.
+    }
+    try {
+      await client.focus();
+      client.postMessage({ type: "navigate-to", url: targetUrl });
+      return;
+    } catch (e) {
+      // Try another already-open app tab before creating a new one.
     }
   }
-  await self.clients.openWindow(url);
+  await self.clients.openWindow(targetUrl);
 }
