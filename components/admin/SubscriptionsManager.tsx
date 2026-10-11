@@ -107,8 +107,8 @@ export default function SubscriptionsManager({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
-  const successTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearSuccess = () => {
     if (successTimerRef.current) clearTimeout(successTimerRef.current);
@@ -246,7 +246,9 @@ export default function SubscriptionsManager({
   };
 
   const todayStr = todayISTDateString();
-  const sevenDaysOutStr = new Date(Date.now() + 7 * 86_400_000)
+  const sevenDaysOutStr = new Date(
+    Date.parse(`${todayStr}T00:00:00+05:30`) + 7 * 86_400_000,
+  )
     .toISOString()
     .slice(0, 10);
   const monthStartStr = `${todayStr.slice(0, 7)}-01`;
@@ -418,7 +420,7 @@ export default function SubscriptionsManager({
               type="date"
               value={purchaseDate}
               onChange={(e) => setPurchaseDate(e.target.value)}
-              className="w-full min-h-[44px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText px-3 mb-4 [color-scheme:dark]"
+              className="w-full min-h-[44px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText px-3 mb-4"
             />
 
             <label className="block text-xs font-medium text-brand-nightText/50 mb-2">

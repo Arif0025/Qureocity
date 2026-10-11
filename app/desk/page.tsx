@@ -7,7 +7,7 @@ export default async function DeskPage() {
   const kioskSession = await getKioskSession();
   if (!kioskSession) return <KioskLogin />;
 
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const { data } = await supabase
     .from("app_settings")
     .select("qr_mode")

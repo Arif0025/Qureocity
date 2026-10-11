@@ -1,4 +1,6 @@
 import type { PushEventType, PushMessage } from "./events";
+import { createWhatsAppActionToken } from "./whatsapp-action";
+import { renderMessageTemplate } from "@/lib/message-template-format";
 
 // What push_event_context() (migration 0072) returns for an event.
 export type PushContext = {
@@ -13,6 +15,16 @@ export type PushContext = {
   staff_on_site?: string[];
   employee_id?: string;
   employee_name?: string;
+  registration_id?: string;
+  registration_type?: "new" | "renewal" | "special";
+  parent_name?: string;
+  customer_phone?: string;
+  checkout_message_template?: string;
+  plan_name?: string;
+  receipt_number?: string;
+  event_date?: string | null;
+  booking_id?: string;
+  starts_at?: string;
   punch_in?: string;
   punch_out?: string | null;
   auto?: boolean;
@@ -84,14 +96,31 @@ export function buildMessage(
       };
     }
 
-    case "child_checkout":
+    case "child_checkout": {
+      const childLabel = showName ? ctx.child_name : "your child";
+      const defaultMessage = renderMessageTemplate(
+        ctx.checkout_message_template ?? "Hi {{parent_name}}! This is {{business_name}} — {{child_name}} has finished today's visit. Let us know if you need anything.",
+        {
+          parent_name: ctx.parent_name || "there",
+          business_name: "QureoCity",
+          child_name: childLabel,
+          checkout_time: clock(ctx.ended_at) || "just now",
+        },
+      );
+      const actionToken = role === "admin" && ctx.customer_phone
+        ? createWhatsAppActionToken(ctx.customer_phone, defaultMessage)
+        : null;
       return {
         title: showName ? `${ctx.child_name} checked out` : "Child checked out",
         body: ctx.ended_at ? `At ${clock(ctx.ended_at)}` : "Just now",
         url: floorUrl(role),
-        tag: "child_checkout",
-        group: { plural: "check-outs" },
+        tag: `child_checkout:${ctx.session_id ?? "x"}`,
+        ...(actionToken ? {
+          actions: [{ action: "whatsapp", title: "Message" }],
+          actionUrls: { whatsapp: `/api/push/whatsapp?action=${actionToken}` },
+        } : {}),
       };
+    }
 
     case "session_ending": {
       const left = ctx.minutes_left;
@@ -151,5 +180,25 @@ export function buildMessage(
         group: { plural: "staff punch-outs" },
       };
     }
+
+    case "new_registration": {
+      const type = ctx.registration_type === "renewal" ? "renewal" : ctx.registration_type === "special" ? "special-day" : "membership";
+      const parts = [type, ctx.plan_name, ctx.receipt_number].filter(Boolean);
+      if (ctx.event_date) parts.push(`Event ${ctx.event_date}`);
+      return {
+        title: showName ? `Registration: ${ctx.child_name}` : "New registration request",
+        body: parts.join(" · "),
+        url: "/admin?tab=notifications",
+        tag: `new_registration:${ctx.registration_id ?? "x"}`,
+      };
+    }
+
+    case "party_registration":
+      return {
+        title: showName ? `Party request: ${ctx.child_name}` : "New party booking request",
+        body: [ctx.plan_name, ctx.starts_at ? clock(ctx.starts_at) : ""].filter(Boolean).join(" · "),
+        url: "/admin?tab=notifications",
+        tag: `party_registration:${ctx.booking_id ?? "x"}`,
+      };
   }
 }

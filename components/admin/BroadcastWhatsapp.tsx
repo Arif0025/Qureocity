@@ -4,6 +4,8 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Send, Image as ImageIcon, X, Check, ChevronRight } from "lucide-react";
 import PillSelect from "@/components/shared/PillSelect";
+import { loadMessageTemplates } from "@/lib/message-template-client";
+import { renderMessageTemplate, type SavedMessageTemplate } from "@/lib/message-template-format";
 
 type Candidate = {
   customer_id: string;
@@ -60,13 +62,8 @@ function fmtDate(d: string | null) {
   });
 }
 
-// {parent_name}, {child_name}, {expiry_date} are the only fields wired
-// up on purpose — kept to non-sensitive fields, per what was agreed.
 function fillTemplate(template: string, c: Candidate): string {
-  return template
-    .replaceAll("{parent_name}", c.parent_name)
-    .replaceAll("{child_name}", c.child_name)
-    .replaceAll("{expiry_date}", fmtDate(c.subscription_expires_on));
+  return renderMessageTemplate(template, { parent_name: c.parent_name, child_name: c.child_name, expiry_date: fmtDate(c.subscription_expires_on), business_name: "QureoCity" });
 }
 
 function toE164(phone: string): string {
@@ -87,8 +84,10 @@ export default function BroadcastWhatsApp() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [planOptions, setPlanOptions] = useState<PlanOption[]>([]);
   const [template, setTemplate] = useState(
-    "Hi {parent_name}! Just a heads up that {child_name}'s membership at QureoCity expires on {expiry_date}. Renew anytime at the front desk to keep the fun going! 🎉",
+    "Hi {{parent_name}}! Just a heads up that {{child_name}}'s membership at {{business_name}} expires on {{expiry_date}}. Renew anytime at the front desk to keep the fun going! 🎉",
   );
+  const [savedFormats, setSavedFormats] = useState<SavedMessageTemplate[]>([]);
+  const [selectedFormatId, setSelectedFormatId] = useState("");
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -104,6 +103,11 @@ export default function BroadcastWhatsApp() {
         .order("name", { ascending: true });
       setPlanOptions((data as PlanOption[]) ?? []);
     })();
+    void loadMessageTemplates("membership_expiry").then((rows) => {
+      setSavedFormats(rows);
+      const preferred = rows.find((row) => row.is_default) ?? rows[0];
+      if (preferred) { setSelectedFormatId(preferred.id); setTemplate(preferred.body); }
+    }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -458,15 +462,16 @@ export default function BroadcastWhatsApp() {
 
       {/* Template */}
       <div className="bg-brand-nightSurface rounded-2xl border border-white/10 p-4 space-y-3">
-        <p className="text-sm font-semibold text-brand-nightText">Message</p>
+    <p className="text-sm font-semibold text-brand-nightText">Message</p>
+        {savedFormats.length > 0 && <label className="block space-y-1 text-xs text-brand-nightText/50">Saved format<select value={selectedFormatId} onChange={(event) => { setSelectedFormatId(event.target.value); setTemplate(savedFormats.find((row) => row.id === event.target.value)?.body ?? ""); }} className="min-h-9 w-full rounded-lg border border-white/10 bg-brand-nightSurface2 px-3 text-sm text-brand-nightText"><option value="">Custom</option>{savedFormats.map((row) => <option key={row.id} value={row.id}>{row.name}{row.is_default ? " · Default" : ""}</option>)}</select></label>}
         <textarea
           value={template}
-          onChange={(e) => setTemplate(e.target.value)}
+          onChange={(e) => { setTemplate(e.target.value); }}
           rows={4}
           className="w-full rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm p-3 resize-none"
         />
         <div className="flex flex-wrap gap-1.5">
-          {["{parent_name}", "{child_name}", "{expiry_date}"].map((tok) => (
+          {["{{parent_name}}", "{{child_name}}", "{{expiry_date}}", "{{business_name}}"].map((tok) => (
             <button
               key={tok}
               type="button"
@@ -487,7 +492,7 @@ export default function BroadcastWhatsApp() {
         <div>
           <label className="text-xs text-brand-nightText/50 block mb-1.5">
             Poster (optional — for reference; WhatsApp requires attaching it
-            manually once the chat opens, since links can't carry images)
+            manually once the chat opens, since links can&apos;t carry images)
           </label>
           {posterPreview ? (
             <div className="relative w-32">

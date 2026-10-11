@@ -14,11 +14,10 @@ export function startOfTodayIST(): Date {
   return new Date(istMidnightAsWallClock - IST_OFFSET_MS);
 }
 
-// The 'YYYY-MM-DD' equivalent of startOfTodayIST(), for comparing against
-// plain `date` columns (event_date, expires_on, etc). Safe to call from
-// both server code and "use client" components — it's pure UTC-offset
-// arithmetic, not dependent on the runtime's local timezone, so it can't
-// fall prey to the same UTC-rollover bug it exists to avoid.
+// The venue's current calendar date for comparing against plain `date`
+// columns (event_date, expires_on, etc). The UTC instant of IST midnight
+// belongs to the previous UTC date, so derive the date from the current
+// instant shifted into IST instead of slicing startOfTodayIST().
 //
 // Plain `new Date().toISOString().slice(0, 10)` looks equivalent but
 // isn't: toISOString() always reports the UTC calendar date, which is
@@ -26,5 +25,6 @@ export function startOfTodayIST(): Date {
 // Use this instead of that pattern anywhere "today" is compared against
 // an IST business date.
 export function todayISTDateString(): string {
-  return startOfTodayIST().toISOString().slice(0, 10);
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  return new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
 }

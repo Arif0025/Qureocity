@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronDown, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { PUSH_EVENT_META, type PushEventType } from "@/lib/push/events";
 
@@ -43,26 +43,30 @@ const timeFmt = new Intl.DateTimeFormat("en-IN", {
 // made recently, who it was for, which device, and whether it actually
 // went through. Read directly from push_send_log via 0075.
 export default function PushDeliveryLog() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<LogRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [limit, setLimit] = useState(10);
+  const [hasMore, setHasMore] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (nextLimit = 10) => {
     setLoading(true);
     const { data, error: rpcError } = await supabase.rpc(
       "admin_recent_push_sends",
-      { p_limit: 40 },
+      { p_limit: nextLimit },
     );
     if (rpcError) {
       setError(rpcError.message);
     } else {
       setError(null);
-      setRows(data as LogRow[]);
+      const result = (data as LogRow[]) ?? [];
+      setRows(result);
+      setHasMore(result.length === nextLimit);
+      setLimit(nextLimit);
     }
     setLoading(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
     load();
@@ -74,7 +78,7 @@ export default function PushDeliveryLog() {
         <p className="font-semibold text-brand-nightText">Recent sends</p>
         <button
           type="button"
-          onClick={load}
+          onClick={() => void load(limit)}
           disabled={loading}
           title="Refresh"
           aria-label="Refresh"
@@ -126,6 +130,9 @@ export default function PushDeliveryLog() {
           ))}
         </div>
       )}
+      {hasMore && <button type="button" disabled={loading} onClick={() => void load(limit + 10)} className="mt-3 inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-white/10 px-3 text-xs font-semibold text-brand-nightText/60 transition-colors hover:border-brand-sky/30 hover:text-brand-skyLight disabled:opacity-45">
+        Load 10 more <ChevronDown size={13} />
+      </button>}
     </div>
   );
 }

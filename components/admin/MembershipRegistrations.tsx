@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useId } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Check, X, MapPin, School, Heart } from "lucide-react";
 import PhoneLinks from "@/components/shared/PhoneLinks";
@@ -50,9 +50,8 @@ export default function MembershipRegistrations() {
   const [notice, setNotice] = useState<string | null>(null);
   // Per-instance channel name — a hardcoded shared name means the
   // second mount's .subscribe() silently fails (see usePendingCount.ts).
-  const channelName = useRef(
-    `membership_registrations_pending_${Math.random().toString(36).slice(2)}`,
-  );
+  const instanceId = useId().replaceAll(":", "");
+  const channelName = useRef(`membership_registrations_pending_${instanceId}`);
 
   const refetch = useCallback(async () => {
     const { data } = await supabase.rpc("list_pending_registrations");

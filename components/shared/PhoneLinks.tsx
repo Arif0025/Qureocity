@@ -8,11 +8,13 @@ export default function PhoneLinks({
   secondaryPhone,
   className = "",
   showNumber = false,
+  showCallButton = false,
 }: {
   phone: string;
   secondaryPhone?: string | null;
   className?: string;
   showNumber?: boolean;
+  showCallButton?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLSpanElement>(null);
@@ -37,6 +39,17 @@ export default function PhoneLinks({
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
+
+  if (showCallButton) {
+    return (
+      <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1" onClick={(event) => event.stopPropagation()}>
+        <a href={`tel:${phone}`} className={className || "inline-flex min-h-8 items-center gap-1 rounded-lg border border-brand-sky/25 bg-brand-sky/10 px-2.5 text-xs font-semibold text-brand-skyLight"} aria-label={`Call ${phone}`}>
+          <Phone size={12} /> Call
+        </a>
+        {showNumber && <span className="text-xs text-brand-nightText/55">{phone}{secondary ? ` · ${secondary}` : ""}</span>}
+      </span>
+    );
+  }
 
   if (!secondary) {
     return (

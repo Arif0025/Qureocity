@@ -22,7 +22,7 @@ export default function HomePage() {
         {/* The main event */}
         <Link
           href="/checkin"
-          className="inline-flex items-center gap-2 md:gap-3 min-h-[68px] md:min-h-[76px] w-full justify-center px-8 rounded-full bg-brand-sun text-brand-purpleDeep font-extrabold text-xl md:text-2xl shadow-lg shadow-brand-sun/30 hover:scale-105 active:scale-95 transition-transform animate-[wiggle_1.5s_ease-in-out_3]"
+          className="inline-flex items-center gap-2 md:gap-3 min-h-[68px] md:min-h-[76px] w-full justify-center px-8 rounded-full bg-[#FFD928] text-[#211D0D] font-extrabold text-xl md:text-2xl shadow-lg shadow-[#D7B315]/35 hover:bg-[#FFCE18] hover:scale-105 active:scale-95 transition-transform animate-[wiggle_1.5s_ease-in-out_3]"
         >
           Check In
         </Link>

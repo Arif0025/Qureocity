@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getClientKey } from "@/lib/clientKey";
 import { Check, ChevronLeft, Clock, Calendar, IndianRupee } from "lucide-react";
@@ -143,7 +143,9 @@ function labelClass() {
 }
 
 export default function RegistrationFlow() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
+  const lookupTimer = useRef<number | null>(null);
+  const lookupRequestId = useRef(0);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [plansError, setPlansError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY);
@@ -166,7 +168,7 @@ export default function RegistrationFlow() {
     (async () => {
       const { data, error: fetchError } = await supabase
         .from("membership_plans")
-        .select("*")
+        .select("id, name, description, plan_type, event_date, validity_value, validity_unit, hours_per_visit, max_visits, allowed_weekdays, price, min_age, max_age")
         .eq("active", true)
         .eq("plan_type", "recurring")
         .order("price", { ascending: true });
@@ -218,6 +220,7 @@ export default function RegistrationFlow() {
   const selectedPlan = plans.find((p) => p.id === form.plan_id) ?? null;
 
   const lookupPhone = async (digits: string) => {
+    const requestId = ++lookupRequestId.current;
     const clean = digits.replace(/\D/g, "").slice(0, 10);
     if (clean.length !== 10) {
       setPhoneLookup(null);
@@ -228,6 +231,8 @@ export default function RegistrationFlow() {
       p_phone: clean,
       p_client_key: getClientKey(),
     });
+
+    if (requestId !== lookupRequestId.current) return;
 
     if (lookupError) {
       setPhoneLookup("We couldn't verify this number right now.");
@@ -329,7 +334,7 @@ export default function RegistrationFlow() {
             Thanks, {form.parent_name.split(" ")[0]}!
           </h1>
           <p className="text-brand-ink/60 mb-4">
-            {form.child_name}'s registration is in — someone from our team will
+            {form.child_name}&apos;s registration is in — someone from our team will
             confirm it shortly.
           </p>
           <div className="bg-brand-cloud rounded-xl2 py-4 mb-2">
@@ -537,13 +542,15 @@ export default function RegistrationFlow() {
                     inputMode="numeric"
                     maxLength={10}
                     value={form.phone}
-                    onChange={async (e) => {
+                    onChange={(e) => {
                       const digits = e.target.value
                         .replace(/\D/g, "")
                         .slice(0, 10);
                       set("phone", digits);
+                      lookupRequestId.current += 1;
+                      if (lookupTimer.current !== null) window.clearTimeout(lookupTimer.current);
                       if (digits.length === 10) {
-                        void lookupPhone(digits);
+                        lookupTimer.current = window.setTimeout(() => void lookupPhone(digits), 300);
                       } else {
                         setPhoneLookup(null);
                       }
@@ -751,7 +758,7 @@ export default function RegistrationFlow() {
                     onChange={(e) => set("whatsapp_consent", e.target.checked)}
                     className="accent-brand-sky w-5 h-5 mt-0.5 shrink-0"
                   />
-                  I'd like to receive updates and promotions via WhatsApp.
+                  I&apos;d like to receive updates and promotions via WhatsApp.
                 </label>
 
                 {selectedPlan && (

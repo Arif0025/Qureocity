@@ -37,7 +37,7 @@ export default function SpecialDaysCard({
   useEffect(() => {
     (async () => {
       const today = todayISTDateString();
-      const [{ data: plans }, { data: members }] = await Promise.all([
+      const [{ data: plans }, { data: counts }] = await Promise.all([
         supabase
           .from("membership_plans")
           .select("id, name, code, event_date, event_dates, description")
@@ -45,12 +45,11 @@ export default function SpecialDaysCard({
           .eq("active", true)
           .order("event_date", { ascending: true })
           .limit(6),
-        supabase.rpc("admin_list_plan_members"),
+        supabase.rpc("admin_plan_member_counts"),
       ]);
-      const countByPlan: Record<string, number> = {};
-      for (const row of members ?? []) {
-        countByPlan[row.plan_id] = row.member_count ?? 0;
-      }
+      const countByPlan = new Map(
+        ((counts as { plan_id: string; member_count: number }[]) ?? []).map((row) => [row.plan_id, Number(row.member_count)]),
+      );
       setDays(
         (plans ?? [])
           .map((p: any) => ({
@@ -60,7 +59,7 @@ export default function SpecialDaysCard({
             event_date: p.event_date,
             event_dates: p.event_dates?.length ? p.event_dates : [p.event_date],
             description: p.description,
-            member_count: countByPlan[p.id] ?? 0,
+            member_count: countByPlan.get(p.id) ?? 0,
           }))
           .filter((plan) =>
             plan.event_dates.some((date: string) => date >= today),

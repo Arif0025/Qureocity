@@ -24,6 +24,7 @@ export default function PillSelect({
   placeholder = "All",
   className = "",
   triggerClassName,
+  onOpen,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -31,6 +32,7 @@ export default function PillSelect({
   placeholder?: string;
   className?: string;
   triggerClassName?: string;
+  onOpen?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -59,7 +61,10 @@ export default function PillSelect({
     <div ref={ref} className={`relative ${className}`}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (!open) onOpen?.();
+          setOpen((value) => !value);
+        }}
         className={
           triggerClassName ??
           "flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-full border border-white/15 bg-brand-nightSurface2 text-brand-nightText/70 hover:border-white/25 hover:text-brand-nightText transition-colors"

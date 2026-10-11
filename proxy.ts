@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // session — otherwise a logged-out user could never reach the login page.
 const PUBLIC_PATHS = ["/employee/login"];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request: { headers: request.headers } });
 
   const supabase = createServerClient(

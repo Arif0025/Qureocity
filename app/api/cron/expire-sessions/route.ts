@@ -10,7 +10,10 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 // Vercel's Hobby/Pro plans (cron is included, not a paid add-on).
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization");
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  const secret = process.env.CRON_SECRET;
+  // Fail closed when the secret is missing. Without this check the expected
+  // value would become the literal string "Bearer undefined".
+  if (!secret || auth !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

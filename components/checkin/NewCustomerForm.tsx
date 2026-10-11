@@ -85,7 +85,7 @@ export default function NewCustomerForm({
         First time here?
       </h1>
       <p className="text-brand-ink/60 mb-6 text-sm">
-        Let's get you set up — just takes a moment.
+        Let&apos;s get you set up — just takes a moment.
       </p>
 
       <label className="block text-sm font-medium text-brand-ink/60 mb-1">
@@ -141,7 +141,7 @@ export default function NewCustomerForm({
       <button
         onClick={handleSubmit}
         disabled={submitting}
-        className="w-full min-h-[56px] rounded-xl2 bg-brand-sun text-brand-purpleDeep font-bold text-lg disabled:opacity-50 hover:scale-[1.02] active:scale-95 transition-transform"
+        className="w-full min-h-[56px] rounded-xl2 bg-[#FFD928] text-[#211D0D] font-bold text-lg shadow-sm shadow-[#D7B315]/25 disabled:opacity-50 hover:bg-[#FFCE18] hover:scale-[1.02] active:scale-95 transition-transform"
       >
         {submitting ? "Setting up…" : "Continue"}
       </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Search,
   Heart,
@@ -9,34 +9,47 @@ import {
   LogOut,
   Pencil,
   Check,
+  Users,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { formatTimeIST } from "@/lib/formatTime";
+import { formatTimeIST, istDateParts } from "@/lib/formatTime";
 import { todayISTDateString } from "@/lib/istTime";
 import { getClientKey } from "@/lib/clientKey";
 import PillSelect from "./PillSelect";
 import ListRow from "./ListRow";
 import PhoneLinks from "./PhoneLinks";
+import MessageButton from "./MessageButton";
+import AddMembershipButton from "./AddMembershipButton";
 
 type ChildInfo = {
   id: string;
   name: string;
   date_of_birth?: string;
   age: number;
+  plan_id?: string | null;
+  special_plan_ids?: string[];
   subscription_active: boolean;
   subscription_started_on: string | null;
   subscription_expires_on: string | null;
   plan_name: string | null;
   max_visits?: number | null;
   visits_used?: number;
-  allergies: string | null;
-  medical_conditions: string | null;
-  special_instructions: string | null;
+  allergies?: string | null;
+  medical_conditions?: string | null;
+  special_instructions?: string | null;
   currently_checked_in: boolean;
   active_session_id: string | null;
 };
 
-function hasMedicalInfo(c: ChildInfo): boolean {
+type ChildDetails = {
+  date_of_birth: string;
+  address: string | null;
+  allergies: string | null;
+  medical_conditions: string | null;
+  special_instructions: string | null;
+};
+
+function hasMedicalInfo(c: ChildDetails | ChildInfo): boolean {
   return !!(c.allergies || c.medical_conditions || c.special_instructions);
 }
 
@@ -75,36 +88,76 @@ type VisitHistoryEntry = {
   actual_duration_mins: number | null;
 };
 
+const DIRECTORY_PAGE_SIZE = 30;
+
 export default function CustomerSearch({
   isAdmin = false,
   initialQuery = "",
+  initialPlanId = "",
+  showFilters = true,
   focusCustomerPhone,
+  focusChildId,
   filterNewThisMonth = false,
+  membersOnly = false,
+  filterExpiringSoon = false,
+  filterExpired = false,
+  browseAll = false,
 }: {
   isAdmin?: boolean;
   initialQuery?: string;
+  initialPlanId?: string;
+  showFilters?: boolean;
   focusCustomerPhone?: string | null;
+  focusChildId?: string | null;
   filterNewThisMonth?: boolean;
+  // Customers' "Active members" filter — restricts to customers with at least
+  // one child on an active, unexpired subscription.
+  membersOnly?: boolean;
+  // Deep-linked from Overview's "Expiring" card — a child's membership
+  // ends within 7 days (matches the window MonthlyStatsCard already
+  // uses for "expiring_next_7_days").
+  filterExpiringSoon?: boolean;
+  filterExpired?: boolean;
+  browseAll?: boolean;
 }) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<Result[]>([]);
-  const [loadingGlimpse, setLoadingGlimpse] = useState(true);
-  const [searching, setSearching] = useState(false);
+  const [loadingResults, setLoadingResults] = useState(
+    () => initialQuery.trim().length >= 2 || !!initialPlanId || filterNewThisMonth || filterExpiringSoon || filterExpired || membersOnly || browseAll,
+  );
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [newOnly, setNewOnly] = useState(filterNewThisMonth);
+  const [membershipFilter, setMembershipFilter] = useState<"active" | "expiring" | "expired" | null>(() =>
+    filterExpired ? "expired" : filterExpiringSoon ? "expiring" : membersOnly ? "active" : null,
+  );
+  const [hasBrowsed, setHasBrowsed] = useState(
+    () => initialQuery.trim().length >= 2 || !!initialPlanId || filterNewThisMonth || filterExpiringSoon || filterExpired || membersOnly || browseAll,
+  );
+  const [filtersDirty, setFiltersDirty] = useState(false);
   const [expandedChildId, setExpandedChildId] = useState<string | null>(null);
   const [historyByChild, setHistoryByChild] = useState<
     Record<string, VisitHistoryEntry[]>
   >({});
+  const [openHistory, setOpenHistory] = useState<Set<string>>(new Set());
   const [historyLoadingChild, setHistoryLoadingChild] = useState<string | null>(
     null,
   );
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const [detailsByChild, setDetailsByChild] = useState<Record<string, ChildDetails>>({});
+  const [detailsLoading, setDetailsLoading] = useState<Set<string>>(new Set());
+  const [detailsErrors, setDetailsErrors] = useState<Record<string, string>>({});
+  const detailsCacheRef = useRef(new Map<string, ChildDetails>());
+  const detailsRequestsRef = useRef(new Map<string, Promise<ChildDetails | null>>());
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
   const today = todayISTDateString();
-  const [planFilter, setPlanFilter] = useState("");
+  const [planFilter, setPlanFilter] = useState(initialPlanId);
   const [planOptions, setPlanOptions] = useState<
     { id: string; name: string; plan_type: "recurring" | "special" }[]
   >([]);
+  const planOptionsRequestedRef = useRef(false);
   const [onSiteFirst, setOnSiteFirst] = useState(false);
   const [checkinBusyId, setCheckinBusyId] = useState<string | null>(null);
   const [durationPickerFor, setDurationPickerFor] = useState<{
@@ -145,6 +198,49 @@ export default function CustomerSearch({
       ),
     );
   };
+
+  const loadChildDetails = useCallback(async (customerId: string, childId: string) => {
+    const cached = detailsCacheRef.current.get(childId);
+    if (cached) return cached;
+    const pending = detailsRequestsRef.current.get(childId);
+    if (pending) return pending;
+
+    setDetailsLoading((current) => new Set(current).add(childId));
+    setDetailsErrors((current) => {
+      const next = { ...current };
+      delete next[childId];
+      return next;
+    });
+    const request = (async () => {
+      try {
+        const { data, error } = await supabase.rpc("directory_child_details", {
+          p_customer_id: customerId,
+          p_child_id: childId,
+        });
+        if (error) throw error;
+        if (!data) throw new Error("Details are unavailable for this child.");
+        const details = data as ChildDetails;
+        detailsCacheRef.current.set(childId, details);
+        setDetailsByChild((current) => ({ ...current, [childId]: details }));
+        return details;
+      } catch (error) {
+        setDetailsErrors((current) => ({
+          ...current,
+          [childId]: error instanceof Error ? error.message : "Could not load details.",
+        }));
+        return null;
+      } finally {
+        detailsRequestsRef.current.delete(childId);
+        setDetailsLoading((current) => {
+          const next = new Set(current);
+          next.delete(childId);
+          return next;
+        });
+      }
+    })();
+    detailsRequestsRef.current.set(childId, request);
+    return request;
+  }, [supabase]);
 
   const handleCheckIn = async (
     customerId: string,
@@ -189,21 +285,8 @@ export default function CustomerSearch({
   };
 
   const beginEditDetails = async (customerId: string, child: ChildInfo) => {
-    const [{ data: customer }, { data: childData }] = await Promise.all([
-      supabase
-        .from("customers")
-        .select("address")
-        .eq("id", customerId)
-        .single(),
-      supabase
-        .from("children")
-        .select(
-          "date_of_birth, allergies, medical_conditions, special_instructions",
-        )
-        .eq("id", child.id)
-        .eq("customer_id", customerId)
-        .single(),
-    ]);
+    const childData = await loadChildDetails(customerId, child.id);
+    if (!childData) return;
     setEditingNames({
       customerId,
       childId: child.id,
@@ -211,11 +294,11 @@ export default function CustomerSearch({
         results.find((result) => result.customer_id === customerId)
           ?.parent_name ?? "",
       childName: child.name,
-      dateOfBirth: childData?.date_of_birth ?? "",
-      address: customer?.address ?? "",
-      allergies: childData?.allergies ?? "",
-      medicalConditions: childData?.medical_conditions ?? "",
-      specialInstructions: childData?.special_instructions ?? "",
+      dateOfBirth: childData.date_of_birth,
+      address: childData.address ?? "",
+      allergies: childData.allergies ?? "",
+      medicalConditions: childData.medical_conditions ?? "",
+      specialInstructions: childData.special_instructions ?? "",
     });
   };
 
@@ -267,6 +350,15 @@ export default function CustomerSearch({
             },
       ),
     );
+    const savedDetails: ChildDetails = {
+      date_of_birth: editingNames.dateOfBirth,
+      address: editingNames.address.trim() || null,
+      allergies: editingNames.allergies.trim() || null,
+      medical_conditions: editingNames.medicalConditions.trim() || null,
+      special_instructions: editingNames.specialInstructions.trim() || null,
+    };
+    detailsCacheRef.current.set(editingNames.childId, savedDetails);
+    setDetailsByChild((current) => ({ ...current, [editingNames.childId]: savedDetails }));
     setEditingNames(null);
   };
 
@@ -298,85 +390,97 @@ export default function CustomerSearch({
     setEditingNames(null);
   };
 
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase
-        .from("membership_plans")
-        .select("id, name, plan_type")
-        .order("plan_type", { ascending: true })
-        .order("name", { ascending: true });
-      setPlanOptions(data ?? []);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const loadPlanOptions = useCallback(async () => {
+    if (planOptionsRequestedRef.current) return;
+    planOptionsRequestedRef.current = true;
+    const { data, error } = await supabase
+      .from("membership_plans")
+      .select("id, name, plan_type")
+      .order("plan_type", { ascending: true })
+      .order("name", { ascending: true });
+    if (error) {
+      planOptionsRequestedRef.current = false;
+      return;
+    }
+    setPlanOptions(data ?? []);
+  }, [supabase]);
 
   useEffect(() => {
     setQuery(initialQuery);
   }, [initialQuery]);
 
-  // The "glimpse" — a browsable list of registered families before
-  // anyone types anything, so the tab isn't just an empty search box.
-  const addSecondaryPhones = useCallback(
-    async (rows: Result[]) => {
-      if (rows.length === 0) return rows;
-      const ids = rows.map((row) => row.customer_id);
-      const { data } = await supabase
-        .from("customers")
-        .select("id, secondary_phone")
-        .in("id", ids);
-      const secondaryById = new Map(
-        ((data as { id: string; secondary_phone: string | null }[]) ?? []).map(
-          (row) => [row.id, row.secondary_phone],
-        ),
-      );
-      return rows.map((row) => ({
-        ...row,
-        secondary_phone: secondaryById.get(row.customer_id) ?? null,
-      }));
-    },
-    [supabase],
-  );
+  const loadPage = useCallback(async (offset = 0, append = false) => {
+    const requestId = ++requestIdRef.current;
+    setLoadError(null);
+    if (append) setLoadingMore(true);
+    else setLoadingResults(true);
 
-  const loadGlimpse = useCallback(async () => {
-    setLoadingGlimpse(true);
-    const { data, error } = await supabase.rpc("staff_list_customers", {
-      p_limit: 30,
+    const venueToday = todayISTDateString();
+    const cutoff = new Date(`${venueToday}T00:00:00Z`);
+    cutoff.setUTCDate(cutoff.getUTCDate() + 7);
+    const todayParts = istDateParts(new Date().toISOString());
+    const monthStart = new Date(
+      Date.UTC(todayParts.year, todayParts.month, 1) - 330 * 60_000,
+    ).toISOString();
+
+    const rpcName = membershipFilter === "expired"
+      ? "directory_browse_expired_customers_with_plans"
+      : "directory_browse_customers_with_plans";
+    const rpcArgs = membershipFilter === "expired"
+      ? {
+          p_query: query.trim().length >= 2 ? query.trim() : null,
+          p_limit: DIRECTORY_PAGE_SIZE,
+          p_offset: offset,
+        }
+      : {
+      p_query: query.trim().length >= 2 ? query.trim() : null,
       p_plan_id: planFilter || null,
-    });
-    setLoadingGlimpse(false);
-    if (!error) setResults(await addSecondaryPhones((data as Result[]) ?? []));
-  }, [addSecondaryPhones, supabase, planFilter]);
+      p_members_only: membersOnly,
+      p_created_since: newOnly ? monthStart : null,
+      p_expiring_before: membershipFilter === "expiring" ? cutoff.toISOString().slice(0, 10) : null,
+      p_on_site_first: onSiteFirst,
+      p_limit: DIRECTORY_PAGE_SIZE,
+      p_offset: offset,
+      };
+    const { data, error } = await supabase.rpc(rpcName, rpcArgs);
 
-  useEffect(() => {
-    void loadGlimpse();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    if (query.trim().length < 2) {
-      setSearching(false);
-      void loadGlimpse();
+    if (requestId !== requestIdRef.current) return;
+    setLoadingResults(false);
+    setLoadingMore(false);
+    if (error) {
+      setLoadError(error.message);
+      if (!append) setResults([]);
+      setHasMore(false);
       return;
     }
+    const pageRows = (data as Result[]) ?? [];
+    setResults((current) => append ? [...current, ...pageRows] : pageRows);
+    setHasMore(pageRows.length === DIRECTORY_PAGE_SIZE);
+  }, [supabase, query, planFilter, membersOnly, newOnly, membershipFilter, onSiteFirst]);
 
-    debounceRef.current = setTimeout(async () => {
-      setSearching(true);
-      const { data, error } = await supabase.rpc("staff_search_customers", {
-        p_query: query.trim(),
-        p_plan_id: planFilter || null,
-      });
-      setSearching(false);
-      if (!error)
-        setResults(await addSecondaryPhones((data as Result[]) ?? []));
-    }, 300);
-
+  // One request path handles both initial browse and search. A response
+  // for an older query/filter is ignored as soon as a newer one starts.
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    requestIdRef.current += 1;
+    const hasSearchTerm = query.trim().length >= 2;
+    if (!hasSearchTerm && (!hasBrowsed || filtersDirty)) {
+      setLoadingResults(false);
+      setLoadingMore(false);
+      if (!hasBrowsed) {
+        setResults([]);
+        setHasMore(false);
+      }
+      return;
+    }
+    debounceRef.current = setTimeout(() => { void loadPage(0, false); }, query.trim().length >= 2 ? 280 : 0);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      requestIdRef.current += 1;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, supabase, planFilter]);
+  }, [loadPage, query, hasBrowsed, filtersDirty]);
+
+  const refetch = useCallback(() => loadPage(0, false), [loadPage]);
 
   const loadHistory = useCallback(
     async (customerId: string, childId: string) => {
@@ -391,18 +495,26 @@ export default function CustomerSearch({
           ...prev,
           [childId]: (data as VisitHistoryEntry[]) ?? [],
         }));
+      } else {
+        setOpenHistory((current) => {
+          const next = new Set(current);
+          next.delete(childId);
+          return next;
+        });
       }
     },
     [supabase],
   );
 
   const toggleHistory = async (customerId: string, childId: string) => {
-    if (historyByChild[childId]) {
-      setHistoryByChild((prev) => {
-        const next = { ...prev };
-        delete next[childId];
-        return next;
-      });
+    const isOpen = openHistory.has(childId);
+    setOpenHistory((current) => {
+      const next = new Set(current);
+      if (isOpen) next.delete(childId);
+      else next.add(childId);
+      return next;
+    });
+    if (isOpen || Object.prototype.hasOwnProperty.call(historyByChild, childId)) {
       return;
     }
     await loadHistory(customerId, childId);
@@ -411,26 +523,15 @@ export default function CustomerSearch({
   useEffect(() => {
     if (!focusCustomerPhone) return;
     const match = results.find((r) => r.phone === focusCustomerPhone);
-    const firstChild = match?.children?.[0];
-    if (!match || !firstChild) return;
-    setExpandedChildId(firstChild.id);
-    if (!historyByChild[firstChild.id]) {
-      void loadHistory(match.customer_id, firstChild.id);
-    }
+    const focusedChild = match?.children?.find((child) => child.id === focusChildId) ?? match?.children?.[0];
+    if (!match || !focusedChild) return;
+    setExpandedChildId(focusedChild.id);
+    void loadChildDetails(match.customer_id, focusedChild.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusCustomerPhone, results]);
+  }, [focusCustomerPhone, focusChildId, results]);
 
-  const loading = query.trim().length >= 2 ? searching : loadingGlimpse;
-  const monthStartStr = `${new Date().toISOString().slice(0, 7)}-01`;
-  const baseResults = newOnly
-    ? results.filter((r) => (r.created_at ?? "") >= monthStartStr)
-    : results;
-  const displayedResults = onSiteFirst
-    ? [...baseResults].sort(
-        (a, b) =>
-          Number(b.currently_checked_in) - Number(a.currently_checked_in),
-      )
-    : baseResults;
+  const loading = loadingResults;
+  const displayedResults = results;
 
   return (
     <div>
@@ -441,17 +542,49 @@ export default function CustomerSearch({
         />
         <input
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value;
+            setQuery(value);
+            if (value.trim().length >= 2) setFiltersDirty(false);
+          }}
           placeholder="Search by parent name, child's name, or phone number…"
           className="w-full min-h-[52px] rounded-xl2 border-2 border-white/15 focus:border-brand-sky bg-brand-nightSurface2 text-brand-nightText pl-11 pr-4 text-base"
         />
       </div>
 
-      <div className="flex items-center justify-end gap-3 mb-3">
-        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+      {(membersOnly || filterExpiringSoon || filterExpired) && (
+        <div className="mb-4 rounded-2xl border border-white/[0.08] bg-brand-nightSurface p-3">
+          <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-brand-nightText/45">Membership status</p>
+          <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Filter memberships by status">
+            {([
+              ["active", "Active"],
+              ["expiring", "Expiring soon"],
+              ["expired", "Expired"],
+            ] as const).map(([value, label]) => (
+              <button key={value} type="button" aria-pressed={membershipFilter === value}
+                onClick={() => { setMembershipFilter(value); setFiltersDirty(false); setHasBrowsed(true); setExpandedChildId(null); }}
+                className={`min-h-10 rounded-xl border px-2 text-xs font-semibold transition-colors ${membershipFilter === value ? value === "expired" ? "border-brand-coral/45 bg-brand-coral/15 text-brand-coral" : value === "expiring" ? "border-brand-sun/45 bg-brand-sun/15 text-brand-sun" : "border-brand-leaf/45 bg-brand-leaf/15 text-brand-leaf" : "border-white/10 text-brand-nightText/50 hover:bg-white/[0.04]"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showFilters && <section className="mb-4 rounded-2xl border border-white/[0.08] bg-brand-nightSurface p-3 sm:p-4">
+        <div className="mb-2.5 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-brand-nightText/70">Filters</p>
+          </div>
+          {filtersDirty && query.trim().length < 2 && hasBrowsed && (
+            <button type="button" onClick={() => setFiltersDirty(false)} className="min-h-9 rounded-lg bg-brand-sky px-3 text-xs font-semibold text-white transition-colors hover:bg-brand-sky/90">Apply</button>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
           <PillSelect
             value={planFilter}
-            onChange={setPlanFilter}
+            onChange={(value) => { setPlanFilter(value); setFiltersDirty(true); }}
+            onOpen={() => void loadPlanOptions()}
             placeholder="All plans"
             options={planOptions.map((p) => ({
               value: p.id,
@@ -462,7 +595,8 @@ export default function CustomerSearch({
           />
           <button
             type="button"
-            onClick={() => setNewOnly((v) => !v)}
+            onClick={() => { setNewOnly((v) => !v); setFiltersDirty(true); }}
+            aria-pressed={newOnly}
             className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
               newOnly
                 ? "border-brand-sky/40 bg-brand-sky/10 text-brand-skyLight"
@@ -473,7 +607,8 @@ export default function CustomerSearch({
           </button>
           <button
             type="button"
-            onClick={() => setOnSiteFirst((v) => !v)}
+            onClick={() => { setOnSiteFirst((v) => !v); setFiltersDirty(true); }}
+            aria-pressed={onSiteFirst}
             className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
               onSiteFirst
                 ? "border-brand-leaf/40 bg-brand-leaf/10 text-brand-leaf"
@@ -483,9 +618,20 @@ export default function CustomerSearch({
             On site first
           </button>
         </div>
-      </div>
+      </section>}
+
+      {query.trim().length < 2 && !hasBrowsed && (
+        <div className="mb-4 flex justify-end">
+          <button type="button" onClick={() => { setFiltersDirty(false); setHasBrowsed(true); }}
+            className="min-h-10 rounded-xl bg-brand-sky px-4 text-sm font-semibold text-white transition-colors hover:bg-brand-sky/90">
+            {filtersDirty ? "Apply filters" : "Browse customers"}
+          </button>
+        </div>
+      )}
 
       {loading && <p className="text-sm text-brand-nightText/40">Loading…</p>}
+
+      {loadError && <p role="alert" className="mb-3 rounded-xl border border-brand-coral/25 bg-brand-coral/10 px-3.5 py-2.5 text-sm text-brand-coral">Could not load customer results: {loadError}</p>}
 
       {actionError && (
         <div className="mb-3 rounded-xl border border-brand-coral/30 bg-brand-coral/10 px-3.5 py-2.5 text-sm text-brand-coral">
@@ -493,13 +639,19 @@ export default function CustomerSearch({
         </div>
       )}
 
-      {!loading && query.trim().length >= 2 && results.length === 0 && (
-        <p className="text-sm text-brand-nightText/40">No matches found.</p>
+      {!loading && !loadError && results.length === 0 && (query.trim().length >= 2 || (hasBrowsed && !filtersDirty)) && (
+        <p className="text-sm text-brand-nightText/40">No customers match these filters.</p>
       )}
 
       <div className="space-y-3">
         {displayedResults.map((r) => {
           const kids = r.children ?? [];
+          const childHasActivePlan = (child: ChildInfo) =>
+            child.subscription_active &&
+            (!child.subscription_expires_on || child.subscription_expires_on >= today);
+          const visibleKids = planFilter
+            ? kids.filter((child) => child.plan_id === planFilter || child.special_plan_ids?.includes(planFilter))
+            : membersOnly && membershipFilter !== "expired" ? kids.filter(childHasActivePlan) : kids;
           return (
             <div
               key={r.customer_id}
@@ -519,100 +671,32 @@ export default function CustomerSearch({
               )}
 
               <div className="space-y-1.5">
-                {kids.map((child) => {
-                  const isMember =
-                    child.subscription_active &&
-                    (!child.subscription_expires_on ||
-                      child.subscription_expires_on >= today);
+                {visibleKids.map((child) => {
+                  const isMember = childHasActivePlan(child);
+                  const isSelectedSpecialPass = !!planFilter && !!child.special_plan_ids?.includes(planFilter);
+                  const siblings = kids.filter((sibling) => sibling.id !== child.id);
                   const isOpen = expandedChildId === child.id;
                   const history = historyByChild[child.id];
+                  const historyIsOpen = openHistory.has(child.id);
+                  const childDetails = detailsByChild[child.id];
 
                   return (
                     <ListRow
                       key={child.id}
-                      title={child.name}
-                      subtitle={`${child.age}y`}
-                      safetyFlag={
-                        hasMedicalInfo(child) ? (
-                          <Heart
-                            size={12}
-                            className="text-brand-coral shrink-0"
-                            fill="currentColor"
-                          />
-                        ) : r.currently_checked_in ? (
-                          <span className="text-[9px] font-semibold uppercase tracking-wide text-brand-leaf bg-brand-leaf/10 rounded-full px-1.5 py-0.5 shrink-0">
-                            On site
-                          </span>
-                        ) : undefined
-                      }
+                      title={<>{child.name}<span className="ml-1 text-xs font-medium text-brand-nightText/45">{child.age}y</span></>}
+                      titleClassName="text-[15px]"
+                      subtitle={r.parent_name}
+                      statusDot={child.currently_checked_in ? "sky" : isMember ? "leaf" : "directoryGeneral"}
                       facts={[
-                        { icon: undefined, value: r.parent_name },
-                        {
-                          icon: <BadgeCheck size={11} />,
-                          value: isMember
-                            ? (child.plan_name ?? "Member")
-                            : "No membership",
-                          hideOnMobile: true,
-                        },
-                        ...(isMember && child.max_visits != null
-                          ? [
-                              {
-                                icon: undefined,
-                                value: `${Math.max(child.max_visits - (child.visits_used ?? 0), 0)} of ${child.max_visits} visits left`,
-                                hideOnMobile: true,
-                              },
-                            ]
-                          : []),
+                        { icon: <BadgeCheck size={11} />, value: <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${isSelectedSpecialPass ? "bg-brand-sun/10 text-brand-sun" : isMember ? "bg-brand-leaf/10 text-brand-leaf" : child.plan_name ? "bg-brand-sun/10 text-brand-sun" : "bg-white/[0.06] text-brand-nightText/45"}`}>{isSelectedSpecialPass ? "Special pass" : isMember ? child.plan_name ?? "Member" : child.plan_name ? child.subscription_expires_on && child.subscription_expires_on < today ? "Expired" : "Past plan" : "No plan"}</span> },
+                        ...(child.currently_checked_in ? [{ icon: undefined, value: <span className="rounded-full bg-brand-sky/10 px-2 py-1 text-[10px] font-bold uppercase text-brand-skyLight">On site</span> }] : []),
                       ]}
-                      action={
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <PhoneLinks
-                            phone={r.phone}
-                            secondaryPhone={r.secondary_phone}
-                            className="p-1.5 rounded-full border border-brand-sky/30 bg-brand-sky/10 text-brand-skyLight hover:bg-brand-sky/15 transition-colors"
-                          />
-                          {child.currently_checked_in &&
-                          child.active_session_id ? (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleCheckOut(
-                                  r.customer_id,
-                                  child.id,
-                                  child.active_session_id!,
-                                );
-                              }}
-                              disabled={checkinBusyId === child.id}
-                              className="flex items-center gap-1 rounded-full border border-brand-coral/30 bg-brand-coral/10 px-2.5 py-1.5 text-[11px] font-semibold text-brand-coral hover:bg-brand-coral/15 transition-colors disabled:opacity-50"
-                            >
-                              <LogOut size={11} />
-                              {checkinBusyId === child.id ? "…" : "Check out"}
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDurationPickerFor({
-                                  customerId: r.customer_id,
-                                  childId: child.id,
-                                  childName: child.name,
-                                });
-                              }}
-                              disabled={checkinBusyId === child.id}
-                              className="flex items-center gap-1 rounded-full border border-brand-leaf/30 bg-brand-leaf/10 px-2.5 py-1.5 text-[11px] font-semibold text-brand-leaf hover:bg-brand-leaf/15 transition-colors disabled:opacity-50"
-                            >
-                              <LogIn size={11} />
-                              {checkinBusyId === child.id ? "…" : "Check in"}
-                            </button>
-                          )}
-                        </div>
-                      }
+                      factsLayout="right"
                       expanded={isOpen}
-                      onToggleExpand={() =>
-                        setExpandedChildId(isOpen ? null : child.id)
-                      }
+                      onToggleExpand={() => {
+                        setExpandedChildId(isOpen ? null : child.id);
+                        if (!isOpen) void loadChildDetails(r.customer_id, child.id);
+                      }}
                       expandedContent={
                         <div className="space-y-2.5">
                           {isAdmin && editingNames?.childId === child.id ? (
@@ -749,27 +833,16 @@ export default function CustomerSearch({
                               </div>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-2 text-xs text-brand-nightText/50">
-                              <span className="flex items-center gap-2">
-                                {r.parent_name}
-                                <PhoneLinks
-                                  phone={r.phone}
-                                  secondaryPhone={r.secondary_phone}
-                                  className="text-brand-sky hover:underline"
-                                  showNumber
-                                />
-                              </span>
-                              {isAdmin && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    void beginEditDetails(r.customer_id, child)
-                                  }
-                                  className="inline-flex items-center gap-1 text-brand-sky hover:text-brand-skyLight"
-                                >
-                                  <Pencil size={12} /> Edit names
-                                </button>
-                              )}
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-brand-nightText/60">
+                              <span className="font-semibold text-brand-nightText/80">{r.parent_name}</span>
+                              <PhoneLinks
+                                phone={r.phone}
+                                secondaryPhone={r.secondary_phone}
+                                className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-brand-sky/25 bg-brand-sky/10 px-2.5 text-xs font-semibold text-brand-skyLight"
+                                showNumber
+                                showCallButton
+                              />
+                              <MessageButton phone={r.phone} parentName={r.parent_name} childName={child.name} canManageTemplates={isAdmin} />
                             </div>
                           )}
                           {isAdmin &&
@@ -791,55 +864,88 @@ export default function CustomerSearch({
                                       ? ` · ${Math.max(child.max_visits - (child.visits_used ?? 0), 0)} of ${child.max_visits} visits left`
                                       : ""
                                   }`
-                                : "No membership on file"}
+                                : child.plan_name
+                                  ? `${child.subscription_expires_on && child.subscription_expires_on < today ? "Expired" : "Past plan"} · ${child.plan_name}${child.subscription_expires_on ? ` · ended ${new Date(child.subscription_expires_on + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : ""}`
+                                  : "No membership on file"}
                             </p>
                           )}
+                          {isAdmin && (
+                            <AddMembershipButton
+                              childId={child.id}
+                              childName={child.name}
+                              onApplied={refetch}
+                            />
+                          )}
 
-                          {hasMedicalInfo(child) && (
+                          <section className="rounded-xl border border-brand-sky/15 bg-brand-sky/[0.04] p-3">
+                            <h3 className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-brand-nightText/40">
+                              <Users size={12} className="text-brand-skyLight" /> Family
+                            </h3>
+                            {siblings.length ? (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {siblings.map((sibling) => {
+                                  const siblingIsMember = childHasActivePlan(sibling);
+                                  return (
+                                    <span key={sibling.id} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-brand-nightSurface px-2 py-1 text-xs text-brand-nightText/70">
+                                      {sibling.name}
+                                      <span className={`h-1.5 w-1.5 rounded-full ${siblingIsMember ? "bg-brand-leaf" : "bg-brand-nightText/25"}`} />
+                                      <span className="text-[10px] text-brand-nightText/40">{siblingIsMember ? "Member" : sibling.plan_name ? "Past plan" : "No plan"}</span>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            ) : <p className="mt-1.5 text-xs text-brand-nightText/50">No other children on this family record.</p>}
+                          </section>
+                          {detailsLoading.has(child.id) && !childDetails && (
+                            <p className="text-xs text-brand-nightText/40">Loading private details…</p>
+                          )}
+                          {detailsErrors[child.id] && (
+                            <button type="button" onClick={() => void loadChildDetails(r.customer_id, child.id)} className="text-xs font-medium text-brand-coral hover:underline">
+                              {detailsErrors[child.id]} · Retry
+                            </button>
+                          )}
+                          {childDetails?.date_of_birth && (
+                            <p className="text-xs text-brand-nightText/50">Date of birth: {new Date(`${childDetails.date_of_birth}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
+                          )}
+                          {childDetails?.address && (
+                            <p className="text-xs text-brand-nightText/50">Address: {childDetails.address}</p>
+                          )}
+                          {childDetails && hasMedicalInfo(childDetails) && (
                             <div className="rounded-lg bg-brand-coral/8 border border-brand-coral/20 px-3 py-2">
                               <p className="flex items-center gap-1.5 text-[11px] font-semibold text-brand-coral uppercase tracking-wide mb-1">
                                 <Heart size={11} fill="currentColor" /> Medical
                               </p>
-                              {child.allergies && (
+                              {childDetails.allergies && (
                                 <p className="text-xs text-brand-nightText/70">
-                                  Allergies: {child.allergies}
+                                  Allergies: {childDetails.allergies}
                                 </p>
                               )}
-                              {child.medical_conditions && (
+                              {childDetails.medical_conditions && (
                                 <p className="text-xs text-brand-nightText/70">
-                                  Conditions: {child.medical_conditions}
+                                  Conditions: {childDetails.medical_conditions}
                                 </p>
                               )}
-                              {child.special_instructions && (
+                              {childDetails.special_instructions && (
                                 <p className="text-xs text-brand-nightText/70">
-                                  Notes: {child.special_instructions}
+                                  Notes: {childDetails.special_instructions}
                                 </p>
                               )}
                             </div>
                           )}
 
-                          {isAdmin && (
-                            <p className="text-[11px] text-brand-nightText/35">
-                              To activate or renew this child's membership, use
-                              the Memberships tab.
-                            </p>
-                          )}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button type="button" onClick={() => toggleHistory(r.customer_id, child.id)} className="min-h-[36px] rounded-lg bg-brand-sky px-3.5 text-xs font-semibold text-white transition-colors hover:bg-brand-sky/90">
+                            {historyLoadingChild === child.id ? "Loading history…" : historyIsOpen ? "Hide history" : "View visit history"}
+                            </button>
+                            {child.currently_checked_in && child.active_session_id ? (
+                              <button type="button" onClick={() => void handleCheckOut(r.customer_id, child.id, child.active_session_id!)} disabled={checkinBusyId === child.id} className="flex min-h-9 items-center gap-1 rounded-lg border border-brand-coral/30 bg-brand-coral/10 px-3 text-xs font-semibold text-brand-coral disabled:opacity-50"><LogOut size={12} />{checkinBusyId === child.id ? "…" : "Check out"}</button>
+                            ) : (
+                              <button type="button" onClick={() => setDurationPickerFor({ customerId: r.customer_id, childId: child.id, childName: child.name })} disabled={checkinBusyId === child.id} className="flex min-h-9 items-center gap-1 rounded-lg border border-brand-leaf/30 bg-brand-leaf/10 px-3 text-xs font-semibold text-brand-leaf disabled:opacity-50"><LogIn size={12} />{checkinBusyId === child.id ? "…" : "Check in"}</button>
+                            )}
+                            {isAdmin && <button type="button" onClick={() => void beginEditDetails(r.customer_id, child)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-brand-sky/25 bg-brand-sky/10 px-3 text-xs font-semibold text-brand-skyLight transition-colors hover:bg-brand-sky/15"><Pencil size={13} /> Edit details</button>}
+                          </div>
 
-                          <button
-                            type="button"
-                            onClick={() =>
-                              toggleHistory(r.customer_id, child.id)
-                            }
-                            className="min-h-[36px] rounded-lg bg-brand-sky px-3.5 text-xs font-semibold text-white transition-colors hover:bg-brand-sky/90"
-                          >
-                            {historyLoadingChild === child.id
-                              ? "Loading history…"
-                              : history
-                                ? "Hide history"
-                                : "View visit history"}
-                          </button>
-
-                          {history && (
+                          {historyIsOpen && history && (
                             <div className="rounded-xl border border-white/10 bg-brand-nightSurface2/70 p-3.5">
                               {history.length === 0 ? (
                                 <p className="text-sm text-brand-nightText/40">
@@ -897,18 +1003,26 @@ export default function CustomerSearch({
         })}
       </div>
 
+      {hasMore && <div className="flex justify-center py-5">
+        <button type="button" onClick={() => void loadPage(results.length, true)} disabled={loadingMore}
+          className="min-h-10 rounded-xl border border-white/10 bg-brand-nightSurface px-5 text-sm font-semibold text-brand-nightText/70 transition-colors hover:border-brand-sky/30 hover:text-brand-skyLight disabled:opacity-50">
+          {loadingMore ? "Loading more…" : "Load more"}
+        </button>
+      </div>}
+
       {durationPickerFor && (
         <div
           className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-4"
           role="dialog"
           aria-modal="true"
-          aria-label="Choose visit duration"
+          aria-labelledby="checkin-duration-title"
+          aria-describedby="checkin-duration-description"
         >
           <div className="w-full max-w-sm rounded-2xl bg-brand-nightSurface p-5 shadow-xl">
-            <p className="font-bold text-brand-nightText">
+            <h2 id="checkin-duration-title" className="font-bold text-brand-nightText">
               Check in {durationPickerFor.childName}
-            </p>
-            <p className="text-sm text-brand-nightText/50 mt-1 mb-4">
+            </h2>
+            <p id="checkin-duration-description" className="text-sm text-brand-nightText/50 mt-1 mb-4">
               Choose the planned visit length.
             </p>
             <div className="grid grid-cols-3 gap-2">

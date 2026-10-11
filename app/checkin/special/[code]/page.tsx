@@ -1,9 +1,10 @@
 import SpecialDayCheckin from "@/components/checkin/SpecialDayCheckin";
 
-export default function SpecialDayPage({
+export default async function SpecialDayPage({
   params,
 }: {
-  params: { code: string };
+  params: Promise<{ code: string }>;
 }) {
-  return <SpecialDayCheckin code={params.code} />;
+  const { code } = await params;
+  return <SpecialDayCheckin code={code} />;
 }

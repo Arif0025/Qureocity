@@ -7,12 +7,13 @@ import { formatTimeIST } from "@/lib/formatTime";
 const STATIC_QR_VALUE =
   process.env.NEXT_PUBLIC_DESK_QR_VALUE ?? "QUREOCITY-FRONT-DESK";
 
-export default function PunchInFlow() {
+export default function PunchInFlow({ autoStart = false }: { autoStart?: boolean }) {
   const [supabase] = useState(() => createClient());
   const [qrMode, setQrMode] = useState<"static" | "dynamic">("static");
+  const [qrModeLoading, setQrModeLoading] = useState(true);
   const [scannedValue, setScannedValue] = useState<string | null>(null);
   const [sliding, setSliding] = useState(false);
-  const [scannerActive, setScannerActive] = useState(false);
+  const [scannerActive, setScannerActive] = useState(autoStart);
   const [scannerLoading, setScannerLoading] = useState(false);
   const [result, setResult] = useState<{
     action: "in" | "out";
@@ -27,13 +28,14 @@ export default function PunchInFlow() {
       .select("qr_mode")
       .eq("id", true)
       .single()
-      .then(({ data }) =>
-        setQrMode((data?.qr_mode as "static" | "dynamic") ?? "static"),
-      );
+      .then(({ data }) => {
+        setQrMode((data?.qr_mode as "static" | "dynamic") ?? "static");
+        setQrModeLoading(false);
+      });
   }, [supabase]);
 
   useEffect(() => {
-    if (!scannerActive || scannedValue || result) return;
+    if (!scannerActive || scannedValue || result || qrModeLoading) return;
 
     setScannerLoading(true);
     setError(null);
@@ -89,7 +91,7 @@ export default function PunchInFlow() {
     return () => {
       stopScanner();
     };
-  }, [scannerActive, scannedValue, result, qrMode]);
+  }, [scannerActive, scannedValue, result, qrMode, qrModeLoading]);
 
   const handleSlideComplete = async () => {
     setSliding(true);

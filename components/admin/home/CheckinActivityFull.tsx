@@ -58,20 +58,8 @@ function timeStr(v: string) {
   return formatTimeIST(v);
 }
 
-export default function CheckinActivityFull({
-  dailyCounts,
-}: {
-  dailyCounts: DailyCount[];
-}) {
-  const supabase = createClient();
-  const countByDay = useMemo(
-    () => new Map(dailyCounts.map((d) => [d.day, Number(d.cnt)])),
-    [dailyCounts],
-  );
-  const maxCount = useMemo(
-    () => Math.max(1, ...dailyCounts.map((d) => Number(d.cnt))),
-    [dailyCounts],
-  );
+export default function CheckinActivityFull() {
+  const supabase = useMemo(() => createClient(), []);
 
   const [cursor, setCursor] = useState(() => {
     const d = new Date();
@@ -86,6 +74,18 @@ export default function CheckinActivityFull({
   const [editStart, setEditStart] = useState("");
   const [editEnd, setEditEnd] = useState("");
   const [savingSession, setSavingSession] = useState(false);
+  const [countsByMonth, setCountsByMonth] = useState<Record<string, DailyCount[]>>({});
+  const [countsLoading, setCountsLoading] = useState(false);
+  const cursorMonth = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+  const dailyCounts = countsByMonth[cursorMonth] ?? [];
+  const countByDay = useMemo(
+    () => new Map(dailyCounts.map((d) => [d.day, Number(d.cnt)])),
+    [dailyCounts],
+  );
+  const maxCount = useMemo(
+    () => Math.max(1, ...dailyCounts.map((d) => Number(d.cnt))),
+    [dailyCounts],
+  );
 
   const toLocalIST = (iso: string) =>
     new Date(new Date(iso).getTime() + 330 * 60_000).toISOString().slice(0, 16);
@@ -118,6 +118,31 @@ export default function CheckinActivityFull({
     [supabase],
   );
 
+  useEffect(() => {
+    if (Object.prototype.hasOwnProperty.call(countsByMonth, cursorMonth)) return;
+    let active = true;
+    setCountsLoading(true);
+    void supabase.rpc("admin_checkin_calendar_counts", {
+      p_month: `${cursorMonth}-01`,
+    }).then(({ data, error }) => {
+      if (!active) return;
+      if (!error) setCountsByMonth((previous) => ({
+        ...previous,
+        [cursorMonth]: ((data ?? []) as DailyCount[]).map((row) => ({ ...row, cnt: Number(row.cnt) })),
+      }));
+      setCountsLoading(false);
+    });
+    return () => { active = false; };
+  }, [supabase, cursorMonth, countsByMonth]);
+
+  const invalidateVisibleMonth = () => {
+    setCountsByMonth((previous) => {
+      const next = { ...previous };
+      delete next[cursorMonth];
+      return next;
+    });
+  };
+
   const startEdit = (session: DayDetail["checkins"][number]) => {
     setEditingSessionId(session.session_id);
     setEditStart(toLocalIST(session.checked_in_at));
@@ -142,6 +167,7 @@ export default function CheckinActivityFull({
       return;
     }
     setEditingSessionId(null);
+    invalidateVisibleMonth();
     if (selectedDay) void loadDay(selectedDay);
   };
 
@@ -155,6 +181,7 @@ export default function CheckinActivityFull({
       alert(error.message);
       return;
     }
+    invalidateVisibleMonth();
     if (selectedDay) void loadDay(selectedDay);
   };
 
@@ -245,6 +272,7 @@ export default function CheckinActivityFull({
           <span className="w-3 h-3 rounded-sm bg-brand-sky" />
           Busy
         </div>
+        {countsLoading && <p className="mt-2 text-[11px] text-brand-nightText/35">Loading this month&apos;s check-ins…</p>}
       </div>
 
       <div className="bg-brand-nightSurface rounded-2xl border border-white/10 p-5 h-fit lg:sticky lg:top-6">
@@ -315,7 +343,7 @@ export default function CheckinActivityFull({
                                   onChange={(event) =>
                                     setEditStart(event.target.value)
                                   }
-                                  className="mt-1 w-full rounded-lg border border-white/15 bg-brand-nightSurface2 px-2 py-1.5 text-xs text-brand-nightText [color-scheme:dark]"
+                                  className="mt-1 w-full rounded-lg border border-white/15 bg-brand-nightSurface2 px-2 py-1.5 text-xs text-brand-nightText"
                                 />
                               </label>
                               <label className="block text-xs text-brand-nightText/50">
@@ -326,7 +354,7 @@ export default function CheckinActivityFull({
                                   onChange={(event) =>
                                     setEditEnd(event.target.value)
                                   }
-                                  className="mt-1 w-full rounded-lg border border-white/15 bg-brand-nightSurface2 px-2 py-1.5 text-xs text-brand-nightText [color-scheme:dark]"
+                                  className="mt-1 w-full rounded-lg border border-white/15 bg-brand-nightSurface2 px-2 py-1.5 text-xs text-brand-nightText"
                                 />
                               </label>
                               <div className="flex gap-3">

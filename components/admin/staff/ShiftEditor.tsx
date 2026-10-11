@@ -73,7 +73,7 @@ export default function ShiftEditor({
             type="time"
             value={startTime}
             onChange={(e) => setStartTime(e.target.value)}
-            className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface text-brand-nightText px-3 text-sm [color-scheme:dark]"
+            className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface text-brand-nightText px-3 text-sm"
           />
         </div>
         <div>
@@ -84,7 +84,7 @@ export default function ShiftEditor({
             type="time"
             value={endTime}
             onChange={(e) => setEndTime(e.target.value)}
-            className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface text-brand-nightText px-3 text-sm [color-scheme:dark]"
+            className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface text-brand-nightText px-3 text-sm"
           />
         </div>
       </div>

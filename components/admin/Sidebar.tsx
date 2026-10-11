@@ -4,83 +4,71 @@ import {
   LayoutGrid,
   Users,
   UserRound,
-  LogOut,
-  Zap,
-  Clock,
-  MessageCircle,
   Settings,
   BadgeCheck,
   Search,
+  Bell,
   HelpCircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import { usePendingRegistrationsCount } from "@/lib/hooks/usePendingRegistrationsCount";
 import { useTheme } from "@/lib/hooks/useTheme";
-import ThemeToggle from "@/components/shared/ThemeToggle";
 
 export type AdminTabId =
   | "home"
   | "directory"
+  | "notifications"
   | "memberships"
   | "staff"
-  | "clubcheckin"
-  | "pending"
-  | "broadcast"
   | "settings"
   | "help";
 
 const NAV_ITEMS: { id: AdminTabId; label: string; icon: typeof LayoutGrid }[] =
   [
     { id: "home", label: "Overview", icon: LayoutGrid },
-    { id: "directory", label: "Directory", icon: Users },
-    { id: "memberships", label: "Memberships", icon: BadgeCheck },
+    { id: "directory", label: "Customers", icon: Users },
+    { id: "memberships", label: "Plans", icon: BadgeCheck },
     { id: "staff", label: "Staff", icon: UserRound },
-    { id: "broadcast", label: "Broadcast", icon: MessageCircle },
     { id: "settings", label: "Settings", icon: Settings },
     { id: "help", label: "Help", icon: HelpCircle },
   ];
 
-// Order tuned for the mobile bottom bar specifically: the two
-// single-purpose actions (Pending, Club check-in) are surfaced right
-// after Home/Directory since they're used constantly during a shift,
-// rather than being buried at the end like they are in the desktop list.
+// Order tuned for the mobile bottom bar: daily overview and frequent
+// actions stay reachable, while registration requests have a dedicated inbox.
 const BOTTOM_NAV_ITEMS: {
   id: AdminTabId;
   label: string;
   icon: typeof LayoutGrid;
 }[] = [
   { id: "home", label: "Overview", icon: LayoutGrid },
-  { id: "directory", label: "Directory", icon: Users },
-  { id: "pending", label: "Pending", icon: Clock },
-  { id: "clubcheckin", label: "Club", icon: Zap },
-  { id: "memberships", label: "Members", icon: BadgeCheck },
+  { id: "directory", label: "Customers", icon: Users },
+  { id: "memberships", label: "Plans", icon: BadgeCheck },
   { id: "staff", label: "Staff", icon: UserRound },
-  { id: "broadcast", label: "Broadcast", icon: MessageCircle },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
 export default function Sidebar({
   active,
   onSelect,
+  onNotificationsClick,
   employeeName,
-  onSignOut,
   onSearchClick,
 }: {
   active: AdminTabId;
   onSelect: (id: AdminTabId) => void;
+  onNotificationsClick: () => void;
   employeeName: string;
-  onSignOut: () => void;
   onSearchClick: () => void;
 }) {
   const router = useRouter();
   const pendingCount = usePendingRegistrationsCount();
   const { theme } = useTheme();
-  // logo-full.png is purple/gold on transparent — brightness-0 invert is
-  // a CSS trick to force it white for the dark canvas. On light theme
-  // the canvas is white/lavender, so the original purple/gold render is
-  // correct as-is and the filter needs to come off.
-  const logoClass =
-    theme === "light" ? "opacity-95" : "brightness-0 invert opacity-95";
+  // Keep the mark warm ivory against the charcoal theme rather than pure white.
+  const logoClass = "opacity-95";
+  const logoStyle = theme === "dark"
+    ? { filter: "brightness(0) saturate(100%) invert(97%) sepia(18%) saturate(390%) hue-rotate(350deg) brightness(104%) contrast(94%)" }
+    : undefined;
 
   const initials = employeeName
     .split(" ")
@@ -91,14 +79,16 @@ export default function Sidebar({
 
   const NavContent = (
     <>
-      <div className="px-5 pt-6 pb-8 flex items-center justify-between">
+      <div className="px-5 pt-6 pb-8 flex items-center justify-between gap-2">
         <button type="button" onClick={() => router.push("/")}>
           <img
             src="/logo-full.png"
             alt="QureoCity"
             className={`h-7 ${logoClass}`}
+            style={logoStyle}
           />
         </button>
+        <div className="flex items-center gap-1">
         <button
           type="button"
           onClick={onSearchClick}
@@ -108,6 +98,11 @@ export default function Sidebar({
         >
           <Search size={18} />
         </button>
+        <button type="button" onClick={onNotificationsClick} title="Notifications" aria-label={`Notifications${pendingCount ? `, ${pendingCount} pending registrations` : ""}`} className="relative text-brand-nightText/40 hover:text-brand-nightText p-1.5 rounded-lg transition-colors">
+          <Bell size={18} />
+          {pendingCount > 0 && <span className="absolute -right-1 -top-1 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-brand-coral px-1 text-[9px] font-bold leading-none text-white ring-2 ring-brand-nightSurface">{pendingCount > 9 ? "9+" : pendingCount}</span>}
+        </button>
+        </div>
       </div>
 
       <nav className="flex-1 px-3 space-y-1">
@@ -118,55 +113,23 @@ export default function Sidebar({
             <button
               key={item.id}
               onClick={() => onSelect(item.id)}
-              className={`relative w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+              className={`relative w-full flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-medium transition-colors ${
                 isActive
-                  ? "bg-brand-sky/20 text-brand-skyLight"
+                  ? theme === "dark"
+                    ? "border-brand-sky/80 bg-brand-sky text-brand-ink shadow-sm"
+                    : "border-brand-sky/50 bg-brand-sky/30 text-brand-ink shadow-sm"
                   : "text-brand-nightText/55 hover:bg-white/[0.04] hover:text-brand-nightText"
               }`}
             >
               <Icon size={18} strokeWidth={2} />
               {item.label}
+              {item.id === "notifications" && pendingCount > 0 && <span className="ml-auto rounded-full bg-brand-coral px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">{pendingCount > 99 ? "99+" : pendingCount}</span>}
             </button>
           );
         })}
       </nav>
 
-      {/* Frequent single-purpose actions, not browsing destinations —
-          kept out of the main nav list on purpose. */}
-      <div className="px-3 pb-3 space-y-1.5">
-        <button
-          onClick={() => onSelect("pending")}
-          className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold border transition-colors ${
-            active === "pending"
-              ? "border-brand-coral/40 bg-brand-coral/15 text-brand-coral"
-              : "border-white/10 text-brand-nightText/45 hover:border-brand-coral/40 hover:text-brand-coral"
-          }`}
-        >
-          <Clock size={16} strokeWidth={2} />
-          Pending
-          {pendingCount > 0 && (
-            <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-brand-coral text-white text-[10px] font-bold flex items-center justify-center">
-              {pendingCount > 9 ? "9+" : pendingCount}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => onSelect("clubcheckin")}
-          className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold border transition-colors ${
-            active === "clubcheckin"
-              ? "border-brand-sky/40 bg-brand-sky/15 text-brand-skyLight"
-              : "border-white/10 text-brand-nightText/45 hover:border-brand-sky/40 hover:text-brand-skyLight"
-          }`}
-        >
-          <Zap size={16} strokeWidth={2} />
-          Club check-in
-        </button>
-      </div>
-
       <div className="px-3 pb-5 pt-3 border-t border-white/8">
-        <div className="px-1 pb-2">
-          <ThemeToggle />
-        </div>
         <div className="flex items-center gap-3 px-2 py-1.5">
           <div className="w-8 h-8 rounded-full bg-brand-sky/20 text-brand-skyLight text-xs font-bold flex items-center justify-center shrink-0">
             {initials}
@@ -177,13 +140,6 @@ export default function Sidebar({
             </p>
             <p className="text-xs text-brand-nightText/40">Admin</p>
           </div>
-          <button
-            onClick={onSignOut}
-            title="Sign out"
-            className="text-brand-nightText/30 hover:text-brand-coral p-1.5 rounded-lg transition-colors"
-          >
-            <LogOut size={16} />
-          </button>
         </div>
       </div>
     </>
@@ -201,6 +157,7 @@ export default function Sidebar({
             src="/logo-full.png"
             alt="QureoCity"
             className={`h-6 ${logoClass}`}
+            style={logoStyle}
           />
         </button>
         <div className="flex items-center gap-1">
@@ -212,54 +169,45 @@ export default function Sidebar({
           >
             <Search size={18} />
           </button>
-          <ThemeToggle compact />
-          <button
-            onClick={onSignOut}
-            title="Sign out"
-            className="text-brand-nightText/50 hover:text-brand-coral p-2 rounded-lg transition-colors"
-          >
-            <LogOut size={18} />
+          <button type="button" onClick={onNotificationsClick} title="Notifications" aria-label={`Notifications${pendingCount ? `, ${pendingCount} pending registrations` : ""}`} className="relative text-brand-nightText/50 hover:text-brand-nightText p-2 rounded-lg transition-colors">
+            <Bell size={18} />
+            {pendingCount > 0 && <span className="absolute right-0 top-0 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-brand-coral px-1 text-[9px] font-bold leading-none text-white ring-2 ring-brand-nightSurface">{pendingCount > 9 ? "9+" : pendingCount}</span>}
           </button>
         </div>
       </div>
 
-      {/* Mobile bottom tab bar — horizontally scrollable so all 8
-          destinations fit and stay reachable with a single tap, no
-          nested "More" menu. Snap-scrolling keeps each icon aligned
-          under a thumb swipe. */}
+      {/* Floating, thumb-reachable mobile navigation. */}
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-brand-nightSurface border-t border-white/10 pb-[env(safe-area-inset-bottom)]"
+        className="md:hidden fixed left-3 right-3 z-40 mx-auto max-w-lg rounded-2xl border border-white/15 bg-brand-nightSurface/95 p-1.5 shadow-2xl backdrop-blur-xl"
+        style={{ bottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
         aria-label="Admin navigation"
       >
-        <div className="flex overflow-x-auto no-scrollbar snap-x snap-mandatory px-1 py-1.5">
+        <div className="grid grid-cols-5 gap-1">
           {BOTTOM_NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = active === item.id;
-            const showBadge = item.id === "pending" && pendingCount > 0;
             return (
-              <button
+              <motion.button
                 key={item.id}
                 type="button"
                 onClick={() => onSelect(item.id)}
                 aria-current={isActive ? "page" : undefined}
-                className={`relative flex flex-col items-center justify-center gap-1 min-w-[70px] shrink-0 snap-start min-h-[52px] rounded-xl px-1 mx-0.5 transition-colors ${
+                whileTap={{ scale: 0.94 }}
+                className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2.5 transition-colors ${
                   isActive
-                    ? "bg-brand-sky/20 text-brand-skyLight"
-                    : "text-brand-nightText/45 hover:bg-white/[0.04] hover:text-brand-nightText"
+                    ? "text-brand-ink"
+                    : "text-brand-nightText/55 hover:bg-white/[0.04] hover:text-brand-nightText"
                 }`}
               >
-                <span className="relative">
-                  <Icon size={17} strokeWidth={2.25} />
-                  {showBadge && (
-                    <span className="absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-0.5 rounded-full bg-brand-coral text-white text-[9px] font-bold flex items-center justify-center">
-                      {pendingCount > 9 ? "9+" : pendingCount}
-                    </span>
-                  )}
+                {isActive && <motion.span layoutId="admin-mobile-active-tab" transition={{ type: "spring", stiffness: 430, damping: 34 }} className={`absolute inset-0 rounded-xl border ${theme === "dark" ? "border-brand-sky bg-brand-sky" : "border-brand-sky/55 bg-brand-sky/30"}`} />}
+                <span className="relative z-10">
+                  <Icon size={18} strokeWidth={2.25} />
+                  {item.id === "notifications" && pendingCount > 0 && <span className="absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-0.5 rounded-full bg-brand-coral text-white text-[9px] font-bold flex items-center justify-center">{pendingCount > 9 ? "9+" : pendingCount}</span>}
                 </span>
-                <span className="text-[9.5px] font-semibold tracking-wide leading-none text-center">
+                <span className="relative z-10 text-[9.5px] font-semibold tracking-wide leading-none text-center">
                   {item.label}
                 </span>
-              </button>
+              </motion.button>
             );
           })}
         </div>

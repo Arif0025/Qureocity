@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.ts";
 
 html {
   -webkit-tap-highlight-color: transparent;
@@ -22,31 +21,116 @@ html {
    stay on the light/cream palette regardless of this toggle. */
 
 :root {
-  /* Dark theme values (default) */
-  --night-bg: 21 17 30; /* #15111E */
-  --night-surface: 30 25 41; /* #1E1929 */
-  --night-surface-2: 40 34 50; /* #282232 */
-  --night-text: 243 239 250; /* #F3EFFA */
-  --sky-light: 199 158 218; /* #C79EDA */
+  /* Sampled directly from the supplied light-mode reference. */
+  --palette-sun: 255 222 178; /* #FFDEB2 */
+  --palette-sky: 204 189 209; /* #CCBDD1 */
+  --palette-purple-deep: 21 19 15; /* #15130F */
+  --palette-coral: 255 155 138; /* #FF9B8A */
+  --palette-leaf: 209 235 204; /* #D1EBCC */
+  --palette-ink: 21 19 15; /* #15130F */
+  --palette-cloud: 255 245 216; /* #FFF5D8 */
+  --checkin-walkin: 140 107 161; /* darker lavender for the cream canvas */
+  --checkin-membership: 111 133 93; /* darker sage for the cream canvas */
+  --checkin-special: 194 91 86; /* darker coral for the cream canvas */
+
+  /* Sampled dark charcoal and warm foreground from the supplied references. */
+  --night-bg: 21 19 15; /* #15130F */
+  --night-surface: 21 19 15;
+  --night-surface-2: 21 19 15;
+  --night-text: 255 253 223; /* #FFFDEF */
+  --sky-light: 204 189 209;
 }
 
 [data-theme="light"] {
-  /* Light theme — white cards floating on a pale lavender canvas,
-     purple-ink text, a deeper purple for links/active states since the
-     pale #C79EDA used on dark doesn't have enough contrast on white. */
-  --night-bg: 247 243 251; /* #F7F3FB */
-  --night-surface: 255 255 255; /* #FFFFFF */
-  --night-surface-2: 241 234 247; /* #F1EAF7 */
-  --night-text: 58 46 66; /* #3A2E42 — brand.ink */
-  --sky-light: 122 74 148; /* #7A4A94 */
+  /* Keep the reference hues, with deeper values for readable accents on cream. */
+  --palette-sun: 173 130 56;
+  --palette-sky: 122 85 140;
+  --palette-coral: 182 83 76;
+  --palette-leaf: 91 125 80;
+  --night-bg: 255 245 216; /* #FFF5D8 */
+  --night-surface: 255 253 223; /* #FFFDEF */
+  --night-surface-2: 255 245 216; /* #FFF5D8 */
+  --night-text: 21 19 15; /* #15130F */
+  --sky-light: 21 19 15; /* use the reference's dark ink for readable labels */
 }
 
 .dark-ui {
   color-scheme: dark;
 }
+[data-theme="dark"] .dark-ui {
+  --palette-sun: 255 254 150; /* #FFFE96 */
+  --palette-sky: 192 155 221; /* #C09BDD */
+  --palette-coral: 255 98 91; /* #FF625B */
+  --palette-leaf: 213 214 172; /* #D5D6AC */
+  --sky-light: 192 155 221;
+  --checkin-walkin: 192 155 221; /* #C09BDD */
+  --checkin-membership: 213 214 172; /* #D5D6AC */
+  --checkin-special: 255 98 91; /* #FF625B */
+}
 [data-theme="light"] .dark-ui {
   color-scheme: light;
 }
+
+/* Status markers in the admin's team attendance list stay distinct from
+   the dark card surface without changing general ListRow status colors. */
+[data-theme="dark"] .dark-ui .bg-team-attendance-present {
+  background-color: #a8d69a;
+}
+[data-theme="dark"] .dark-ui .bg-team-attendance-muted {
+  background-color: #8b8981;
+}
+[data-theme="light"] .dark-ui .bg-team-attendance-present {
+  background-color: #5b7d50;
+}
+[data-theme="light"] .dark-ui .bg-team-attendance-muted {
+  background-color: #15130f;
+}
+[data-theme="dark"] .dark-ui .bg-directory-general-dot {
+  background-color: #8b8981;
+}
+[data-theme="light"] .dark-ui .bg-directory-general-dot {
+  background-color: #716f68;
+}
+
+/* Expanded staff-calendar attendance cells: deeper reference tones in light
+   mode, softer high-contrast tones in dark mode. */
+.staff-calendar-absent,
+.staff-calendar-undertime,
+.staff-calendar-present,
+.staff-calendar-overtime {
+  border: 1px solid transparent;
+  font-weight: 600;
+}
+.staff-calendar-absent { background: #ef4444; color: #15130f; }
+.staff-calendar-undertime { background: #facc15; color: #15130f; }
+.staff-calendar-present { background: #22c55e; color: #15130f; }
+.staff-calendar-overtime { background: #a855f7; color: #15130f; }
+.staff-calendar-absent:hover,
+.staff-calendar-undertime:hover,
+.staff-calendar-present:hover,
+.staff-calendar-overtime:hover { border-color: currentColor; }
+
+/* Reference-palette button fills use dark ink labels in both themes. */
+.bg-brand-sky,
+.bg-brand-leaf,
+.bg-brand-coral {
+  color: rgb(var(--palette-ink));
+}
+
+/* Keep pastel status/link colors readable on the cream light-mode canvas. */
+[data-theme="light"] .text-brand-sky,
+[data-theme="light"] .text-brand-sun,
+[data-theme="light"] .text-brand-coral,
+[data-theme="light"] .text-brand-leaf {
+  color: rgb(var(--palette-ink));
+}
+
+/* The timer uses its hue to communicate urgency. Keep its status colors in
+   light mode instead of inheriting the neutralized accent text color above. */
+[data-theme="light"] .kids-checkout-timer.text-brand-leaf { color: #5b7d50; }
+[data-theme="light"] .kids-checkout-timer.text-brand-sun { color: #ad8238; }
+[data-theme="light"] .kids-checkout-timer.text-brand-coral { color: #b6534c; }
+[data-theme="light"] .kids-checkout-timer.text-brand-skyLight { color: #7a558c; }
 
 /* The dark UI was built with literal white-opacity utilities for
    borders/nested-surface tints (border-white/10, bg-white/[0.05], etc.)
@@ -56,47 +140,47 @@ html {
    the staff UI — overriding them here (scoped to light + .dark-ui) means
    none of the ~30 component files that use them needed to change. */
 [data-theme="light"] .dark-ui .bg-white\/8 {
-  background-color: rgb(58 46 66 / 0.06);
+  background-color: rgb(61 54 53 / 0.06);
 }
 [data-theme="light"] .dark-ui .bg-white\/\[0\.035\] {
-  background-color: rgb(58 46 66 / 0.035);
+  background-color: rgb(61 54 53 / 0.035);
 }
 [data-theme="light"] .dark-ui .bg-white\/\[0\.04\] {
-  background-color: rgb(58 46 66 / 0.045);
+  background-color: rgb(61 54 53 / 0.045);
 }
 [data-theme="light"] .dark-ui .bg-white\/\[0\.05\] {
-  background-color: rgb(58 46 66 / 0.05);
+  background-color: rgb(61 54 53 / 0.05);
 }
 [data-theme="light"] .dark-ui .bg-white\/\[0\.08\] {
-  background-color: rgb(58 46 66 / 0.08);
+  background-color: rgb(61 54 53 / 0.08);
 }
 [data-theme="light"] .dark-ui .border-white\/8 {
-  border-color: rgb(58 46 66 / 0.1);
+  border-color: rgb(61 54 53 / 0.1);
 }
 [data-theme="light"] .dark-ui .border-white\/10 {
-  border-color: rgb(58 46 66 / 0.12);
+  border-color: rgb(61 54 53 / 0.12);
 }
 [data-theme="light"] .dark-ui .border-white\/15 {
-  border-color: rgb(58 46 66 / 0.16);
+  border-color: rgb(61 54 53 / 0.16);
 }
 [data-theme="light"] .dark-ui .border-white\/20 {
-  border-color: rgb(58 46 66 / 0.2);
+  border-color: rgb(61 54 53 / 0.2);
 }
 [data-theme="light"] .dark-ui .ring-white\/10 {
-  --tw-ring-color: rgb(58 46 66 / 0.12);
+  --tw-ring-color: rgb(61 54 53 / 0.12);
 }
 [data-theme="light"] .dark-ui .ring-white\/20 {
-  --tw-ring-color: rgb(58 46 66 / 0.2);
+  --tw-ring-color: rgb(61 54 53 / 0.2);
 }
 [data-theme="light"] .dark-ui .hover\:bg-white\/8:hover {
-  background-color: rgb(58 46 66 / 0.08);
+  background-color: rgb(61 54 53 / 0.08);
 }
 [data-theme="light"] .dark-ui .hover\:bg-white\/\[0\.04\]:hover {
-  background-color: rgb(58 46 66 / 0.05);
+  background-color: rgb(61 54 53 / 0.05);
 }
 [data-theme="light"] .dark-ui .hover\:bg-white\/\[0\.05\]:hover {
-  background-color: rgb(58 46 66 / 0.06);
+  background-color: rgb(61 54 53 / 0.06);
 }
 [data-theme="light"] .dark-ui .hover\:border-white\/10:hover {
-  border-color: rgb(58 46 66 / 0.16);
+  border-color: rgb(61 54 53 / 0.16);
 }

@@ -4,10 +4,13 @@ import { useState, useCallback, useEffect } from "react";
 import {
   ChevronRight,
   Phone,
-  LogOut,
   Heart,
   Hourglass,
   BadgeCheck,
+  Timer,
+  CalendarDays,
+  Clock3,
+  UserRound,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatTimeIST } from "@/lib/formatTime";
@@ -23,14 +26,14 @@ export type CheckedInKid = {
   status: string;
   parent_name: string;
   phone: string;
-  allergies: string | null;
-  medical_conditions: string | null;
-  special_instructions: string | null;
-  is_member: boolean;
+  has_medical_info: boolean;
+  visit_type: "membership" | "walk_in" | "special";
+  membership_started_on: string | null;
+  membership_expires_on: string | null;
+  is_membership_expired: boolean;
   plan_name: string | null;
   is_special_today: boolean;
   special_plan_name: string | null;
-  receipt_number: string | null;
 };
 
 // Kept for backward compatibility with server-rendered initial props —
@@ -50,23 +53,41 @@ export type SessionRow = {
   } | null;
 };
 
-function hasMedicalInfo(
-  k: Pick<
-    CheckedInKid,
-    "allergies" | "medical_conditions" | "special_instructions"
-  >,
-): boolean {
-  return !!(k.allergies || k.medical_conditions || k.special_instructions);
+function hasMedicalInfo(k: Pick<CheckedInKid, "has_medical_info">): boolean {
+  return k.has_medical_info;
 }
 
 function statusFor(
   endTime: string | null,
+  now: number,
 ): "unlimited" | "ok" | "soon" | "over" {
   if (!endTime) return "unlimited";
-  const remainingMs = new Date(endTime).getTime() - Date.now();
-  if (remainingMs < 0) return "over";
-  if (remainingMs < 15 * 60 * 1000) return "soon";
+  const remainingMs = new Date(endTime).getTime() - now;
+  if (remainingMs < 60 * 1000) return "over";
+  if (remainingMs <= 20 * 60 * 1000) return "soon";
   return "ok";
+}
+
+function CheckoutTimer({ endTime, startTime, now }: { endTime: string | null; startTime: string; now: number }) {
+  const radius = 17;
+  const circumference = 2 * Math.PI * radius;
+  const remainingMs = endTime ? new Date(endTime).getTime() - now : null;
+  const totalMs = endTime ? Math.max(new Date(endTime).getTime() - new Date(startTime).getTime(), 1) : 1;
+  const ratio = remainingMs == null ? 1 : Math.max(0, Math.min(1, remainingMs / totalMs));
+  const urgent = remainingMs != null && remainingMs < 60_000;
+  const soon = remainingMs != null && remainingMs <= 20 * 60_000;
+  const tone = remainingMs == null ? "text-brand-skyLight" : urgent ? "text-brand-coral" : soon ? "text-brand-sun" : "text-brand-leaf";
+  const lateMinutes = remainingMs != null && remainingMs <= 0 ? Math.max(Math.ceil(Math.abs(remainingMs) / 60_000), 1) : 0;
+  const display = remainingMs == null ? "∞" : lateMinutes ? `+${lateMinutes > 99 ? "99+" : lateMinutes}` : remainingMs < 60_000 ? "<1" : String(Math.ceil(remainingMs / 60_000));
+  const label = remainingMs == null ? "No scheduled checkout time" : lateMinutes ? `Checkout overdue by ${lateMinutes} minutes` : `Checkout in ${Math.ceil(remainingMs / 60_000)} minutes`;
+
+  return <span title={label} aria-label={label} className={`kids-checkout-timer relative grid h-11 w-11 shrink-0 place-items-center ${tone}`}>
+    <svg viewBox="0 0 44 44" className="absolute inset-0 h-full w-full -rotate-90" aria-hidden="true">
+      <circle cx="22" cy="22" r={radius} fill="none" stroke="currentColor" strokeOpacity="0.16" strokeWidth="3.5" />
+      <circle cx="22" cy="22" r={radius} fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - ratio)} className="transition-[stroke-dashoffset] duration-500" />
+    </svg>
+    <span className="relative flex flex-col items-center leading-none">{remainingMs == null ? <Timer size={16} strokeWidth={2.2} /> : <><span className="font-mono text-[11px] font-bold tabular-nums">{display}</span><span className="mt-0.5 text-[7px] font-semibold uppercase">{lateMinutes ? "late" : "min"}</span></>}</span>
+  </span>;
 }
 
 const dotFor: Record<string, "leaf" | "sun" | "coral" | "sky"> = {
@@ -101,10 +122,10 @@ export default function KidsCheckedInCard({
   // Server-provided initial sessions are intentionally not required —
   // this card now owns its own richer fetch via dashboard_list_checked_in_kids.
   initialSessions?: SessionRow[];
-  todayCheckinCount: number;
+  todayCheckinCount?: number;
   venueCapacity: number;
-  onViewAll: () => void;
-  onOpenCustomerDirectory: (customerKey: string) => void;
+  onViewAll?: () => void;
+  onOpenCustomerDirectory: (customerKey: string, childId?: string) => void;
   pendingCount?: number;
   onPendingClick?: () => void;
   /** "grid" (default): fixed height, for sitting side-by-side with
@@ -115,12 +136,15 @@ export default function KidsCheckedInCard({
 }) {
   const [supabase] = useState(() => createClient());
   const [kids, setKids] = useState<CheckedInKid[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(() => Date.now());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [checkingOut, setCheckingOut] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
     const { data } = await supabase.rpc("dashboard_list_checked_in_kids");
     setKids((data as CheckedInKid[]) ?? []);
+    setLoading(false);
   }, [supabase]);
 
   useEffect(() => {
@@ -137,6 +161,11 @@ export default function KidsCheckedInCard({
       supabase.removeChannel(channel);
     };
   }, [supabase, refetch]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 10_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const handleCheckout = async (sessionId: string) => {
     setCheckingOut(sessionId);
@@ -161,15 +190,15 @@ export default function KidsCheckedInCard({
       }`}
     >
       <div className="flex items-start justify-between gap-2 px-5 pt-5 pb-4">
-        <button onClick={onViewAll} className="flex-1 min-w-0 text-left group">
-          <p className="font-semibold text-brand-nightText group-hover:text-brand-sky transition-colors">
+        <div className="flex-1 min-w-0 text-left">
+          <p className="font-semibold text-brand-nightText">
             Kids on site
           </p>
           <p className="text-xs text-brand-nightText/40 mt-0.5">
-            {kids.length} of {venueCapacity} capacity · {todayCheckinCount}{" "}
-            check-ins today
+            {kids.length} of {venueCapacity} capacity
+            {todayCheckinCount !== undefined && ` · ${todayCheckinCount} check-ins today`}
           </p>
-        </button>
+        </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {typeof pendingCount === "number" && pendingCount > 0 && (
             <button
@@ -181,32 +210,35 @@ export default function KidsCheckedInCard({
               {pendingCount} pending
             </button>
           )}
-          <button
+          {onViewAll && <button
             type="button"
             onClick={onViewAll}
             aria-label="View all checked-in kids"
             className="text-brand-nightText/25 hover:text-brand-sky transition-colors p-0.5"
           >
             <ChevronRight size={18} />
-          </button>
+          </button>}
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-1.5">
-        {kids.length === 0 ? (
+        {loading ? (
+          <div className="space-y-2 py-1" aria-label="Loading kids on site">
+            {[0, 1, 2].map((row) => <div key={row} className="h-[54px] animate-pulse rounded-xl2 border border-white/5 bg-white/[0.035]" />)}
+          </div>
+        ) : kids.length === 0 ? (
           <p className="text-sm text-brand-nightText/35 text-center py-10">
-            No one's checked in right now.
+            No one&apos;s checked in right now.
           </p>
         ) : (
           kids.map((k) => {
-            const state = statusFor(k.end_time);
+            const state = statusFor(k.end_time, now);
             const isOpen = expandedId === k.session_id;
             return (
               <ListRow
                 key={k.session_id}
                 title={k.child_name}
                 subtitle={`${k.age} ${k.age === 1 ? "year" : "years"} old`}
-                factsLayout="stacked"
                 statusDot={dotFor[state]}
                 safetyFlag={
                   hasMedicalInfo(k) ? (
@@ -221,17 +253,10 @@ export default function KidsCheckedInCard({
                     </span>
                   ) : undefined
                 }
-                facts={[
-                  {
-                    icon: <LogOut size={13} strokeWidth={2.2} />,
-                    value: k.end_time ? timeStr(k.end_time) : "Open",
-                    title: k.end_time
-                      ? `Check-out time: ${timeStr(k.end_time)}`
-                      : "No scheduled checkout time",
-                  },
-                ]}
                 action={
-                  k.phone ? (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <CheckoutTimer endTime={k.end_time} startTime={k.start_time} now={now} />
+                    {k.phone ? (
                     <a
                       href={`tel:${k.phone}`}
                       onClick={(e) => e.stopPropagation()}
@@ -240,95 +265,55 @@ export default function KidsCheckedInCard({
                     >
                       <Phone size={12} />
                     </a>
-                  ) : undefined
+                    ) : null}
+                  </div>
                 }
                 expanded={isOpen}
                 onToggleExpand={() =>
                   setExpandedId(isOpen ? null : k.session_id)
                 }
                 expandedContent={
-                  <div className="space-y-2.5">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onOpenCustomerDirectory(k.phone || k.child_name)
-                      }
-                      className="block text-left"
-                    >
-                      <p className="text-xs text-brand-nightText/50">Parent</p>
-                      <p className="text-sm font-semibold text-brand-nightText hover:text-brand-sky transition-colors">
-                        {k.parent_name} · {k.phone}
+                  <div className="space-y-2">
+                    <div className="rounded-lg border border-white/10 bg-brand-nightSurface2/70 px-2.5 py-2">
+                      <p className="flex flex-wrap items-center gap-1.5 text-[13px] font-semibold text-brand-nightText">
+                        <BadgeCheck size={13} className="text-brand-skyLight" />
+                        {k.visit_type === "special"
+                          ? `Special event · ${k.special_plan_name ?? k.plan_name ?? "Pass"}`
+                          : k.visit_type === "membership"
+                            ? `Membership · ${k.plan_name ?? "Member"}`
+                            : `Walk-in visit${k.plan_name ? ` · ${k.plan_name}` : ""}`}
+                        {k.is_membership_expired && <span className="rounded-full bg-brand-coral/15 px-2 py-0.5 text-[10px] font-semibold text-brand-coral">Expired</span>}
                       </p>
-                    </button>
+                      {k.membership_started_on && <p className="mt-1 flex items-center gap-1.5 text-[11px] text-brand-nightText/50"><CalendarDays size={11} className="shrink-0" />{new Date(`${k.membership_started_on}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" })} – {k.membership_expires_on ? new Date(`${k.membership_expires_on}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" }) : "No expiry"}</p>}
+                    </div>
 
-                    <p className="flex items-center gap-1.5 text-xs text-brand-nightText/50">
-                      <BadgeCheck size={12} />
-                      {k.is_member
-                        ? `Member · ${k.plan_name ?? "Active plan"}`
-                        : "Not a member"}
-                      {k.is_special_today && k.special_plan_name && (
-                        <span className="text-brand-sun">
-                          {" "}
-                          · {k.special_plan_name} today
-                        </span>
-                      )}
-                    </p>
-
-                    {k.receipt_number && (
-                      <p className="text-xs text-brand-nightText/50">
-                        Receipt:{" "}
-                        <span className="text-brand-nightText font-medium">
-                          {k.receipt_number}
-                        </span>
-                      </p>
-                    )}
-                    <p className="text-xs text-brand-nightText/50">
-                      Check-in time:{" "}
-                      <span className="text-brand-nightText font-medium">
-                        {timeStr(k.start_time)}
-                      </span>
-                    </p>
-                    {k.end_time && (
-                      <p className="text-xs text-brand-nightText/50">
-                        Check-out time:{" "}
-                        <span className="text-brand-nightText font-medium">
-                          {timeStr(k.end_time)}
-                        </span>
-                      </p>
-                    )}
-
-                    {hasMedicalInfo(k) && (
-                      <div className="rounded-lg bg-brand-coral/8 border border-brand-coral/20 px-3 py-2">
-                        <p className="flex items-center gap-1.5 text-[11px] font-semibold text-brand-coral uppercase tracking-wide mb-1">
-                          <Heart size={11} fill="currentColor" /> Medical
-                        </p>
-                        {k.allergies && (
-                          <p className="text-xs text-brand-nightText/70">
-                            Allergies: {k.allergies}
-                          </p>
-                        )}
-                        {k.medical_conditions && (
-                          <p className="text-xs text-brand-nightText/70">
-                            Conditions: {k.medical_conditions}
-                          </p>
-                        )}
-                        {k.special_instructions && (
-                          <p className="text-xs text-brand-nightText/70">
-                            Notes: {k.special_instructions}
-                          </p>
-                        )}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div className="rounded-lg border border-white/10 bg-brand-nightSurface2/70 px-2.5 py-2">
+                        <p className="flex items-center gap-1 text-[10px] font-semibold text-brand-nightText/45"><Clock3 size={10} />Check-in</p>
+                        <p className="mt-0.5 text-[13px] font-semibold tabular-nums text-brand-nightText">{timeStr(k.start_time)}</p>
                       </div>
-                    )}
+                      <div className="rounded-lg border border-white/10 bg-brand-nightSurface2/70 px-2.5 py-2">
+                        <p className="flex items-center gap-1 text-[10px] font-semibold text-brand-nightText/45"><Clock3 size={10} />Checkout</p>
+                        <p className="mt-0.5 text-[13px] font-semibold tabular-nums text-brand-nightText">{k.end_time ? timeStr(k.end_time) : "No time set"}</p>
+                      </div>
+                    </div>
 
+                    <div className="flex items-center gap-2 rounded-lg border border-white/10 px-2.5 py-1.5">
+                      <UserRound size={13} className="shrink-0 text-brand-nightText/45" />
+                      <p className="min-w-0 flex-1 truncate text-xs font-medium text-brand-nightText">{k.parent_name}<span className="font-normal text-brand-nightText/50"> · {k.phone}</span></p>
+                      <a href={`tel:${k.phone}`} onClick={(event) => event.stopPropagation()} aria-label={`Call ${k.parent_name}`} className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-md border border-white/10 px-2 text-[11px] font-semibold text-brand-nightText"><Phone size={12} />Call</a>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5">
+                    <button type="button" onClick={() => onOpenCustomerDirectory(k.phone || k.child_name, k.child_id)} className="min-h-9 rounded-lg bg-brand-sky/15 px-2 text-xs font-semibold text-brand-skyLight">View details</button>
                     <button
                       onClick={() => handleCheckout(k.session_id)}
                       disabled={checkingOut === k.session_id}
-                      className="w-full min-h-[34px] rounded-lg bg-brand-sky text-white text-xs font-semibold hover:bg-brand-sky/85 disabled:opacity-50 transition-colors"
+                      className="min-h-9 rounded-lg bg-brand-sky text-white text-xs font-semibold hover:bg-brand-sky/85 disabled:opacity-50 transition-colors"
                     >
-                      {checkingOut === k.session_id
-                        ? "Checking out…"
-                        : "Check out"}
+                      {checkingOut === k.session_id ? "Checking out…" : "Check out"}
                     </button>
+                    </div>
                   </div>
                 }
               />

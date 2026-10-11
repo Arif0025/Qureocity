@@ -7,6 +7,8 @@ import {
   Footprints,
   TrendingUp,
   AlertCircle,
+  ArrowUpRight,
+  CalendarDays,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { istDateParts } from "@/lib/formatTime";
@@ -23,12 +25,12 @@ type Stats = {
 };
 
 export default function MonthlyStatsCard({
-  onWalkInsClick,
+  onActivityClick,
   onNewFamiliesClick,
   onNewMembershipsClick,
   onExpiringClick,
 }: {
-  onWalkInsClick?: () => void;
+  onActivityClick?: () => void;
   onNewFamiliesClick?: () => void;
   onNewMembershipsClick?: () => void;
   onExpiringClick?: () => void;
@@ -106,70 +108,52 @@ export default function MonthlyStatsCard({
     })();
   }, [supabase]);
 
-  const memberSharePct =
-    stats && stats.totalVisits > 0
-      ? Math.round((stats.memberVisits / stats.totalVisits) * 100)
-      : null;
-
   return (
-    <div className="bg-brand-nightSurface rounded-2xl border border-white/10 p-5">
-      <p className="font-semibold text-brand-nightText mb-4">
-        This month at a glance
-      </p>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <section className="overflow-hidden rounded-2xl border border-white/10 bg-brand-nightSurface">
+      <header className="flex items-center justify-between gap-3 border-b border-white/[0.07] px-5 py-4 sm:px-6">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-brand-nightText/40">Monthly overview</p>
+          <h2 className="mt-1 font-semibold text-brand-nightText">This month at a glance</h2>
+        </div>
+        <button type="button" onClick={onActivityClick} disabled={!onActivityClick}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-brand-sky/20 bg-brand-sky/10 px-3 py-2 text-xs font-semibold text-brand-skyLight transition-colors hover:bg-brand-sky/15 disabled:cursor-default">
+          <CalendarDays size={14} /> <span className="hidden sm:inline">Check-in activity</span><span className="sm:hidden">Activity</span><ArrowUpRight size={13} />
+        </button>
+      </header>
+      <div className="p-4 sm:p-5">
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
         <Tile
           icon={<Footprints size={16} className="text-brand-sky" />}
           value={stats?.walkIns ?? "—"}
           label="Walk-ins this month"
-          tone="sky"
-          onClick={onWalkInsClick}
         />
         <Tile
           icon={<UserPlus size={16} className="text-brand-skyLight" />}
           value={stats?.newCustomers ?? "—"}
           label="New families"
-          tone="sky"
           onClick={onNewFamiliesClick}
         />
         <Tile
           icon={<Sparkles size={16} className="text-brand-sun" />}
           value={stats?.newSubscriptions ?? "—"}
           label="New memberships"
-          tone="sun"
           onClick={onNewMembershipsClick}
         />
         <Tile
           icon={<AlertCircle size={16} className="text-brand-coral" />}
           value={stats?.expiringSoon ?? "—"}
           label="Memberships expiring in 7 days"
-          tone="coral"
           onClick={onExpiringClick}
         />
       </div>
 
-      {stats && stats.activeMembers > 0 && (
-        <div className="mt-4 pt-4 border-t border-white/8 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-brand-leaf/15 flex items-center justify-center shrink-0">
-            <TrendingUp size={16} className="text-brand-leaf" />
-          </div>
-          <p className="text-sm text-brand-nightText/60">
-            <span className="font-bold text-brand-nightText">
-              {stats.activeMembers}
-            </span>{" "}
-            active memberships
-            {memberSharePct !== null && (
-              <>
-                {" · "}
-                <span className="font-bold text-brand-nightText">
-                  {memberSharePct}%
-                </span>{" "}
-                of this month's check-ins were members
-              </>
-            )}
-          </p>
-        </div>
-      )}
-    </div>
+      {stats && <div className="mt-3 flex items-center gap-2 border-t border-white/[0.07] pt-3 text-xs text-brand-nightText/55">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-leaf/10"><TrendingUp size={14} className="text-brand-leaf" /></span>
+        <span><strong className="font-semibold text-brand-nightText">{stats.activeMembers}</strong> active memberships</span>
+        <span className="ml-auto text-brand-nightText/35">{stats.totalVisits} check-ins</span>
+      </div>}
+      </div>
+    </section>
   );
 }
 
@@ -177,27 +161,19 @@ function Tile({
   icon,
   value,
   label,
-  tone,
   onClick,
 }: {
   icon: React.ReactNode;
   value: number | string;
   label: string;
-  tone: "sky" | "sun" | "coral";
   onClick?: () => void;
 }) {
-  const bg =
-    tone === "sky"
-      ? "bg-brand-sky/10"
-      : tone === "sun"
-        ? "bg-brand-sun/10"
-        : "bg-brand-coral/10";
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={!onClick}
-      className={`text-left rounded-xl ${bg} border border-white/8 px-3 py-3 transition-transform ${onClick ? "hover:border-white/20 hover:-translate-y-0.5" : ""}`}
+      className={`min-h-[92px] rounded-xl border border-transparent bg-transparent px-3 py-3 text-left transition-colors ${onClick ? "cursor-pointer hover:border-brand-sky/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-sky/50" : "cursor-default"}`}
     >
       <div className="mb-1.5">{icon}</div>
       <p className="text-xl font-extrabold text-brand-nightText leading-none">

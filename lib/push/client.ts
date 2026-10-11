@@ -91,7 +91,8 @@ export async function enableThisDevice(): Promise<
     return {
       ok: false,
       reason: "error",
-      message: "Notifications aren't set up on the server yet.",
+      message:
+        "Push notifications are not configured for this deployment. Add NEXT_PUBLIC_VAPID_PUBLIC_KEY to its Vercel environment variables, then redeploy.",
     };
   }
 

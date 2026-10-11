@@ -61,12 +61,22 @@ export async function sendPush(
   if (!isAllowedPushEndpoint(target.endpoint)) return "gone";
   configure();
   try {
+    // Safari's Web Push service (including iOS Home Screen web apps)
+    // requires every push to produce a user-visible notification. The
+    // service worker can use this flag to avoid its toast-only foreground
+    // path for Apple endpoints.
+    const hostname = new URL(target.endpoint).hostname;
+    const applePush =
+      hostname === "push.apple.com" || hostname.endsWith(".push.apple.com");
     await webpush.sendNotification(
       {
         endpoint: target.endpoint,
         keys: { p256dh: target.p256dh, auth: target.auth_secret },
       },
-      JSON.stringify(message),
+      JSON.stringify({
+        ...message,
+        showWhenVisible: applePush || Boolean(message.actions?.length),
+      }),
       // A stale "child checked in" alert is useless an hour later, so
       // undelivered messages expire instead of piling up on a phone
       // that was switched off.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { CalendarClock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -23,22 +23,32 @@ function timeLabel(t: string) {
 
 export default function ShiftDetailsCard({
   employeeId,
+  initialShift,
+  onShiftLoaded,
 }: {
   employeeId: string;
+  initialShift?: ShiftRow | null;
+  onShiftLoaded?: (shift: ShiftRow | null) => void;
 }) {
-  const supabase = createClient();
-  const [shift, setShift] = useState<ShiftRow | null | undefined>(undefined); // undefined = loading
+  const supabase = useMemo(() => createClient(), []);
+  const [shift, setShift] = useState<ShiftRow | null | undefined>(() => initialShift); // undefined = loading
 
   useEffect(() => {
+    if (initialShift !== undefined) {
+      setShift(initialShift);
+      return;
+    }
     (async () => {
       const { data } = await supabase
         .from("shifts")
         .select("start_time, end_time, notes")
         .eq("employee_id", employeeId)
         .maybeSingle();
-      setShift((data as ShiftRow | null) ?? null);
+      const nextShift = (data as ShiftRow | null) ?? null;
+      setShift(nextShift);
+      onShiftLoaded?.(nextShift);
     })();
-  }, [supabase, employeeId]);
+  }, [supabase, employeeId, initialShift, onShiftLoaded]);
 
   if (shift === undefined) return null;
 

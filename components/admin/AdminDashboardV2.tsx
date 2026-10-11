@@ -1,28 +1,52 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
-import { Home as HomeIcon } from "lucide-react";
+import { ChevronDown, Home as HomeIcon, LogOut, UserPlus } from "lucide-react";
 import Sidebar, { AdminTabId } from "./Sidebar";
 import HomeOverview from "./home/HomeOverview";
 import StaffRoster from "./staff/StaffRoster";
 import QrModeToggle from "./QrModeToggle";
 import NotificationRulesManager from "./NotificationRulesManager";
-import PushDeliveryLog from "./PushDeliveryLog";
+import MessageTemplatesManager from "./MessageTemplatesManager";
 import NotificationsCard from "@/components/shared/NotificationsCard";
 import PushToast from "@/components/shared/PushToast";
 import GlobalSearch, { SearchNavItem } from "@/components/shared/GlobalSearch";
 import HelpTab from "@/components/shared/HelpTab";
-import SubscriptionsManager from "./SubscriptionsManager";
+import PageTransition from "@/components/ui/PageTransition";
 import AdminPasswordCard from "./AdminPasswordCard";
 import KioskAccessCard from "./KioskAccessCard";
-import QuickCheckin from "@/components/employee/QuickCheckin";
-import CustomerSearch from "@/components/shared/CustomerSearch";
-import MembershipRegistrations from "./MembershipRegistrations";
+import Directory from "./Directory";
 import PlansManager from "./PlansManager";
-import BroadcastWhatsApp from "./BroadcastWhatsapp";
-import { SessionRow } from "./home/KidsCheckedInCard";
+import AdminNotifications from "./AdminNotifications";
+import PartyBookingSettingsCard from "./PartyBookingSettingsCard";
+import AdminDataExport from "./AdminDataExport";
+import ThemeToggle from "@/components/shared/ThemeToggle";
+import { useInAppBackStack } from "@/lib/hooks/useInAppBackStack";
+import { expandCollapse } from "@/lib/motion";
+
+function SettingsDisclosure({ title, description, children }: { title: string; description: string; children: ReactNode }) {
+  const [opened, setOpened] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <section className="group overflow-hidden rounded-2xl border border-white/10 bg-brand-nightSurface">
+      <button type="button" aria-expanded={opened} onClick={() => {
+        setOpened((value) => !value);
+        setLoaded(true);
+      }} className="flex w-full cursor-pointer items-center gap-3 p-4 text-left sm:p-5">
+        <span className="min-w-0 flex-1"><span className="block font-bold text-brand-nightText">{title}</span><span className="mt-0.5 block text-sm text-brand-nightText/45">{description}</span></span>
+        <ChevronDown size={18} className={`shrink-0 text-brand-nightText/45 transition-transform ${opened ? "rotate-180" : ""}`} />
+      </button>
+      <AnimatePresence initial={false}>
+        {loaded && opened && <motion.div {...expandCollapse} className="overflow-hidden">
+          <div className="space-y-3 border-t border-white/8 p-4 sm:p-5">{children}</div>
+        </motion.div>}
+      </AnimatePresence>
+    </section>
+  );
+}
 
 function BackToHomeButton({ onClick }: { onClick: () => void }) {
   return (
@@ -39,11 +63,6 @@ function BackToHomeButton({ onClick }: { onClick: () => void }) {
 }
 
 type Staff = { id: string; name: string; role: string };
-type OnDutyLog = {
-  employee_id: string;
-  punch_in: string;
-  employees: { name: string } | null;
-};
 type Shift = {
   id: string;
   employee_id: string;
@@ -53,58 +72,38 @@ type Shift = {
   employees: { name: string } | null;
 };
 
-const MEMBERSHIPS_SUBTABS = [
-  { id: "subscribers", label: "Subscribers" },
-  { id: "plans", label: "Plans" },
-] as const;
-
 function AdminDashboardV2Inner({
   employeeName,
   isAdmin,
-  initialSessions,
   staff,
   qrMode,
-  onDutyStaff,
-  todayCheckinCount,
-  avgDurationMins,
   venueCapacity,
-  dailyCounts,
   shifts,
-  attendanceLogs,
+  shiftsLoaded,
 }: {
   employeeName: string;
   isAdmin: boolean;
-  initialSessions: SessionRow[];
   staff: Staff[];
   qrMode: "static" | "dynamic";
-  onDutyStaff: OnDutyLog[];
-  todayCheckinCount: number;
-  avgDurationMins: number | null;
   venueCapacity: number;
-  ageBuckets: { bucket: string; cnt: number }[];
-  dailyCounts: { day: string; cnt: number }[];
   shifts: Shift[];
-  attendanceLogs: {
-    id: string;
-    employee_id: string;
-    punch_in: string;
-    punch_out: string | null;
-    auto_punched_out?: boolean;
-    employees: { name: string } | null;
-  }[];
+  shiftsLoaded: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const replaceInAppView = useCallback(
+    (href: string) => router.replace(href, { scroll: false }),
+    [router],
+  );
+  const rememberInAppView = useInAppBackStack(pathname, replaceInAppView);
 
   const VALID_TABS: AdminTabId[] = [
     "home",
     "directory",
+    "notifications",
     "memberships",
     "staff",
-    "clubcheckin",
-    "pending",
-    "broadcast",
     "settings",
     "help",
   ];
@@ -123,22 +122,23 @@ function AdminDashboardV2Inner({
   //   customer directory search / focus key
   //   article  help article slug (tab=help)
   const rawTab = searchParams.get("tab");
-  const tab: AdminTabId = VALID_TABS.includes(rawTab as AdminTabId)
-    ? (rawTab as AdminTabId)
+  const rawMode = searchParams.get("mode");
+  const resolvedTab = rawTab === "directory" && rawMode === "pending" ? "notifications" : rawTab;
+  const tab: AdminTabId = VALID_TABS.includes(resolvedTab as AdminTabId)
+    ? (resolvedTab as AdminTabId)
     : "home";
-  const membershipsSubtab: "subscribers" | "plans" =
-    searchParams.get("sub") === "plans" ? "plans" : "subscribers";
-  const rawFilter = searchParams.get("mf");
-  const membershipsFilter =
-    rawFilter === "expiring_soon" || rawFilter === "new_this_month"
-      ? rawFilter
-      : undefined;
+
   const plansTypeFilter: "recurring" | "special" =
     searchParams.get("pt") === "special" ? "special" : "recurring";
   const plansFocusId = searchParams.get("plan");
   const staffFocusEmployeeId = searchParams.get("staff");
   const directoryNewOnly = searchParams.get("new") === "1";
+  const directoryExpiringOnly = searchParams.get("expiring") === "1";
+  const directoryPlanId = searchParams.get("filterplan") ?? undefined;
+  const directoryBrowseAll = searchParams.get("browse") === "all";
+  const directoryMode = rawMode === "members" ? "members" : "all";
   const customerSearchQuery = searchParams.get("customer") ?? "";
+  const customerChildId = searchParams.get("child") ?? undefined;
   const helpArticleSlug = searchParams.get("article");
 
   // Moving to a view pushes a new history entry (not replace). Params
@@ -156,11 +156,16 @@ function AdminDashboardV2Inner({
     // Re-selecting the view you're already on shouldn't stack a
     // duplicate entry that makes Back appear to do nothing.
     if (next === `${pathname}?${searchParams.toString()}`) return;
-    router.push(next, { scroll: false });
+    // Keep tab changes client-side. router.push() requests a fresh RSC
+    // render of app/admin/page, repeating auth and employee queries on
+    // every switch. Next integrates native history updates with
+    // useSearchParams/usePathname, while preserving Back/Forward history.
+    rememberInAppView(next);
+    window.history.pushState(null, "", next);
   };
   const setTab = (id: AdminTabId) => navigate(id);
 
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -170,13 +175,13 @@ function AdminDashboardV2Inner({
   const openStaffEmployee = (employeeId: string) =>
     navigate("staff", { staff: employeeId });
 
-  const goToPending = () => navigate("pending");
+  const goToNotifications = () => navigate("notifications");
 
   const goToNewFamilies = () => navigate("directory", { new: "1" });
   const goToNewMemberships = () =>
-    navigate("memberships", { sub: "subscribers", mf: "new_this_month" });
+    navigate("directory", { mode: "members", new: "1" });
   const goToExpiring = () =>
-    navigate("memberships", { sub: "subscribers", mf: "expiring_soon" });
+    navigate("directory", { mode: "members", expiring: "1" });
   const goToPlan = (planId: string | null, planType: "recurring" | "special") =>
     navigate("memberships", {
       sub: "plans",
@@ -184,33 +189,49 @@ function AdminDashboardV2Inner({
       plan: planId ?? undefined,
     });
 
-  const openCustomerDirectory = (customerKey: string) =>
-    navigate("directory", { customer: customerKey });
+  const openCustomerDirectory = (customerKey: string, childId?: string) =>
+    navigate("directory", { customer: customerKey, child: childId });
 
   const openHelpArticle = (slug: string | null) =>
     navigate("help", { article: slug ?? undefined });
 
   const [searchOpen, setSearchOpen] = useState(false);
+  const [newRegistrationAlert, setNewRegistrationAlert] = useState(false);
+  useEffect(() => {
+    const channel = supabase
+      .channel(`admin_registration_alert_${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "membership_registrations" }, () => {
+        setNewRegistrationAlert(true);
+        window.setTimeout(() => setNewRegistrationAlert(false), 6500);
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [supabase]);
   const ADMIN_SEARCH_NAV: SearchNavItem[] = [
     { id: "home", label: "Overview", keywords: ["dashboard", "today"] },
     {
       id: "directory",
-      label: "Directory",
-      keywords: ["customers", "families"],
+      label: "Customers",
+      keywords: [
+        "customers",
+        "families",
+        "members",
+        "subscribers",
+        "message",
+        "whatsapp",
+      ],
     },
+    { id: "notifications", label: "Notifications", keywords: ["new registration", "pending", "pending registration", "special day"] },
     {
       id: "memberships",
-      label: "Memberships",
-      keywords: ["plans", "subscriptions"],
+      label: "Plans",
+      keywords: ["memberships", "subscriptions", "special days"],
     },
     { id: "staff", label: "Staff", keywords: ["team", "roster", "shifts"] },
-    { id: "clubcheckin", label: "Club check-in", keywords: ["quick checkin"] },
-    { id: "pending", label: "Pending", keywords: ["awaiting payment"] },
-    { id: "broadcast", label: "Broadcast", keywords: ["whatsapp", "message"] },
     {
       id: "settings",
       label: "Settings",
-      keywords: ["notifications", "qr", "password"],
+    keywords: ["notifications", "qr", "password", "export", "backup", "theme", "dark mode", "sign out"],
     },
     { id: "help", label: "Help", keywords: ["faq", "how to"] },
   ];
@@ -221,8 +242,8 @@ function AdminDashboardV2Inner({
       <Sidebar
         active={tab}
         onSelect={setTab}
+        onNotificationsClick={goToNotifications}
         employeeName={employeeName}
-        onSignOut={handleSignOut}
         onSearchClick={() => setSearchOpen(true)}
       />
       <GlobalSearch
@@ -237,201 +258,157 @@ function AdminDashboardV2Inner({
         onOpenHelp={openHelpArticle}
       />
 
+      {newRegistrationAlert && (
+        <button type="button" onClick={goToNotifications} className="fixed right-4 top-16 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-2xl border border-brand-sky/30 bg-brand-nightSurface px-4 py-3 text-left shadow-xl shadow-black/20 animate-in slide-in-from-top-2 fade-in duration-200">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-sky/15 text-brand-skyLight"><UserPlus size={17} /></span>
+          <span><span className="block text-sm font-semibold text-brand-nightText">New registration received</span><span className="block text-xs text-brand-nightText/45">Tap to review it now</span></span>
+        </button>
+      )}
+
       <main className="flex-1 min-w-0 px-5 md:px-10 py-6 md:py-10 pb-24 md:pb-10">
         <div className="max-w-6xl mx-auto">
-          {tab === "home" && (
-            <>
-              <h1 className="text-xl font-bold text-brand-nightText mb-6">
-                Overview
-              </h1>
-              <HomeOverview
-                initialSessions={initialSessions}
-                todayCheckinCount={todayCheckinCount}
-                venueCapacity={venueCapacity}
-                onDutyStaff={onDutyStaff}
-                totalStaff={staff.filter((s) => s.role !== "admin").length}
-                shifts={shifts}
-                attendanceLogs={attendanceLogs}
-                dailyCounts={dailyCounts}
-                onInspectStaffEmployee={openStaffEmployee}
-                onOpenCustomerDirectory={openCustomerDirectory}
-                onPendingClick={goToPending}
-                onNewFamiliesClick={goToNewFamilies}
-                onNewMembershipsClick={goToNewMemberships}
-                onExpiringClick={goToExpiring}
-                onOpenPlan={goToPlan}
-              />
-            </>
-          )}
-
-          {tab === "pending" && (
-            <>
-              <div className="flex items-start justify-between gap-3 mb-1">
-                <h1 className="text-lg font-bold text-brand-nightText">
-                  Pending memberships
+          <PageTransition pageKey={tab}>
+            {tab === "home" && (
+              <>
+                <h1 className="text-xl font-bold text-brand-nightText mb-6">
+                  Overview
                 </h1>
-                <BackToHomeButton onClick={() => setTab("home")} />
-              </div>
-              <p className="text-brand-nightText/50 text-sm mb-5">
-                Membership sign-ups and renewals awaiting review.
-              </p>
-              <MembershipRegistrations />
-            </>
-          )}
-
-          {tab === "broadcast" && (
-            <>
-              <div className="flex items-start justify-between gap-3 mb-1">
-                <h1 className="text-lg font-bold text-brand-nightText">
-                  WhatsApp broadcast
-                </h1>
-                <BackToHomeButton onClick={() => setTab("home")} />
-              </div>
-              <p className="text-brand-nightText/50 text-sm mb-6">
-                Filter families and send personalized messages — opens WhatsApp
-                with the message ready, you tap send.
-              </p>
-              <BroadcastWhatsApp />
-            </>
-          )}
-
-          {tab === "clubcheckin" && (
-            <>
-              <h1 className="text-lg font-bold text-brand-nightText mb-1">
-                Club check-in
-              </h1>
-              <p className="text-brand-nightText/50 text-sm mb-6">
-                Search a subscribed child by name — no phone number needed.
-              </p>
-              <QuickCheckin />
-            </>
-          )}
-
-          {tab === "directory" && (
-            <>
-              <div className="flex items-start justify-between gap-3 mb-1">
-                <h1 className="text-lg font-bold text-brand-nightText">
-                  Directory
-                </h1>
-                <BackToHomeButton onClick={() => setTab("home")} />
-              </div>
-              <p className="text-brand-nightText/50 text-sm mb-6">
-                Registered families and their children — search by name or
-                phone.
-              </p>
-              <CustomerSearch
-                key={`${customerSearchQuery}|${directoryNewOnly ? "new" : "all"}`}
-                isAdmin={true}
-                initialQuery={customerSearchQuery}
-                focusCustomerPhone={customerSearchQuery}
-                filterNewThisMonth={directoryNewOnly}
-              />
-            </>
-          )}
-
-          {tab === "memberships" && (
-            <>
-              <div className="flex items-start justify-between gap-3 mb-1">
-                <h1 className="text-lg font-bold text-brand-nightText">
-                  Memberships
-                </h1>
-                <BackToHomeButton onClick={() => setTab("home")} />
-              </div>
-              <p className="text-brand-nightText/50 text-sm mb-5">
-                Subscriber status, monthly plans, and special days.
-              </p>
-              <div className="flex gap-1 border-b border-white/8 mb-6">
-                {MEMBERSHIPS_SUBTABS.map((st) => (
-                  <button
-                    key={st.id}
-                    onClick={() => navigate("memberships", { sub: st.id })}
-                    className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
-                      membershipsSubtab === st.id
-                        ? "border-brand-skyLight text-brand-skyLight"
-                        : "border-transparent text-brand-nightText/50 hover:text-brand-nightText"
-                    }`}
-                  >
-                    {st.label}
-                  </button>
-                ))}
-              </div>
-              {membershipsSubtab === "subscribers" && (
-                <SubscriptionsManager
-                  key={membershipsFilter ?? "all"}
-                  initialFilter={membershipsFilter}
+                <HomeOverview
+                  venueCapacity={venueCapacity}
+                  onOpenCustomerDirectory={openCustomerDirectory}
+                  onNewFamiliesClick={goToNewFamilies}
+                  onNewMembershipsClick={goToNewMemberships}
+                  onExpiringClick={goToExpiring}
+                  onOpenPlan={goToPlan}
                 />
-              )}
-              {membershipsSubtab === "plans" && (
+              </>
+            )}
+
+            {tab === "directory" && (
+              <>
+                <div className="flex items-start justify-between gap-3 mb-1">
+                  <h1 className="text-lg font-bold text-brand-nightText">
+                    Customers
+                  </h1>
+                  <BackToHomeButton onClick={() => setTab("home")} />
+                </div>
+                <Directory
+                  isAdmin
+                  initialMode={directoryMode}
+                  initialQuery={customerSearchQuery}
+                  initialChildId={customerChildId}
+                  initialPlanId={directoryPlanId}
+                  initialBrowseAll={directoryBrowseAll}
+                  initialNewOnly={directoryNewOnly}
+                  initialExpiringOnly={directoryExpiringOnly}
+                  onOpenMembers={() => navigate("directory", { mode: "members" })}
+                  onOpenPlan={(planId) => navigate("directory", { filterplan: planId })}
+                  onOpenSearch={(query) => navigate("directory", { customer: query })}
+                  onOpenAll={() => navigate("directory", { browse: "all" })}
+                  onBack={() => navigate("directory")}
+                />
+              </>
+            )}
+
+            {tab === "notifications" && (
+              <>
+                <div className="flex items-start justify-between gap-3 mb-1">
+                  <h1 className="text-lg font-bold text-brand-nightText">Notifications</h1>
+                  <BackToHomeButton onClick={() => setTab("home")} />
+                </div>
+                <p className="text-brand-nightText/50 text-sm mb-6">Review new registrations and keep important requests visible.</p>
+                <AdminNotifications onOpenSettings={() => setTab("settings")} />
+              </>
+            )}
+
+            {tab === "memberships" && (
+              <>
+                <div className="flex items-start justify-between gap-3 mb-1">
+                  <h1 className="text-lg font-bold text-brand-nightText">
+                    Plans
+                  </h1>
+                  <BackToHomeButton onClick={() => setTab("home")} />
+                </div>
+                <p className="text-brand-nightText/50 text-sm mb-6">
+                  Design, edit, and manage monthly memberships and special days.
+                  Looking for a member? That&apos;s in Customers now.
+                </p>
                 <PlansManager
                   key={`${plansTypeFilter}:${plansFocusId ?? "none"}`}
                   initialTypeFilter={plansTypeFilter}
                   initialExpandedPlanId={plansFocusId}
                 />
-              )}
-            </>
-          )}
+              </>
+            )}
 
-          {tab === "staff" && (
-            <>
-              <div className="flex items-start justify-between gap-3 mb-1">
-                <h1 className="text-lg font-bold text-brand-nightText">
-                  Staff
-                </h1>
-                <BackToHomeButton onClick={() => setTab("home")} />
-              </div>
-              <p className="text-brand-nightText/50 text-sm mb-5">
-                {isAdmin
-                  ? "Roles, shifts, and attendance for the team."
-                  : "Everyone currently on the roster."}
-              </p>
-              <StaffRoster
-                staff={staff}
-                initialShifts={shifts}
-                isAdmin={isAdmin}
-                activeEmployeeId={staffFocusEmployeeId}
+            {tab === "staff" && (
+              <>
+                <div className="flex items-start justify-between gap-3 mb-1">
+                  <h1 className="text-lg font-bold text-brand-nightText">
+                    Staff
+                  </h1>
+                  <BackToHomeButton onClick={() => setTab("home")} />
+                </div>
+                <p className="text-brand-nightText/50 text-sm mb-5">
+                  {isAdmin
+                    ? "Roles, shifts, and attendance for the team."
+                    : "Everyone currently on the roster."}
+                </p>
+                <StaffRoster
+                  staff={staff}
+                  initialShifts={shifts}
+                  initialShiftsLoaded={shiftsLoaded}
+                  isAdmin={isAdmin}
+                  activeEmployeeId={staffFocusEmployeeId}
+                />
+              </>
+            )}
+
+            {tab === "help" && (
+              <HelpTab
+                isAdmin={true}
+                initialSlug={helpArticleSlug}
+                onOpenArticle={openHelpArticle}
               />
-            </>
-          )}
+            )}
 
-          {tab === "help" && (
-            <HelpTab
-              isAdmin={true}
-              initialSlug={helpArticleSlug}
-              onOpenArticle={openHelpArticle}
-            />
-          )}
+            {tab === "settings" && (
+              <>
+                <div className="flex items-start justify-between gap-3 mb-1">
+                  <h1 className="text-lg font-bold text-brand-nightText">
+                    Settings
+                  </h1>
+                  <BackToHomeButton onClick={() => setTab("home")} />
+                </div>
+                <p className="text-brand-nightText/50 text-sm mb-6">
+                  Configure administrative and check-in options.
+                </p>
+                <div className="max-w-2xl space-y-3">
+                  {isAdmin && (
+                    <SettingsDisclosure title="Front desk & kiosk" description="QR display, kiosk access, and registered desk devices.">
+                      <QrModeToggle initialMode={qrMode} />
+                      <KioskAccessCard />
+                    </SettingsDisclosure>
+                  )}
 
-          {tab === "settings" && (
-            <>
-              <div className="flex items-start justify-between gap-3 mb-1">
-                <h1 className="text-lg font-bold text-brand-nightText">
-                  Settings
-                </h1>
-                <BackToHomeButton onClick={() => setTab("home")} />
-              </div>
-              <p className="text-brand-nightText/50 text-sm mb-6">
-                Configure administrative and check-in options.
-              </p>
-              <div className="max-w-sm space-y-4">
-                <QrModeToggle initialMode={qrMode} />
-                {isAdmin && <KioskAccessCard />}
-                <AdminPasswordCard />
-              </div>
+                  <SettingsDisclosure title="Notifications" description="Device setup and the venue’s notification rules.">
+                    <NotificationsCard />
+                    <NotificationRulesManager />
+                    <MessageTemplatesManager />
+                  </SettingsDisclosure>
 
-              <h2 className="text-base font-bold text-brand-nightText mt-10 mb-1">
-                Notifications
-              </h2>
-              <p className="text-brand-nightText/50 text-sm mb-4">
-                Alerts for check-ins, check-outs, sessions running out and staff
-                punches — delivered even when the app is closed.
-              </p>
-              <div className="max-w-2xl space-y-4">
-                <NotificationsCard />
-                <NotificationRulesManager />
-                <PushDeliveryLog />
-              </div>
-            </>
-          )}
+                  <AdminDataExport />
+
+                  <SettingsDisclosure title="Password & account" description="Change your password, appearance, or sign out.">
+                    <AdminPasswordCard actions={<>
+                      <ThemeToggle className="min-h-10 border border-white/10" />
+                      <button type="button" onClick={() => void handleSignOut()} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-brand-coral/30 px-4 text-sm font-semibold text-brand-coral transition-colors hover:bg-brand-coral/10"><LogOut size={16} />Sign out</button>
+                    </>} />
+                  </SettingsDisclosure>
+                </div>
+              </>
+            )}
+          </PageTransition>
         </div>
       </main>
     </div>

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-export default function AdminPasswordCard() {
+export default function AdminPasswordCard({ actions }: { actions?: ReactNode }) {
   const supabase = createClient();
   const [isOpen, setIsOpen] = useState(false);
   const [newPassword, setNewPassword] = useState("");
@@ -52,14 +53,18 @@ export default function AdminPasswordCard() {
       </p>
 
       {!isOpen ? (
-        <button
-          type="button"
-          onClick={() => setIsOpen(true)}
-          className="min-h-[40px] px-4 rounded-lg bg-brand-sky text-white text-sm font-semibold hover:opacity-90 transition-opacity"
-        >
-          Change password
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsOpen(true)}
+            className="min-h-[40px] px-4 rounded-lg bg-brand-sky text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+          >
+            Change password
+          </button>
+          {actions}
+        </div>
       ) : (
+        <>
         <form onSubmit={handleSubmit} className="space-y-3">
           <input
             type="password"
@@ -100,6 +105,8 @@ export default function AdminPasswordCard() {
           {error && <p className="text-brand-coral text-sm">{error}</p>}
           {message && <p className="text-brand-leaf text-sm">{message}</p>}
         </form>
+        {actions && <div className="mt-3 flex flex-wrap items-center gap-2">{actions}</div>}
+        </>
       )}
     </div>
   );

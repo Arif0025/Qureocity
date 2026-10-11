@@ -26,7 +26,7 @@ export async function createEmployee(input: {
   temporaryPassword: string;
   role: "staff" | "admin";
 }): Promise<{ id?: string; error?: string }> {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -68,7 +68,7 @@ export async function createEmployee(input: {
 export async function resetEmployeePassword(
   employeeId: string,
 ): Promise<{ newTemporaryPassword?: string; error?: string }> {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -98,7 +98,7 @@ export async function resetEmployeePassword(
 export async function removeEmployee(
   employeeId: string,
 ): Promise<{ error?: string }> {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -133,7 +133,7 @@ export async function removeEmployee(
 export async function setQrMode(
   mode: "static" | "dynamic",
 ): Promise<{ error?: string }> {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -158,8 +158,32 @@ export async function setQrMode(
   return {};
 }
 
+export async function setEmployeeSalary(
+  employeeId: string,
+  salaryType: "monthly" | "hourly",
+  salaryRate: number,
+): Promise<{ error?: string }> {
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth;
+  if (
+    !employeeId ||
+    (salaryType !== "monthly" && salaryType !== "hourly") ||
+    !Number.isFinite(salaryRate) ||
+    salaryRate < 0 ||
+    salaryRate > 100_000_000
+  ) {
+    return { error: "Enter a valid non-negative salary rate." };
+  }
+
+  const { error } = await createServiceRoleClient()
+    .from("employees")
+    .update({ salary_type: salaryType, salary_rate: Math.round(salaryRate * 100) / 100 })
+    .eq("id", employeeId);
+  return error ? { error: error.message } : {};
+}
+
 async function requireAdmin() {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -257,7 +281,7 @@ export async function loginKiosk(
   if (error)
     return { error: "Unable to start kiosk access. Please try again." };
 
-  cookies().set(KIOSK_COOKIE, token, {
+  (await cookies()).set(KIOSK_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

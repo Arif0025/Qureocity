@@ -62,12 +62,13 @@ export default function GlobalSearch({
   onOpenStaffEmployee?: (employeeId: string) => void;
   onOpenHelp: (slug: string) => void;
 }) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState("");
   const [customerResults, setCustomerResults] = useState<CustomerResult[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const customerRequestIdRef = useRef(0);
   const helpArticles = useMemo(() => helpArticlesFor(isAdmin), [isAdmin]);
 
   useEffect(() => {
@@ -85,19 +86,27 @@ export default function GlobalSearch({
     const q = query.trim();
     if (q.length < 2) {
       setCustomerResults([]);
+      setLoadingCustomers(false);
       return;
     }
+    const requestId = ++customerRequestIdRef.current;
     setLoadingCustomers(true);
     const timeout = setTimeout(async () => {
-      const { data } = await supabase.rpc("staff_search_customers", {
+      const { data } = await supabase.rpc("directory_browse_customers_with_plans", {
         p_query: q,
+        p_limit: 6,
+        p_offset: 0,
       });
-      setCustomerResults(((data as CustomerResult[]) ?? []).slice(0, 6));
-      setLoadingCustomers(false);
+      if (requestId === customerRequestIdRef.current) {
+        setCustomerResults((data as CustomerResult[]) ?? []);
+        setLoadingCustomers(false);
+      }
     }, 300);
-    return () => clearTimeout(timeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, open]);
+    return () => {
+      clearTimeout(timeout);
+      customerRequestIdRef.current += 1;
+    };
+  }, [query, open, supabase]);
 
   const rows: ResultRow[] = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -217,8 +226,13 @@ export default function GlobalSearch({
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Search"
+        aria-labelledby="global-search-title"
+        aria-describedby="global-search-description"
       >
+        <h2 id="global-search-title" className="sr-only">Global search</h2>
+        <p id="global-search-description" className="sr-only">
+          Search for customers, staff, and help articles.
+        </p>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10">
           <Search size={18} className="text-brand-nightText/40 shrink-0" />
           <input

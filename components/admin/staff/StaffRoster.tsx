@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ChevronDown,
   KeyRound,
@@ -10,12 +11,13 @@ import {
   UserMinus,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { resetEmployeePassword, removeEmployee } from "@/app/admin/actions";
+import { resetEmployeePassword, removeEmployee, setEmployeeSalary } from "@/app/admin/actions";
 import { startOfTodayIST } from "@/lib/istTime";
 import EmployeeCalendar from "./EmployeeCalendar";
 import ShiftEditor from "./ShiftEditor";
 import AddEmployeeModal from "../AddEmployeeModal";
 import { Clock3 } from "lucide-react";
+import { expandCollapse } from "@/lib/motion";
 
 type Staff = { id: string; name: string; role: string };
 type Shift = {
@@ -46,6 +48,8 @@ type AutoPunchoutRow = {
   punch_in: string;
   punch_out: string;
 };
+type SalaryType = "monthly" | "hourly";
+type SalarySetting = { salary_type: SalaryType | null; salary_rate: number | null };
 
 // An employee is "falling behind" once actual hours drop meaningfully
 // under what their shift + days-open-so-far would predict. 80% gives
@@ -62,14 +66,61 @@ function isBehindSchedule(summary?: Summary): boolean {
   );
 }
 
+function currency(amount: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function salaryEarned(setting: SalarySetting | undefined, summary: Summary | undefined): number | null {
+  if (!setting?.salary_type || setting.salary_rate == null || !summary) return null;
+  const rate = Number(setting.salary_rate);
+  if (!Number.isFinite(rate) || rate < 0) return null;
+  if (setting.salary_type === "hourly") return rate * Number(summary.total_hours_this_month || 0);
+  const actualHours = Number(summary.total_hours_this_month || 0);
+  const scheduledHours = Number(summary.scheduled_hours_this_month || 0);
+  if (scheduledHours > 0) {
+    const monthProgress = getMonthProgressRatio();
+    const attendanceRatio = actualHours / scheduledHours;
+    return rate * monthProgress * Math.min(1, Math.max(0, attendanceRatio));
+  }
+  return rate * getMonthProgressRatio() * (summary.working_days_this_month > 0
+    ? Math.min(1, Number(summary.actual_working_days || 0) / summary.working_days_this_month)
+    : 0);
+}
+
+function getMonthProgressRatio(): number {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata", year: "numeric", month: "numeric", day: "numeric",
+  }).formatToParts(now);
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+  const year = value("year");
+  const month = value("month");
+  const today = value("day");
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  let openDays = 0;
+  let elapsedOpenDays = 0;
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    if (new Date(Date.UTC(year, month - 1, day)).getUTCDay() === 2) continue;
+    openDays += 1;
+    if (day <= today) elapsedOpenDays += 1;
+  }
+  return openDays ? elapsedOpenDays / openDays : 0;
+}
+
 export default function StaffRoster({
   staff,
   initialShifts,
+  initialShiftsLoaded,
   isAdmin,
   activeEmployeeId,
 }: {
   staff: Staff[];
   initialShifts: Shift[];
+  initialShiftsLoaded: boolean;
   isAdmin: boolean;
   activeEmployeeId?: string | null;
 }) {
@@ -77,6 +128,9 @@ export default function StaffRoster({
   const [staffList, setStaffList] = useState(staff ?? []);
   const [shifts, setShifts] = useState(initialShifts ?? []);
   const [summaries, setSummaries] = useState<Record<string, Summary>>({});
+  const [salarySettings, setSalarySettings] = useState<Record<string, SalarySetting>>({});
+  const [salaryDrafts, setSalaryDrafts] = useState<Record<string, { type: SalaryType; rate: string }>>({});
+  const [savingSalaryFor, setSavingSalaryFor] = useState<string | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingShiftFor, setEditingShiftFor] = useState<string | null>(null);
@@ -105,6 +159,23 @@ export default function StaffRoster({
     null,
   );
   const [punchingInId, setPunchingInId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialShiftsLoaded) {
+      setShifts(initialShifts ?? []);
+      return;
+    }
+    let active = true;
+    void supabase
+      .from("shifts")
+      .select("id, employee_id, start_time, end_time, notes")
+      .order("start_time", { ascending: true })
+      .then(({ data }) => {
+        if (!active) return;
+        setShifts((data as Shift[]) ?? []);
+      });
+    return () => { active = false; };
+  }, [supabase, initialShifts, initialShiftsLoaded]);
 
   const refetchOnDuty = useCallback(async () => {
     const { data } = await supabase
@@ -254,6 +325,29 @@ export default function StaffRoster({
   }, [staff]);
 
   useEffect(() => {
+    if (!isAdmin) return;
+    let active = true;
+    void supabase
+      .from("employees")
+      .select("id, salary_type, salary_rate")
+      .then(({ data }) => {
+        if (!active) return;
+        const settings: Record<string, SalarySetting> = {};
+        const drafts: Record<string, { type: SalaryType; rate: string }> = {};
+        for (const row of (data ?? []) as { id: string; salary_type: SalaryType | null; salary_rate: number | null }[]) {
+          settings[row.id] = { salary_type: row.salary_type, salary_rate: row.salary_rate };
+          drafts[row.id] = {
+            type: row.salary_type ?? "monthly",
+            rate: row.salary_rate == null ? "" : String(row.salary_rate),
+          };
+        }
+        setSalarySettings(settings);
+        setSalaryDrafts(drafts);
+      });
+    return () => { active = false; };
+  }, [supabase, isAdmin]);
+
+  useEffect(() => {
     void refreshSummaries();
   }, [refreshSummaries]);
 
@@ -325,6 +419,26 @@ export default function StaffRoster({
     return null;
   };
 
+  const saveSalary = async (employeeId: string) => {
+    const draft = salaryDrafts[employeeId];
+    const rate = Number(draft?.rate);
+    if (!draft || draft.rate.trim() === "" || !Number.isFinite(rate) || rate < 0) {
+      alert("Enter a valid salary rate.");
+      return;
+    }
+    setSavingSalaryFor(employeeId);
+    const result = await setEmployeeSalary(employeeId, draft.type, rate);
+    setSavingSalaryFor(null);
+    if (result.error) {
+      alert(result.error);
+      return;
+    }
+    setSalarySettings((current) => ({
+      ...current,
+      [employeeId]: { salary_type: draft.type, salary_rate: rate },
+    }));
+  };
+
   const toggleExpand = (employeeId: string) => {
     if (expandedId === employeeId) {
       setExpandedId(null);
@@ -369,10 +483,6 @@ export default function StaffRoster({
             <p className="text-xs font-semibold text-brand-nightText">
               Overtime / undertime threshold
             </p>
-            <p className="text-[11px] text-brand-nightText/40">
-              How far off a shift counts as over/under, on the calendars below
-              and the roster's behind-schedule flag.
-            </p>
           </div>
           {editingThreshold ? (
             <div className="flex items-center gap-1.5 shrink-0">
@@ -408,11 +518,6 @@ export default function StaffRoster({
             <p className="text-xs font-semibold text-brand-nightText">
               Auto punch-out time
             </p>
-            <p className="text-[11px] text-brand-nightText/40">
-              Anyone still punched in past this time gets automatically clocked
-              out. Since this runs on the once-a-day cron (~9:30 PM IST), a time
-              set later than that won't take effect until the next day's run.
-            </p>
           </div>
           {editingAutoPunchOutTime ? (
             <div className="flex items-center gap-1.5 shrink-0">
@@ -420,7 +525,7 @@ export default function StaffRoster({
                 type="time"
                 value={autoPunchOutTimeInput}
                 onChange={(e) => setAutoPunchOutTimeInput(e.target.value)}
-                className="min-h-[32px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-2 [color-scheme:dark]"
+                className="min-h-[32px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-2"
               />
               <button
                 onClick={saveAutoPunchOutTime}
@@ -493,6 +598,14 @@ export default function StaffRoster({
                 </p>
               </div>
               <div className="text-right shrink-0">
+                {isAdmin && salaryEarned(salarySettings[s.id], summary) != null && (
+                  <div>
+                    <p className="text-sm font-bold tabular-nums text-brand-skyLight">
+                      {currency(salaryEarned(salarySettings[s.id], summary) ?? 0)}
+                    </p>
+                    <p className="text-[10px] text-brand-nightText/40">payable to date</p>
+                  </div>
+                )}
                 {shift ? (
                   <>
                     <p className="text-sm font-medium text-brand-nightText">
@@ -500,10 +613,9 @@ export default function StaffRoster({
                         ? "…"
                         : `${summary?.actual_working_days ?? 0}/${summary?.working_days_this_month ?? 0} days`}
                     </p>
-                    <p
-                      className={`text-xs ${behind ? "text-brand-sun" : "text-brand-nightText/35"}`}
-                    >
-                      {behind ? "Falling behind" : "this month"}
+                    <p className="flex items-center justify-end gap-1.5 text-xs text-brand-nightText/45">
+                      {behind && <span aria-label="Below expected hours" title="Below expected hours" className="h-2 w-2 rounded-full bg-brand-sun ring-2 ring-brand-sun/20" />}
+                      this month
                     </p>
                   </>
                 ) : (
@@ -518,8 +630,60 @@ export default function StaffRoster({
               />
             </button>
 
+            <AnimatePresence initial={false}>
             {isOpen && (
+              <motion.div {...expandCollapse} className="overflow-hidden">
               <div className="px-5 pb-5 pt-1 border-t border-white/8 space-y-4">
+                {isAdmin && (
+                  <div className="mt-3 rounded-xl border border-white/10 bg-brand-nightSurface2/60 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold text-brand-nightText">Salary</p>
+                      {salaryEarned(salarySettings[s.id], summary) != null && (
+                        <p className="text-sm font-bold tabular-nums text-brand-skyLight">
+                          {currency(salaryEarned(salarySettings[s.id], summary) ?? 0)} payable so far
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        aria-label={`${s.name} salary calculation`}
+                        value={salaryDrafts[s.id]?.type ?? "monthly"}
+                        onChange={(event) => setSalaryDrafts((current) => ({
+                          ...current,
+                          [s.id]: { type: event.target.value as SalaryType, rate: current[s.id]?.rate ?? "" },
+                        }))}
+                        className="min-h-10 rounded-lg border border-white/15 bg-brand-nightSurface px-2.5 text-sm text-brand-nightText"
+                      >
+                        <option value="monthly">Monthly</option>
+                        <option value="hourly">Hourly</option>
+                      </select>
+                      <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-white/15 bg-brand-nightSurface px-3">
+                        <span className="shrink-0 text-xs text-brand-nightText/50">₹</span>
+                        <input
+                          aria-label={`${s.name} ${salaryDrafts[s.id]?.type === "hourly" ? "hourly rate" : "monthly salary"}`}
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={salaryDrafts[s.id]?.rate ?? ""}
+                          onChange={(event) => setSalaryDrafts((current) => ({
+                            ...current,
+                            [s.id]: { type: current[s.id]?.type ?? "monthly", rate: event.target.value },
+                          }))}
+                          placeholder={salaryDrafts[s.id]?.type === "hourly" ? "Per hour" : "Per month"}
+                          className="min-h-10 w-full min-w-0 bg-transparent text-sm text-brand-nightText outline-none placeholder:text-brand-nightText/30"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={savingSalaryFor === s.id}
+                        onClick={() => void saveSalary(s.id)}
+                        className="min-h-10 rounded-lg bg-brand-sky px-3 text-xs font-semibold text-brand-ink disabled:opacity-50"
+                      >
+                        {savingSalaryFor === s.id ? "Saving…" : "Save"}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   <div className="rounded-xl border border-white/10 bg-brand-nightSurface2/60 px-3 py-3">
                     <p className="text-[11px] text-brand-nightText/40">
@@ -702,7 +866,9 @@ export default function StaffRoster({
                   </>
                 )}
               </div>
+              </motion.div>
             )}
+            </AnimatePresence>
           </div>
         );
       })}

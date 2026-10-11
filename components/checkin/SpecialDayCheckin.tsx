@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { todayISTDateString } from "@/lib/istTime";
 import { getClientKey } from "@/lib/clientKey";
@@ -58,7 +59,7 @@ type Step =
   | "done";
 
 export default function SpecialDayCheckin({ code }: { code: string }) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [step, setStep] = useState<Step>("loading");
   const [plan, setPlan] = useState<Plan | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +87,7 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
     (async () => {
       const { data, error: err } = await supabase
         .from("membership_plans")
-        .select("*")
+        .select("id, name, description, code, event_date, event_dates, hours_per_visit, price, min_age, max_age, active")
         .eq("code", code.toUpperCase())
         .eq("plan_type", "special")
         .maybeSingle();
@@ -298,17 +299,17 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
         <img src="/logo-full.png" alt="QureoCity" className="h-14 mb-6" />
         <div className="bg-white rounded-xl2 shadow-sm p-6 max-w-md text-center">
           <h1 className="text-xl font-bold text-brand-ink mb-1">
-            We couldn't find that event
+            We couldn&apos;t find that event
           </h1>
           <p className="text-sm text-brand-ink/50 mb-5">
-            This link doesn't match a special day we currently have set up.
+            This link doesn&apos;t match a special day we currently have set up.
           </p>
-          <a
+          <Link
             href="/checkin/special"
             className="w-full min-h-[52px] rounded-xl2 bg-brand-sky text-white font-bold flex items-center justify-center"
           >
             See all special days
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -323,15 +324,15 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
             {plan.name} has ended
           </h1>
           <p className="text-sm text-brand-ink/50 mb-5">
-            This event's date has already passed, or it's no longer open for
-            sign-ups. Check out what's coming up next.
+            This event&apos;s date has already passed, or it&apos;s no longer open for
+            sign-ups. Check out what&apos;s coming up next.
           </p>
-          <a
+          <Link
             href="/checkin/special"
             className="w-full min-h-[52px] rounded-xl2 bg-brand-sky text-white font-bold flex items-center justify-center"
           >
             See all special days
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -389,7 +390,7 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
               </h2>
               <p className="text-sm text-brand-ink/50 mb-5">
                 Your registration can be used once on any remaining event date.
-                Enter your mobile number and we'll pull up your kids.
+                Enter your mobile number and we&apos;ll pull up your kids.
               </p>
               <input
                 type="tel"
@@ -420,7 +421,7 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
                 Welcome back, {parentName.split(" ")[0]}!
               </h2>
               <p className="text-sm text-brand-ink/50 mb-4">
-                Who's coming to {plan.name}?
+                Who&apos;s coming to {plan.name}?
               </p>
               <div className="space-y-2 mb-4">
                 {children.map((c) => {
@@ -454,7 +455,7 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
                         )}
                         {!alreadyIn && !eligible && (
                           <span className="block text-[11px] font-normal text-brand-ink/35">
-                            Outside this event's age range
+                            Outside this event&apos;s age range
                           </span>
                         )}
                       </span>
@@ -475,7 +476,7 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
                   onClick={() => setStep("addChild")}
                   className="w-full text-left rounded-xl2 border-2 border-dashed border-brand-ink/15 hover:border-brand-sky/40 p-3.5 text-sm font-semibold text-brand-ink/50 hover:text-brand-sky transition-colors"
                 >
-                  + My child isn't listed here
+                  + My child isn&apos;t listed here
                 </button>
               </div>
               <button
@@ -502,7 +503,7 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
                 Add a child
               </h2>
               <p className="text-sm text-brand-ink/50 mb-4">
-                We'll add them to your family's record and register them for{" "}
+                We&apos;ll add them to your family&apos;s record and register them for{" "}
                 {plan.name}.
               </p>
               <div className="space-y-3">
@@ -558,7 +559,7 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
                 />
                 <div>
                   <label className="text-xs text-brand-ink/45 block mb-1">
-                    Child's date of birth
+                    Child&apos;s date of birth
                   </label>
                   <input
                     type="date"
@@ -607,7 +608,7 @@ export default function SpecialDayCheckin({ code }: { code: string }) {
                 <span className="text-3xl">🎉</span>
               </div>
               <h2 className="text-lg font-bold text-brand-ink mb-1">
-                You're in!
+                You&apos;re in!
               </h2>
               <p className="text-brand-ink/60 mb-4">
                 Our team will confirm shortly. See you at {plan.name}!

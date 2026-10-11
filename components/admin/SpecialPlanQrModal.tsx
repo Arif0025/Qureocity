@@ -23,7 +23,7 @@ export default function SpecialPlanQrModal({
         QRCode.toCanvas(canvasRef.current, url, {
           width: 280,
           margin: 2,
-          color: { dark: "#3A2E42", light: "#FFFFFF" },
+          color: { dark: "#15130F", light: "#FFFFFF" },
         });
       }
     });

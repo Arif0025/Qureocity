@@ -9,7 +9,7 @@ type Toast = { id: number; title: string; body: string; url: string };
 // When a push arrives while the app is open and on screen, the service
 // worker skips the system notification and hands the message here
 // instead, so nobody gets both a banner and a toast.
-export default function PushToast() {
+export default function PushToast({ onNavigate }: { onNavigate?: (url: string) => void }) {
   const router = useRouter();
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -67,7 +67,10 @@ export default function PushToast() {
           type="button"
           onClick={() => {
             setToasts((prev) => prev.filter((x) => x.id !== t.id));
-            if (t.url) router.push(t.url);
+            if (t.url) {
+              if (onNavigate) onNavigate(t.url);
+              else router.push(t.url);
+            }
           }}
           className="block w-full text-left bg-brand-nightSurface border border-brand-sky/40 rounded-xl2 shadow-lg p-3"
         >

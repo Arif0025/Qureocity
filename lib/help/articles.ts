@@ -22,8 +22,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: "How to check in and check out a child",
     category: "Front desk",
     audience: "all",
-    keywords: ["kiosk", "club check-in", "customer", "session", "time"],
-    body: `Use Club Check-in to look up a child by name or their parent's phone number. Select the child, choose a duration if it's a timed session, and confirm — they'll immediately show as on-site.
+    keywords: ["customer", "search", "session", "time"],
+    body: `Use the Customers tab to look up a child by name or their parent's phone number. Select the child, choose an available check-in option, and confirm — they'll immediately show as on-site.
 
 To check a child out, find them in "Kids on site" (on the Overview or Home tab) and use Check out. There's also an automatic reminder that repeats until a child still shown as on-site is checked out — see "What each notification means."`,
   },
@@ -93,11 +93,10 @@ Notifications are off until you turn them on, and turning them on only applies t
       "sidebar",
     ],
     body: `Overview — today's activity at a glance: who's checked in, who's on duty, and monthly stats.
-Directory — every customer and child on file, searchable.
+Customers — every family and child on file, searchable, with check-in actions.
 Memberships — active subscriptions, plans, and special-day passes.
 Staff — the team roster, shift schedule, and attendance history.
-Pending — walk-in or membership check-ins waiting on payment confirmation.
-Club check-in — the same quick check-in flow staff use, for when an admin is covering the desk.
+Notifications — membership and special-day registrations awaiting review.
 Settings — venue configuration, QR mode, notification rules, and your own password.`,
   },
   {

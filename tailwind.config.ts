@@ -1,23 +1,20 @@
 import type { Config } from "tailwindcss";
 
-// NOTE: these are placeholder hex values inspired by a bright, playful
-// indoor-play-space palette (sunny yellow / sky blue / coral / deep navy
-// text). Swap them for the exact brand hex codes from qureocity.com once
-// you send them over — everything downstream reads from these tokens,
-// so it's a one-file change.
+// Shared theme tokens use sampled colors from the supplied light/dark UI
+// references; page surfaces and controls consume these centralized values.
 const config: Config = {
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
         brand: {
-          sun: "#FFC700", // exact gold from the logo's sun rays
-          sky: "#9A66AF", // exact purple from the logo — now the primary color
-          purpleDeep: "#5B3A73", // darker tint for headings/emphasis
-          coral: "#FF6B6B", // alerts / overdue
-          leaf: "#3DD68C", // success / active-and-fine
-          ink: "#3A2E42", // body text — dark, purple-tinted rather than plain gray
-          cloud: "#FFF9F0", // warm cream background instead of sterile white
+          sun: "rgb(var(--palette-sun) / <alpha-value>)",
+          sky: "rgb(var(--palette-sky) / <alpha-value>)",
+          purpleDeep: "rgb(var(--palette-purple-deep) / <alpha-value>)",
+          coral: "rgb(var(--palette-coral) / <alpha-value>)",
+          leaf: "rgb(var(--palette-leaf) / <alpha-value>)",
+          ink: "rgb(var(--palette-ink) / <alpha-value>)",
+          cloud: "rgb(var(--palette-cloud) / <alpha-value>)",
           // Staff-facing UI (Admin, Employee) tokens — CSS-variable-backed
           // so the same `bg-brand-nightBg` / `text-brand-nightText` class
           // names used everywhere automatically follow the light/dark

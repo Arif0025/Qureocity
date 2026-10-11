@@ -4,7 +4,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { verifyQrToken } from "@/lib/qrToken";
 
 export async function POST(req: NextRequest) {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();

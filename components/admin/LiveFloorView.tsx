@@ -62,8 +62,10 @@ function timeStr(v: string) {
 export default function LiveFloorView({
   initialSessions,
   onPendingClick,
+  loadOnMount = false,
 }: {
   initialSessions: SessionRow[];
+  loadOnMount?: boolean;
   // Pending rows aren't actionable from here — tapping one hands off to
   // the Pending Confirmations tab instead of expanding a dropdown, since
   // confirm/discard needs to be a deliberate action, not one tap away in
@@ -105,15 +107,9 @@ export default function LiveFloorView({
   );
 
   useEffect(() => {
-    // This component is unmounted/remounted on every tab switch, so
-    // `initialSessions` (a one-time snapshot from page load) can be
-    // stale by the time it remounts — always refetch immediately rather
-    // than waiting for the next realtime event to happen to fire.
-    void refetch();
-
-    // The "active" set is small (partial index keeps it that way), so a
-    // full refetch on any change is cheap and far simpler/safer than
-    // hand-merging realtime deltas into local state.
+    // The server provides a fresh snapshot for the Floor route. Subscribe
+    // to changes from here so mounting the tab doesn't immediately repeat
+    // the same session query over the network.
     const channel = supabase
       .channel("play_sessions_admin")
       .on(
@@ -123,15 +119,20 @@ export default function LiveFloorView({
       )
       .subscribe();
 
+    // Employee tab navigation is client-side; when opened from Home it
+    // needs one current snapshot. Admin's server-rendered Floor already has
+    // its snapshot and avoids repeating the same query.
+    if (loadOnMount) void refetch();
+
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, refetch]);
+  }, [supabase, refetch, loadOnMount]);
 
   if (sessions.length === 0) {
     return (
       <div className="bg-brand-nightSurface rounded-2xl border border-white/10 p-10 text-center text-brand-nightText/40 text-sm">
-        No one's checked in right now.
+        No one&apos;s checked in right now.
       </div>
     );
   }

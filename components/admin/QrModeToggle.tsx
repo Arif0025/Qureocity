@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { setQrMode } from "@/app/admin/actions";
+import { createClient } from "@/lib/supabase/client";
 
 export default function QrModeToggle({
   initialMode,
@@ -10,6 +11,27 @@ export default function QrModeToggle({
 }) {
   const [mode, setMode] = useState(initialMode);
   const [saving, setSaving] = useState(false);
+
+  // The settings tab can be opened through client-side history navigation,
+  // so its server-provided initial value may come from the previous tab.
+  // Refresh this small setting when the control mounts.
+  useEffect(() => {
+    let active = true;
+    const supabase = createClient();
+    void supabase
+      .from("app_settings")
+      .select("qr_mode")
+      .eq("id", true)
+      .single()
+      .then(({ data }) => {
+        if (active && (data?.qr_mode === "static" || data?.qr_mode === "dynamic")) {
+          setMode(data.qr_mode);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleChange = async (next: "static" | "dynamic") => {
     if (next === mode) return;

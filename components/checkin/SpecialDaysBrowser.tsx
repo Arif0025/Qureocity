@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { todayISTDateString } from "@/lib/istTime";
 import { Calendar, Clock, IndianRupee, PartyPopper } from "lucide-react";
@@ -25,7 +25,7 @@ function formatEventDate(d: string): string {
 }
 
 export default function SpecialDaysBrowser() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -34,7 +34,7 @@ export default function SpecialDaysBrowser() {
       const today = todayISTDateString();
       const { data } = await supabase
         .from("membership_plans")
-        .select("*")
+        .select("id, name, description, code, event_date, event_dates, hours_per_visit, price")
         .eq("active", true)
         .eq("plan_type", "special")
         .order("event_date", { ascending: true });

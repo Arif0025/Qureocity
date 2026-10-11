@@ -111,10 +111,10 @@ const STATUS_TONE: Record<DayStatus, string> = {
   closed: "bg-white/[0.08] text-brand-nightText/35",
   future: "bg-white/[0.05] text-brand-nightText/25",
   "no-data": "bg-white/[0.05] text-brand-nightText/25",
-  absent: "bg-brand-coral/60 text-white",
-  undertime: "bg-brand-sun/70 text-brand-ink",
-  present: "bg-brand-leaf text-white",
-  overtime: "bg-brand-sky text-white",
+  absent: "staff-calendar-absent",
+  undertime: "staff-calendar-undertime",
+  present: "staff-calendar-present",
+  overtime: "staff-calendar-overtime",
 };
 
 const LEGEND: { status: DayStatus; label: string }[] = [

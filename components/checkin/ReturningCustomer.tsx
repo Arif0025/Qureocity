@@ -22,14 +22,14 @@ function defaultDOB(yearsAgo: number): string {
 export default function ReturningCustomer({
   customerId,
   parentName,
-  children: initialChildren,
+  childRecords: initialChildren,
   onConfirmed,
   onError,
   defaultSelectedIds,
 }: {
   customerId: string;
   parentName: string;
-  children: Child[];
+  childRecords: Child[];
   onConfirmed: (
     sessions: {
       session_id: string;
@@ -152,7 +152,7 @@ export default function ReturningCustomer({
       </h1>
 
       <p className="text-sm font-medium text-brand-ink/60 mb-2">
-        Who's playing today?
+        Who&apos;s playing today?
       </p>
       <div className="space-y-3 mb-3">
         {children.map((child) => {

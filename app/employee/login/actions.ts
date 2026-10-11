@@ -13,7 +13,7 @@ export async function loginEmployee(
   email: string,
   password: string,
 ): Promise<LoginResult> {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const { data, error } = await supabase.auth.signInWithPassword({
     email: email.trim(),
     password,

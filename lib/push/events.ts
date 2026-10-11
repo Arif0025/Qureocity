@@ -10,6 +10,8 @@ export const PUSH_EVENTS = [
   "session_overdue",
   "staff_punch_in",
   "staff_punch_out",
+  "new_registration",
+  "party_registration",
 ] as const;
 
 export type PushEventType = (typeof PUSH_EVENTS)[number];
@@ -45,6 +47,14 @@ export const PUSH_EVENT_META: Record<
     label: "Staff punched out",
     description: "A staff member has just punched out.",
   },
+  new_registration: {
+    label: "New registration request",
+    description: "An admin-only alert for a new membership, renewal, or special-day request.",
+  },
+  party_registration: {
+    label: "New party booking request",
+    description: "An admin-only alert when a family requests a party booking.",
+  },
 };
 
 export const EMPLOYEE_SCOPE_LABELS: Record<EmployeeScope, string> = {
@@ -59,6 +69,8 @@ export const CHILD_EVENTS: PushEventType[] = [
   "child_checkout",
   "session_ending",
   "session_overdue",
+  "new_registration",
+  "party_registration",
 ];
 
 export type PushMessage = {
@@ -71,6 +83,8 @@ export type PushMessage = {
   // When set, the service worker folds repeats sharing the tag into one
   // "3 new check-ins" notification.
   group?: { plural: string };
+  actions?: { action: string; title: string }[];
+  actionUrls?: Record<string, string>;
   // Test notifications are always shown, even if the app is open.
   test?: boolean;
 };

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Toggle from "@/components/shared/Toggle";
+import { ChevronDown } from "lucide-react";
 import {
   CHILD_EVENTS,
   EMPLOYEE_SCOPE_LABELS,
@@ -49,6 +50,7 @@ export default function NotificationRulesManager() {
   const [broadcastNotes, setBroadcastNotes] = useState<Record<string, string>>(
     {},
   );
+  const [expandedRules, setExpandedRules] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     const { data, error: rpcError } = await supabase.rpc(
@@ -228,21 +230,32 @@ export default function NotificationRulesManager() {
         if (!rule) return null;
         const meta = PUSH_EVENT_META[event];
         const dirty = isDirty(event);
+        const expanded = expandedRules[event] === true;
 
         return (
           <div
             key={event}
-            className="bg-brand-nightSurface rounded-xl2 shadow-sm p-5"
+            className="rounded-2xl border border-white/10 bg-brand-nightSurface p-4 sm:p-5"
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                aria-expanded={expanded}
+                aria-controls={`notification-rule-${event}`}
+                onClick={() => setExpandedRules((current) => ({ ...current, [event]: !expanded }))}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              >
+                <span className="min-w-0 flex-1">
                 <p className="font-semibold text-brand-nightText">
                   {meta.label}
                 </p>
-                <p className="text-sm text-brand-nightText/50">
+                <span className="mt-0.5 block text-xs text-brand-nightText/45">
                   {meta.description}
-                </p>
-              </div>
+                </span>
+                </span>
+                {dirty && <span className="shrink-0 rounded-full bg-brand-sun/10 px-2 py-1 text-[10px] font-semibold text-brand-sun">Unsaved</span>}
+                <ChevronDown size={17} className={`shrink-0 text-brand-nightText/45 transition-transform ${expanded ? "rotate-180" : ""}`} />
+              </button>
               <Toggle
                 checked={rule.enabled}
                 onChange={(v) => patch(event, { enabled: v })}
@@ -250,6 +263,7 @@ export default function NotificationRulesManager() {
               />
             </div>
 
+            {expanded && <div id={`notification-rule-${event}`} className="mt-4 border-t border-white/10 pt-4">
             {rule.enabled && (
               <div className="mt-3 space-y-4 border-t border-white/10 pt-4">
                 <div>
@@ -398,49 +412,27 @@ export default function NotificationRulesManager() {
                 {broadcastNotes[event]}
               </p>
             )}
+            </div>}
           </div>
         );
       })}
 
-      <div className="bg-brand-nightSurface rounded-xl2 shadow-sm p-5">
-        <p className="font-semibold text-brand-nightText mb-1">
-          Who has notifications set up
-        </p>
-        <p className="text-sm text-brand-nightText/50 mb-3">
-          {employeesWithDevice.length} of {employees.length} employees have
-          notifications on at least one device.
-        </p>
-        <div className="divide-y divide-white/10">
+      <details className="group rounded-xl2 border border-white/10 bg-brand-nightSurface">
+        <summary className="flex cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
+          <span className="min-w-0 flex-1"><span className="block font-semibold text-brand-nightText">Who has notifications set up</span><span className="mt-0.5 block text-sm text-brand-nightText/50">{employeesWithDevice.length} of {employees.length} employees have notifications on at least one device.</span></span>
+          <ChevronDown size={17} className="shrink-0 text-brand-nightText/45 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="divide-y divide-white/10 border-t border-white/8 px-4 pb-3">
           {people.map((p) => (
-            <div
-              key={p.id}
-              className="flex items-center justify-between gap-3 py-2"
-            >
-              <div className="min-w-0">
-                <p className="text-sm text-brand-nightText truncate">
-                  {p.name}
-                  {p.role === "admin" && (
-                    <span className="ml-2 text-xs text-brand-nightText/40">
-                      admin
-                    </span>
-                  )}
-                </p>
-              </div>
-              <p
-                className={`text-xs shrink-0 ${
-                  p.device_count > 0
-                    ? "text-brand-leaf"
-                    : "text-brand-nightText/40"
-                }`}
-              >
-                {p.device_count > 0
-                  ? `${p.device_count} device${p.device_count > 1 ? "s" : ""} · ${p.events.length} alert${p.events.length === 1 ? "" : "s"}`
-                  : "Not set up"}
+            <div key={p.id} className="flex items-center justify-between gap-3 py-2">
+              <div className="min-w-0"><p className="truncate text-sm text-brand-nightText">{p.name}{p.role === "admin" && <span className="ml-2 text-xs text-brand-nightText/40">admin</span>}</p></div>
+              <p className={`shrink-0 text-xs ${p.device_count > 0 ? "text-brand-leaf" : "text-brand-nightText/40"}`}>
+                {p.device_count > 0 ? `${p.device_count} device${p.device_count > 1 ? "s" : ""} · ${p.events.length} alert${p.events.length === 1 ? "" : "s"}` : "Not set up"}
               </p>
             </div>
           ))}
         </div>
-      </div>
+      </details>
     </div>
   );
 }

@@ -53,10 +53,11 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceRoleClient();
 
-  const { data: ctxData, error: ctxError } = await supabase.rpc(
-    "push_event_context",
-    { p_event: event, p_payload: body.payload },
-  );
+  const contextRequest = supabase.rpc("push_event_context", { p_event: event, p_payload: body.payload });
+  const templateRequest = event === "child_checkout"
+    ? supabase.from("message_templates").select("body").eq("event_key", "child_checkout_push").eq("is_default", true).eq("is_active", true).maybeSingle()
+    : Promise.resolve({ data: null, error: null });
+  const [{ data: ctxData, error: ctxError }, { data: templateData, error: templateError }] = await Promise.all([contextRequest, templateRequest]);
   if (ctxError) {
     console.error("[push] context failed", ctxError.message);
     return NextResponse.json(
@@ -67,6 +68,8 @@ export async function POST(req: NextRequest) {
   // null = the row was deleted/discarded in the meantime; nothing to say.
   if (!ctxData) return NextResponse.json({ sent: 0, skipped: "no-context" });
   const ctx = ctxData as PushContext;
+  if (templateError) console.error("[push] checkout message format lookup failed", templateError.message);
+  if (typeof templateData?.body === "string") ctx.checkout_message_template = templateData.body;
 
   // Staff punches are about a person; don't tell them about themselves.
   const excludeUser =
@@ -91,6 +94,30 @@ export async function POST(req: NextRequest) {
   // Time-based alerts go stale fast; everything else can wait a while
   // for a phone that is briefly offline.
   const ttl = event === "session_ending" ? 10 * 60 : 60 * 60;
+
+  // One inbox row per user rather than per registered device. Batch the
+  // write and let it run alongside push delivery so persistence adds no
+  // serial delay to the alert itself.
+  const inboxCategory = event === "new_registration" || event === "party_registration"
+    ? "admin"
+    : "system";
+  const inboxRows = [...new Map(recipients.map((r) => {
+    const message = buildMessage(event, ctx, r.role === "admin" ? "admin" : "staff");
+    return [r.user_id, {
+      user_id: r.user_id,
+      category: inboxCategory,
+      title: message.title,
+      body: message.body,
+      target_url: message.url,
+    }] as const;
+  })).values()];
+  const inboxWrite = Promise.resolve(supabase.from("employee_notifications").insert(inboxRows))
+    .then(({ error }) => {
+      if (error) console.error("[push] inbox insert failed", error.message);
+    })
+    .catch((error: unknown) => {
+      console.error("[push] inbox insert failed", error);
+    });
 
   const results = await Promise.all(
     recipients.map(async (r) => {
@@ -122,6 +149,7 @@ export async function POST(req: NextRequest) {
       return result;
     }),
   );
+  await inboxWrite;
 
   return NextResponse.json({
     sent: results.filter((r) => r === "sent").length,

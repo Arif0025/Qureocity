@@ -8,8 +8,8 @@ import { cookies } from "next/headers";
 // Uses the getAll/setAll cookie interface (the get/set/remove interface
 // was deprecated by @supabase/ssr as of v0.6.0 and removed in later
 // versions — mixing the two APIs silently breaks session handling).
-export function createServerSupabase() {
-  const cookieStore = cookies();
+export async function createServerSupabase() {
+  const cookieStore = await cookies();
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

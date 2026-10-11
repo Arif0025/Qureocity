@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import PhoneLinks from "@/components/shared/PhoneLinks";
 import {
@@ -9,12 +10,24 @@ import {
   Trash2,
   X,
   ArrowLeft,
-  Link as LinkIcon,
   QrCode,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  IndianRupee,
+  Share2,
 } from "lucide-react";
 import SpecialPlanQrModal from "./SpecialPlanQrModal";
+import PartyPlansManager from "./PartyPlansManager";
+import Badge from "@/components/ui/Badge";
+import { tapScale, DURATION } from "@/lib/motion";
+import { planCardTone } from "./planCardTones";
+
+// Same shared-element id on the browse card and the detail header below —
+// Framer Motion morphs smoothly between them on tap instead of a hard
+// screen cut, which is the "drill down" feel without rewriting the
+// roster view's working logic to live inline.
+const planCardLayoutId = (id: string) => `plan-card-${id}`;
 
 type Plan = {
   id: string;
@@ -166,14 +179,16 @@ export default function PlansManager({
 } = {}) {
   const supabase = createClient();
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [memberCounts, setMemberCounts] = useState<Record<string, number>>({});
   const [roster, setRoster] = useState<Record<string, PlanRoster>>({});
-  const [rosterLoading, setRosterLoading] = useState(true);
+  const [rosterLoading, setRosterLoading] = useState(!!initialExpandedPlanId);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(
     initialExpandedPlanId ?? null,
   );
@@ -185,7 +200,7 @@ export default function PlansManager({
   const [expandedMemberKey, setExpandedMemberKey] = useState<string | null>(
     null,
   );
-  const [viewType, setViewType] = useState<"recurring" | "special">(
+  const [viewType, setViewType] = useState<"recurring" | "special" | "party">(
     initialTypeFilter ?? "recurring",
   );
   const [calendarMonth, setCalendarMonth] = useState(() =>
@@ -200,6 +215,15 @@ export default function PlansManager({
       .order("created_at", { ascending: false });
     setPlans((data as Plan[]) ?? []);
     setLoading(false);
+  };
+
+  const loadMemberCounts = async () => {
+    const { data } = await supabase.rpc("admin_plan_member_counts");
+    const counts: Record<string, number> = {};
+    for (const row of (data as { plan_id: string; member_count: number }[]) ?? []) {
+      counts[row.plan_id] = Number(row.member_count);
+    }
+    setMemberCounts(counts);
   };
 
   const loadRoster = async () => {
@@ -226,18 +250,27 @@ export default function PlansManager({
       return;
     }
     void loadRoster();
+    void loadMemberCounts();
   };
 
   useEffect(() => {
     void load();
-    void loadRoster();
+    void loadMemberCounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // This RPC returns full rosters and personal details. Defer it until a
+  // plan roster is explicitly opened instead of loading every member on
+  // every visit to the Plans tab.
+  useEffect(() => {
+    if (selectedPlanId) void loadRoster();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPlanId]);
 
   const visiblePlans = plans.filter((p) => p.plan_type === viewType);
 
   const startCreate = () => {
-    setForm({ ...EMPTY_FORM, plan_type: viewType });
+    setForm({ ...EMPTY_FORM, plan_type: viewType === "special" ? "special" : "recurring" });
     setCalendarMonth(monthKey(new Date()));
     setCreating(true);
     setEditingId(null);
@@ -346,7 +379,7 @@ export default function PlansManager({
 
   const remove = async (id: string) => {
     const plan = plans.find((p) => p.id === id);
-    const memberCount = roster[id]?.member_count ?? 0;
+    const memberCount = memberCounts[id] ?? 0;
     if (
       !confirm(
         memberCount > 0
@@ -370,7 +403,7 @@ export default function PlansManager({
       return;
     }
     void load();
-    void loadRoster();
+    void loadMemberCounts();
   };
 
   const toggleActive = async (p: Plan) => {
@@ -381,23 +414,52 @@ export default function PlansManager({
     void load();
   };
 
+  const sharePlanLink = async (plan: Plan) => {
+    if (!plan.code) return;
+    const url = `${window.location.origin}/checkin/special/${plan.code.toLowerCase()}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: plan.name, url });
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      }
+    }
+    await navigator.clipboard?.writeText(url);
+    setCopiedId(plan.id);
+    setTimeout(() => setCopiedId(null), 1800);
+  };
+
   const isFormOpen = creating || editingId !== null;
   const selectedPlan = selectedPlanId
     ? (plans.find((plan) => plan.id === selectedPlanId) ?? null)
     : null;
 
+  if (viewType === "party") {
+    return <PartyPlansManager onModeChange={setViewType} />;
+  }
+
   if (selectedPlan) {
     const members = roster[selectedPlan.id]?.members ?? [];
     return (
-      <div className="space-y-4">
-        <button
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: DURATION.fast }}
+        className="space-y-4"
+      >
+        <motion.button
           type="button"
+          whileTap={tapScale}
           onClick={() => setSelectedPlanId(null)}
           className="flex items-center gap-1.5 text-sm font-semibold text-brand-nightText/55 hover:text-brand-sky transition-colors"
         >
           <ArrowLeft size={16} /> Back to plans
-        </button>
-        <div className="bg-brand-nightSurface rounded-2xl border border-white/10 p-5">
+        </motion.button>
+        <motion.div
+          layoutId={planCardLayoutId(selectedPlan.id)}
+          className="bg-brand-nightSurface rounded-xl2 border border-white/10 p-5"
+        >
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-lg font-bold text-brand-nightText">
@@ -409,11 +471,11 @@ export default function PlansManager({
                   : "Monthly membership roster"}
               </p>
             </div>
-            <span className="shrink-0 rounded-full bg-brand-sky/10 px-2.5 py-1 text-xs font-semibold text-brand-skyLight">
-              {roster[selectedPlan.id]?.member_count ?? 0} registered
-            </span>
+            <Badge tone="info">
+              {memberCounts[selectedPlan.id] ?? 0} registered
+            </Badge>
           </div>
-        </div>
+        </motion.div>
 
         {rosterLoading ? (
           <p className="text-sm text-brand-nightText/40">Loading roster…</p>
@@ -622,7 +684,7 @@ export default function PlansManager({
             </div>
           </div>
         )}
-      </div>
+      </motion.div>
     );
   }
 
@@ -635,6 +697,7 @@ export default function PlansManager({
               [
                 { value: "recurring", label: "Monthly plans" },
                 { value: "special", label: "Special days" },
+                { value: "party", label: "Party plans" },
               ] as const
             ).map((opt) => (
               <button
@@ -660,364 +723,386 @@ export default function PlansManager({
         </div>
       )}
 
-      {isFormOpen && (
-        <div className="bg-brand-nightSurface rounded-2xl border border-white/10 p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-brand-nightText">
-              {editingId ? "Edit plan" : "New plan"}
-            </p>
-            <button onClick={cancel} className="text-brand-nightText/40">
-              <X size={16} />
-            </button>
-          </div>
-
-          <input
-            placeholder="Plan name"
-            value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
-          />
-          <textarea
-            placeholder="Short description"
-            value={form.description}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, description: e.target.value }))
-            }
-            rows={2}
-            className="w-full rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm p-3 resize-none"
-          />
-
-          <div>
-            <label className="text-xs text-brand-nightText/50 block mb-1.5">
-              Plan type
-            </label>
-            <div className="flex gap-1.5">
-              {(
-                [
-                  { value: "recurring", label: "Recurring membership" },
-                  { value: "special", label: "Special day (one-off)" },
-                ] as const
-              ).map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() =>
-                    setForm((f) => ({ ...f, plan_type: opt.value }))
-                  }
-                  className={`flex-1 text-xs font-semibold px-2.5 py-2 rounded-lg border transition-colors ${
-                    form.plan_type === opt.value
-                      ? "bg-brand-sky text-white border-brand-sky"
-                      : "bg-brand-nightSurface2 text-brand-nightText/50 border-white/15"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {form.plan_type === "special" && (
-            <div>
-              <label className="text-xs text-brand-nightText/50 block mb-1">
-                Event dates
-              </label>
-              <div className="max-w-[280px] mx-auto rounded-xl border border-white/10 bg-brand-nightSurface2 p-2">
-                <div className="flex items-center justify-between mb-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const date = monthDate(calendarMonth);
-                      date.setMonth(date.getMonth() - 1);
-                      setCalendarMonth(monthKey(date));
-                    }}
-                    className="p-1 text-brand-nightText/50 hover:text-brand-nightText"
-                    aria-label="Previous month"
-                  >
-                    <ChevronLeft size={14} />
-                  </button>
-                  <p className="text-xs font-semibold text-brand-nightText">
-                    {monthDate(calendarMonth).toLocaleDateString("en-IN", {
-                      month: "long",
-                      year: "numeric",
-                    })}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const date = monthDate(calendarMonth);
-                      date.setMonth(date.getMonth() + 1);
-                      setCalendarMonth(monthKey(date));
-                    }}
-                    className="p-1 text-brand-nightText/50 hover:text-brand-nightText"
-                    aria-label="Next month"
-                  >
-                    <ChevronRight size={14} />
-                  </button>
-                </div>
-                <div className="grid grid-cols-7 gap-0.5 text-center">
-                  {WEEKDAY_LABELS.map((label) => (
-                    <span
-                      key={label}
-                      className="text-[9px] font-semibold text-brand-nightText/35 py-0.5"
-                    >
-                      {label.slice(0, 2)}
-                    </span>
-                  ))}
-                  {(() => {
-                    const visibleMonth = monthDate(calendarMonth);
-                    const year = visibleMonth.getFullYear();
-                    const month = visibleMonth.getMonth();
-                    const firstDay = new Date(year, month, 1).getDay();
-                    const daysInMonth = new Date(year, month + 1, 0).getDate();
-                    const cells = [];
-                    for (let index = 0; index < firstDay; index++) {
-                      cells.push(<span key={`empty-${index}`} />);
-                    }
-                    for (let day = 1; day <= daysInMonth; day++) {
-                      const date = dateKey(year, month, day);
-                      const selected = form.event_dates.includes(date);
-                      cells.push(
-                        <button
-                          key={date}
-                          type="button"
-                          onClick={() => toggleEventDate(date)}
-                          aria-pressed={selected}
-                          className={`aspect-square rounded-md text-[11px] font-semibold transition-colors ${selected ? "bg-brand-sky text-white" : "text-brand-nightText/65 hover:bg-brand-sky/15 hover:text-brand-nightText"}`}
-                        >
-                          {day}
-                        </button>,
-                      );
-                    }
-                    return cells;
-                  })()}
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                {form.event_dates.length === 0 ? (
-                  <span className="text-[11px] text-brand-nightText/35">
-                    No dates selected
-                  </span>
-                ) : (
-                  form.event_dates.map((date) => (
-                    <button
-                      key={date}
-                      type="button"
-                      onClick={() => toggleEventDate(date)}
-                      className="rounded-full bg-brand-sky/10 px-2 py-0.5 text-[10px] font-semibold text-brand-skyLight"
-                    >
-                      {formatDate(date)} ×
-                    </button>
-                  ))
-                )}
-              </div>
-              <p className="text-[11px] text-brand-nightText/35 mt-1">
-                Select any combination of dates. Each registration is for one
-                visit, claimed on the first check-in.
+      <AnimatePresence>
+        {isFormOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: DURATION.base }}
+            className="bg-brand-nightSurface rounded-xl2 border border-white/10 p-5 space-y-3.5"
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-base font-bold text-brand-nightText">
+                {editingId
+                  ? `Edit ${editingId && form.plan_type === "special" ? "special day" : "plan"}`
+                  : `New ${form.plan_type === "special" ? "special day" : "plan"}`}
               </p>
+              <motion.button
+                whileTap={tapScale}
+                onClick={cancel}
+                className="min-h-[32px] min-w-[32px] flex items-center justify-center text-brand-nightText/40 hover:text-brand-nightText rounded-lg"
+              >
+                <X size={16} />
+              </motion.button>
             </div>
-          )}
 
-          {form.plan_type === "special" && (
-            <div>
-              <label className="text-xs text-brand-nightText/50 block mb-1">
-                Short code
-              </label>
-              <input
-                type="text"
-                value={form.code}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    code: e.target.value
-                      .toUpperCase()
-                      .replace(/[^A-Z0-9]/g, ""),
-                  }))
-                }
-                placeholder="e.g. HAL"
-                maxLength={10}
-                className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3 uppercase tracking-wide"
-              />
-              <p className="text-[11px] text-brand-nightText/35 mt-1">
-                Used for this plan's receipt numbers ({form.code || "HAL"}-001,{" "}
-                {form.code || "HAL"}-002…) instead of the regular Q- series, and
-                as its sign-up link: qureocity.vercel.app/checkin/special/
-                {form.code.toLowerCase() || "hal"}
-              </p>
-            </div>
-          )}
+            <input
+              placeholder="Plan name"
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
+            />
+            <textarea
+              placeholder="Short description"
+              value={form.description}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, description: e.target.value }))
+              }
+              rows={2}
+              className="w-full rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm p-3 resize-none"
+            />
 
-          <div className="grid grid-cols-2 gap-3">
-            {form.plan_type === "recurring" && (
-              <div>
-                <label className="text-xs text-brand-nightText/50 block mb-1">
-                  Validity
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    value={form.validity_value}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, validity_value: e.target.value }))
-                    }
-                    className="w-16 min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-2"
-                  />
-                  <select
-                    value={form.validity_unit}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        validity_unit: e.target.value as
-                          | "days"
-                          | "weeks"
-                          | "months",
-                      }))
-                    }
-                    className="flex-1 min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-2"
-                  >
-                    <option value="days">days</option>
-                    <option value="weeks">weeks</option>
-                    <option value="months">months</option>
-                  </select>
-                </div>
-              </div>
-            )}
-            <div>
-              <label className="text-xs text-brand-nightText/50 block mb-1">
-                Hours per visit
-              </label>
-              <input
-                type="number"
-                min={0.5}
-                step={0.5}
-                value={form.hours_per_visit}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, hours_per_visit: e.target.value }))
-                }
-                className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
-              />
-            </div>
-            {form.plan_type === "recurring" && (
-              <div>
-                <label className="text-xs text-brand-nightText/50 block mb-1">
-                  Visits allowed
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  placeholder="Unlimited"
-                  value={form.max_visits}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, max_visits: e.target.value }))
-                  }
-                  className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
-                />
-                <p className="text-[11px] text-brand-nightText/35 mt-1">
-                  Leave blank for unlimited visits during the validity period.
-                </p>
-              </div>
-            )}
-            <div>
-              <label className="text-xs text-brand-nightText/50 block mb-1">
-                Age range
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  placeholder="Min"
-                  value={form.min_age}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, min_age: e.target.value }))
-                  }
-                  className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
-                />
-                <span className="text-brand-nightText/30 text-xs shrink-0">
-                  to
-                </span>
-                <input
-                  type="number"
-                  placeholder="Max"
-                  value={form.max_age}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, max_age: e.target.value }))
-                  }
-                  className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-brand-nightText/50 block mb-1">
-                Price (₹)
-              </label>
-              <input
-                type="number"
-                min={0}
-                value={form.price}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, price: e.target.value }))
-                }
-                className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
-              />
-            </div>
-          </div>
-
-          {form.plan_type === "recurring" && (
             <div>
               <label className="text-xs text-brand-nightText/50 block mb-1.5">
-                Allowed days — any combination
+                Plan type
               </label>
-              <div className="flex flex-wrap gap-1.5">
-                {WEEKDAY_LABELS.map((label, day) => (
+              <div className="flex gap-1.5">
+                {(
+                  [
+                    { value: "recurring", label: "Recurring membership" },
+                    { value: "special", label: "Special day (one-off)" },
+                  ] as const
+                ).map((opt) => (
                   <button
-                    key={day}
+                    key={opt.value}
                     type="button"
-                    onClick={() => toggleWeekday(day)}
-                    disabled={day === 2}
-                    title={day === 2 ? "Closed Tuesdays" : undefined}
-                    className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors disabled:opacity-25 ${
-                      form.allowed_weekdays.includes(day)
+                    onClick={() =>
+                      setForm((f) => ({ ...f, plan_type: opt.value }))
+                    }
+                    className={`flex-1 text-xs font-semibold px-2.5 py-2 rounded-lg border transition-colors ${
+                      form.plan_type === opt.value
                         ? "bg-brand-sky text-white border-brand-sky"
                         : "bg-brand-nightSurface2 text-brand-nightText/50 border-white/15"
                     }`}
                   >
-                    {label}
+                    {opt.label}
                   </button>
                 ))}
               </div>
             </div>
-          )}
 
-          <label className="flex items-center gap-2 text-sm text-brand-nightText/60">
-            <input
-              type="checkbox"
-              checked={form.active}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, active: e.target.checked }))
-              }
-              className="accent-brand-sky w-4 h-4"
-            />
-            Active (shown on the registration form)
-          </label>
+            {form.plan_type === "special" && (
+              <div>
+                <label className="text-xs text-brand-nightText/50 block mb-1">
+                  Event dates
+                </label>
+                <div className="max-w-[280px] mx-auto rounded-xl border border-white/10 bg-brand-nightSurface2 p-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const date = monthDate(calendarMonth);
+                        date.setMonth(date.getMonth() - 1);
+                        setCalendarMonth(monthKey(date));
+                      }}
+                      className="p-1 text-brand-nightText/50 hover:text-brand-nightText"
+                      aria-label="Previous month"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                    <p className="text-xs font-semibold text-brand-nightText">
+                      {monthDate(calendarMonth).toLocaleDateString("en-IN", {
+                        month: "long",
+                        year: "numeric",
+                      })}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const date = monthDate(calendarMonth);
+                        date.setMonth(date.getMonth() + 1);
+                        setCalendarMonth(monthKey(date));
+                      }}
+                      className="p-1 text-brand-nightText/50 hover:text-brand-nightText"
+                      aria-label="Next month"
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-7 gap-0.5 text-center">
+                    {WEEKDAY_LABELS.map((label) => (
+                      <span
+                        key={label}
+                        className="text-[9px] font-semibold text-brand-nightText/35 py-0.5"
+                      >
+                        {label.slice(0, 2)}
+                      </span>
+                    ))}
+                    {(() => {
+                      const visibleMonth = monthDate(calendarMonth);
+                      const year = visibleMonth.getFullYear();
+                      const month = visibleMonth.getMonth();
+                      const firstDay = new Date(year, month, 1).getDay();
+                      const daysInMonth = new Date(
+                        year,
+                        month + 1,
+                        0,
+                      ).getDate();
+                      const cells = [];
+                      for (let index = 0; index < firstDay; index++) {
+                        cells.push(<span key={`empty-${index}`} />);
+                      }
+                      for (let day = 1; day <= daysInMonth; day++) {
+                        const date = dateKey(year, month, day);
+                        const selected = form.event_dates.includes(date);
+                        cells.push(
+                          <button
+                            key={date}
+                            type="button"
+                            onClick={() => toggleEventDate(date)}
+                            aria-pressed={selected}
+                            className={`aspect-square rounded-md text-[11px] font-semibold transition-colors ${selected ? "bg-brand-sky text-white" : "text-brand-nightText/65 hover:bg-brand-sky/15 hover:text-brand-nightText"}`}
+                          >
+                            {day}
+                          </button>,
+                        );
+                      }
+                      return cells;
+                    })()}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {form.event_dates.length === 0 ? (
+                    <span className="text-[11px] text-brand-nightText/35">
+                      No dates selected
+                    </span>
+                  ) : (
+                    form.event_dates.map((date) => (
+                      <button
+                        key={date}
+                        type="button"
+                        onClick={() => toggleEventDate(date)}
+                        className="rounded-full bg-brand-sky/10 px-2 py-0.5 text-[10px] font-semibold text-brand-skyLight"
+                      >
+                        {formatDate(date)} ×
+                      </button>
+                    ))
+                  )}
+                </div>
+                <p className="text-[11px] text-brand-nightText/35 mt-1">
+                  Select any combination of dates. Each registration is for one
+                  visit, claimed on the first check-in.
+                </p>
+              </div>
+            )}
 
-          {error && <p className="text-sm text-brand-coral">{error}</p>}
+            {form.plan_type === "special" && (
+              <div>
+                <label className="text-xs text-brand-nightText/50 block mb-1">
+                  Short code
+                </label>
+                <input
+                  type="text"
+                  value={form.code}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      code: e.target.value
+                        .toUpperCase()
+                        .replace(/[^A-Z0-9]/g, ""),
+                    }))
+                  }
+                  placeholder="e.g. HAL"
+                  maxLength={10}
+                  className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3 uppercase tracking-wide"
+                />
+                <p className="text-[11px] text-brand-nightText/35 mt-1">
+                  Used for this plan&apos;s receipt numbers ({form.code || "HAL"}
+                  -001, {form.code || "HAL"}-002…) instead of the regular Q-
+                  series, and as its sign-up link:
+                  qureocity.vercel.app/checkin/special/
+                  {form.code.toLowerCase() || "hal"}
+                </p>
+              </div>
+            )}
 
-          <div className="flex gap-2">
-            <button
-              onClick={save}
-              disabled={saving}
-              className="min-h-[40px] px-4 rounded-xl2 bg-brand-sky text-white text-sm font-semibold disabled:opacity-50"
-            >
-              {saving ? "Saving…" : "Save plan"}
-            </button>
-            <button
-              onClick={cancel}
-              className="min-h-[40px] px-4 rounded-xl2 border border-white/15 text-brand-nightText/50 text-sm font-medium"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+            <div className="grid grid-cols-2 gap-3">
+              {form.plan_type === "recurring" && (
+                <div>
+                  <label className="text-xs text-brand-nightText/50 block mb-1">
+                    Validity
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      value={form.validity_value}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          validity_value: e.target.value,
+                        }))
+                      }
+                      className="w-16 min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-2"
+                    />
+                    <select
+                      value={form.validity_unit}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          validity_unit: e.target.value as
+                            | "days"
+                            | "weeks"
+                            | "months",
+                        }))
+                      }
+                      className="flex-1 min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-2"
+                    >
+                      <option value="days">days</option>
+                      <option value="weeks">weeks</option>
+                      <option value="months">months</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+              <div>
+                <label className="text-xs text-brand-nightText/50 block mb-1">
+                  Hours per visit
+                </label>
+                <input
+                  type="number"
+                  min={0.5}
+                  step={0.5}
+                  value={form.hours_per_visit}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, hours_per_visit: e.target.value }))
+                  }
+                  className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
+                />
+              </div>
+              {form.plan_type === "recurring" && (
+                <div>
+                  <label className="text-xs text-brand-nightText/50 block mb-1">
+                    Visits allowed
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    placeholder="Unlimited"
+                    value={form.max_visits}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, max_visits: e.target.value }))
+                    }
+                    className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
+                  />
+                  <p className="text-[11px] text-brand-nightText/35 mt-1">
+                    Leave blank for unlimited visits during the validity period.
+                  </p>
+                </div>
+              )}
+              <div>
+                <label className="text-xs text-brand-nightText/50 block mb-1">
+                  Age range
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    placeholder="Min"
+                    value={form.min_age}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, min_age: e.target.value }))
+                    }
+                    className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
+                  />
+                  <span className="text-brand-nightText/30 text-xs shrink-0">
+                    to
+                  </span>
+                  <input
+                    type="number"
+                    placeholder="Max"
+                    value={form.max_age}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, max_age: e.target.value }))
+                    }
+                    className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-brand-nightText/50 block mb-1">
+                  Price (₹)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={form.price}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, price: e.target.value }))
+                  }
+                  className="w-full min-h-[40px] rounded-lg border border-white/15 bg-brand-nightSurface2 text-brand-nightText text-sm px-3"
+                />
+              </div>
+            </div>
+
+            {form.plan_type === "recurring" && (
+              <div>
+                <label className="text-xs text-brand-nightText/50 block mb-1.5">
+                  Allowed days — any combination
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {WEEKDAY_LABELS.map((label, day) => (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => toggleWeekday(day)}
+                      disabled={day === 2}
+                      title={day === 2 ? "Closed Tuesdays" : undefined}
+                      className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors disabled:opacity-25 ${
+                        form.allowed_weekdays.includes(day)
+                          ? "bg-brand-sky text-white border-brand-sky"
+                          : "bg-brand-nightSurface2 text-brand-nightText/50 border-white/15"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <label className="flex items-center gap-2 text-sm text-brand-nightText/60">
+              <input
+                type="checkbox"
+                checked={form.active}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, active: e.target.checked }))
+                }
+                className="accent-brand-sky w-4 h-4"
+              />
+              Active (shown on the registration form)
+            </label>
+
+            {error && <p className="text-sm text-brand-coral">{error}</p>}
+
+            <div className="flex gap-2">
+              <button
+                onClick={save}
+                disabled={saving}
+                className="min-h-[40px] px-4 rounded-xl2 bg-brand-sky text-white text-sm font-semibold disabled:opacity-50"
+              >
+                {saving ? "Saving…" : "Save plan"}
+              </button>
+              <button
+                onClick={cancel}
+                className="min-h-[40px] px-4 rounded-xl2 border border-white/15 text-brand-nightText/50 text-sm font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {loading ? (
         <p className="text-sm text-brand-nightText/40">Loading…</p>
@@ -1028,115 +1113,120 @@ export default function PlansManager({
             : "No monthly plans yet — create one to make it available on the registration form."}
         </p>
       ) : (
-        <div className="space-y-2">
-          {visiblePlans.map((p) => (
-            <div
-              key={p.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => setSelectedPlanId(p.id)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ")
-                  setSelectedPlanId(p.id);
-              }}
-              className={`bg-brand-nightSurface rounded-xl border border-white/10 p-4 ${!p.active ? "opacity-50" : ""}`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-semibold text-brand-nightText">
-                      {p.name}
+        <div className="space-y-2.5">
+          {visiblePlans.map((p) => {
+            const tone = planCardTone(p.id, plans.map((plan) => plan.id));
+            return (
+              <motion.div
+                key={p.id}
+                layoutId={planCardLayoutId(p.id)}
+                transition={{ duration: DURATION.fast }}
+                className={`w-full rounded-2xl border border-l-4 p-4 sm:p-5 transition-colors ${tone.stripe} ${tone.card} ${!p.active ? "opacity-65" : "hover:brightness-[1.03]"}`}
+              >
+                <button
+                  type="button"
+                  aria-expanded={expandedCardId === p.id}
+                  aria-controls={`plan-details-${p.id}`}
+                  onClick={() => setExpandedCardId((current) => current === p.id ? null : p.id)}
+                  className="flex w-full items-start justify-between gap-3 text-left"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-bold text-brand-nightText">{p.name}</p>
+                      {p.plan_type === "special" && (
+                        <Badge tone="warning">
+                          {p.event_date
+                            ? new Date(p.event_date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+                            : "Special day"}
+                          {p.event_dates?.length > 1 ? ` +${p.event_dates.length - 1}` : ""}
+                        </Badge>
+                      )}
+                      {!p.active && <Badge tone="neutral">Inactive</Badge>}
+                    </div>
+                    <p className="mt-0.5 line-clamp-2 text-xs text-brand-nightText/55">
+                      {p.description || (p.plan_type === "special" ? "Special day pass" : "Membership plan")}
                     </p>
-                    {p.plan_type === "special" && (
-                      <span className="text-[10px] font-semibold uppercase tracking-wide text-brand-sun bg-brand-sun/10 rounded-full px-2 py-0.5 shrink-0">
-                        Special day
-                      </span>
-                    )}
                   </div>
-                  {p.description && (
-                    <p className="text-xs text-brand-nightText/45 mt-0.5">
-                      {p.description}
-                    </p>
-                  )}
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className={`rounded-full px-3 py-1.5 text-sm font-extrabold flex items-center gap-0.5 ${tone.badge}`}>
+                      <IndianRupee size={13} />{p.price}
+                    </span>
+                    <ChevronDown size={16} className={`mt-1 text-brand-nightText/45 transition-transform duration-200 ${expandedCardId === p.id ? "rotate-180" : ""}`} />
+                  </span>
+                </button>
+
+                <AnimatePresence initial={false}>
+                {expandedCardId === p.id && (
+                <motion.div
+                  id={`plan-details-${p.id}`}
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: DURATION.fast }}
+                  className="overflow-hidden"
+                >
+
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {p.plan_type === "special" ? (
                     <>
-                      <p className="text-xs text-brand-nightText/40 mt-1.5">
-                        {p.event_date
-                          ? new Date(
-                              p.event_date + "T00:00:00",
-                            ).toLocaleDateString("en-IN", {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric",
-                            })
-                          : "No date set"}
-                        {p.event_dates?.length > 1
-                          ? ` + ${p.event_dates.length - 1} more`
-                          : ""}{" "}
-                        · {p.hours_per_visit} hrs · ₹{p.price}
-                        {(p.min_age != null || p.max_age != null) &&
-                          ` · Age ${p.min_age ?? "0"}–${p.max_age ?? "∞"}`}
-                      </p>
-                      {p.code && (
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <code className="text-[11px] font-mono text-brand-sky bg-brand-sky/10 rounded px-1.5 py-0.5">
-                            {p.code}-###
-                          </code>
-                          <button
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              const url = `${window.location.origin}/checkin/special/${p.code!.toLowerCase()}`;
-                              navigator.clipboard?.writeText(url);
-                              setCopiedId(p.id);
-                              setTimeout(() => setCopiedId(null), 1500);
-                            }}
-                            className="text-[11px] font-semibold text-brand-nightText/40 hover:text-brand-sky flex items-center gap-1"
-                          >
-                            <LinkIcon size={11} />
-                            {copiedId === p.id
-                              ? "Link copied!"
-                              : "Copy sign-up link"}
-                          </button>
-                          <button
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setQrPlan(p);
-                            }}
-                            className="text-[11px] font-semibold text-brand-nightText/40 hover:text-brand-sky flex items-center gap-1"
-                          >
-                            <QrCode size={11} /> Open QR
-                          </button>
-                        </div>
-                      )}
+                      <PlanInfo label="Registered" value={String(memberCounts[p.id] ?? 0)} />
+                      <PlanInfo label="Event dates" value={(p.event_dates?.length ? p.event_dates : p.event_date ? [p.event_date] : []).map(formatDate).join(", ") || "Date not set"} />
+                      <PlanInfo label="Visit length" value={`${p.hours_per_visit} hours`} />
+                      {(p.min_age != null || p.max_age != null) && <PlanInfo label="Age range" value={`${p.min_age ?? 0}–${p.max_age ?? "No limit"}`} />}
                     </>
                   ) : (
                     <>
-                      <p className="text-xs text-brand-nightText/40 mt-1.5">
-                        {p.validity_value} {p.validity_unit} ·{" "}
-                        {p.hours_per_visit}
-                        hrs/visit
-                        {p.max_visits != null && ` · ${p.max_visits} visits`}
-                        {" · ₹"}
-                        {p.price}
-                        {(p.min_age != null || p.max_age != null) &&
-                          ` · Age ${p.min_age ?? "0"}–${p.max_age ?? "∞"}`}
-                      </p>
-                      <p className="text-xs text-brand-nightText/35 mt-1">
-                        {p.allowed_weekdays
-                          .sort()
-                          .map((d) => WEEKDAY_LABELS[d])
-                          .join(", ")}
-                      </p>
+                      <PlanInfo label="Registered" value={String(memberCounts[p.id] ?? 0)} />
+                      <PlanInfo label="Membership length" value={`${p.validity_value} ${p.validity_unit}`} />
+                      <PlanInfo label="Visit length" value={`${p.hours_per_visit} hours per visit`} />
+                      <PlanInfo label="Visit limit" value={p.max_visits == null ? "Unlimited" : `${p.max_visits} visits`} />
+                      {(p.min_age != null || p.max_age != null) && <PlanInfo label="Age range" value={`${p.min_age ?? 0}–${p.max_age ?? "No limit"}`} />}
                     </>
                   )}
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
+
+                {p.plan_type === "recurring" && (
+                  <div className="mt-2 rounded-xl bg-white/[0.035] px-3 py-2">
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-brand-nightText/35">Available days</p>
+                    <p className="mt-0.5 text-xs font-medium text-brand-nightText/65">
+                      {p.allowed_weekdays.slice().sort().map((d) => WEEKDAY_LABELS[d]).join(", ")}
+                    </p>
+                  </div>
+                )}
+
+                {p.plan_type === "special" && p.code && (
+                  <div className="mt-3 grid grid-cols-2 gap-2 border-t border-white/8 pt-3">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void sharePlanLink(p);
+                      }}
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-brand-sky/25 bg-brand-sky/10 px-2.5 text-xs font-bold text-brand-skyLight transition-colors hover:bg-brand-sky/15"
+                    >
+                      <Share2 size={15} />
+                      {copiedId === p.id ? "Link copied" : "Share link"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setQrPlan(p);
+                      }}
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-brand-sun/25 bg-brand-sun/10 px-2.5 text-xs font-bold text-brand-sun transition-colors hover:bg-brand-sun/15"
+                    >
+                      <QrCode size={15} /> Show QR
+                    </button>
+                  </div>
+                )}
+
+                <div className="mt-4 grid grid-cols-3 gap-2 border-t border-white/8 pt-3">
                   <button
                     onClick={(event) => {
                       event.stopPropagation();
                       toggleActive(p);
                     }}
-                    className="text-[11px] font-semibold text-brand-nightText/40 hover:text-brand-nightText px-2 py-1"
+                    className={`inline-flex min-h-10 items-center justify-center gap-1 rounded-xl border px-2 text-xs font-bold transition-colors ${p.active ? "border-brand-sun/25 bg-brand-sun/10 text-brand-sun hover:bg-brand-sun/15" : "border-brand-leaf/25 bg-brand-leaf/10 text-brand-leaf hover:bg-brand-leaf/15"}`}
                   >
                     {p.active ? "Deactivate" : "Activate"}
                   </button>
@@ -1145,23 +1235,28 @@ export default function PlansManager({
                       event.stopPropagation();
                       startEdit(p);
                     }}
-                    className="p-1.5 text-brand-nightText/40 hover:text-brand-sky"
+                    aria-label="Edit plan"
+                    className="inline-flex min-h-10 items-center justify-center gap-1 rounded-xl border border-brand-sky/25 bg-brand-sky/10 px-2 text-xs font-bold text-brand-skyLight transition-colors hover:bg-brand-sky/15"
                   >
-                    <Pencil size={14} />
+                    <Pencil size={13} /> Edit
                   </button>
                   <button
                     onClick={(event) => {
                       event.stopPropagation();
                       remove(p.id);
                     }}
-                    className="p-1.5 text-brand-nightText/40 hover:text-brand-coral"
+                    aria-label="Delete plan"
+                    className="inline-flex min-h-10 items-center justify-center gap-1 rounded-xl border border-brand-coral/25 bg-brand-coral/10 px-2 text-xs font-bold text-brand-coral transition-colors hover:bg-brand-coral/15"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={13} /> Delete
                   </button>
                 </div>
-              </div>
-            </div>
-          ))}
+                </motion.div>
+                )}
+                </AnimatePresence>
+              </motion.div>
+            );
+          })}
         </div>
       )}
       {qrPlan?.code && (
@@ -1171,6 +1266,17 @@ export default function PlansManager({
           onClose={() => setQrPlan(null)}
         />
       )}
+    </div>
+  );
+}
+
+function PlanInfo({ label, value, icon }: { label: string; value: string; icon?: ReactNode }) {
+  return (
+    <div className="min-w-0 rounded-xl bg-white/[0.035] px-3 py-2">
+      <p className="text-[9px] font-bold uppercase tracking-wider text-brand-nightText/35">{label}</p>
+      <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs font-semibold text-brand-nightText/75">
+        {icon}<span className="truncate">{value}</span>
+      </p>
     </div>
   );
 }

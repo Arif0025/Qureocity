@@ -3,12 +3,11 @@
 import { useEffect, useState } from "react";
 
 function useCountdown(endTime: string | null) {
-  const [remaining, setRemaining] = useState<number | null>(
-    endTime ? new Date(endTime).getTime() - Date.now() : null,
-  );
+  const [remaining, setRemaining] = useState<number | null>(null);
 
   useEffect(() => {
     if (!endTime) return;
+    setRemaining(new Date(endTime).getTime() - Date.now());
     const id = setInterval(() => {
       setRemaining(new Date(endTime).getTime() - Date.now());
     }, 1000);
@@ -21,10 +20,18 @@ function useCountdown(endTime: string | null) {
 function TimerRow({ endTime }: { endTime: string | null }) {
   const remaining = useCountdown(endTime);
 
-  if (remaining === null) {
+  if (remaining === null && endTime === null) {
     return (
       <div className="rounded-xl2 bg-brand-sky/10 px-5 py-4 text-brand-sky font-semibold text-center">
         Unlimited play — no timer
+      </div>
+    );
+  }
+
+  if (remaining === null) {
+    return (
+      <div className="rounded-xl2 bg-brand-sky/10 px-5 py-4 text-brand-sky font-semibold text-center">
+        Starting timer…
       </div>
     );
   }
@@ -77,7 +84,7 @@ export default function ConfirmationScreen({
       ) : (
         <>
           <h1 className="text-2xl font-bold text-brand-ink mb-1">
-            You're checked in!
+            You&apos;re checked in!
           </h1>
           <p className="text-brand-ink/60 mb-6">
             Show this screen at the front desk.

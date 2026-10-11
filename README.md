@@ -4,6 +4,16 @@ This guide walks through everything the app offers: what admins see and can do, 
 
 ---
 
+## Deployment configuration: web push
+
+Browser notifications require a matching VAPID key pair and a subject:
+
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY` — public key used by browsers to subscribe.
+- `VAPID_PRIVATE_KEY` — matching private key; keep this server-only.
+- `VAPID_SUBJECT` — contact URI such as `mailto:admin@example.com`.
+
+Generate a pair with `npx web-push generate-vapid-keys`. Add all three values in Vercel for each deployment scope where notifications should work. Preview and Production use separate environment-variable scopes. Redeploy after changing them because the public key is embedded in the client build. Never use a `NEXT_PUBLIC_` prefix for the private key.
+
 ## 1. Logging In
 
 - **Admins and employees** both sign in from the same **Employee Login** page (linked from the homepage).

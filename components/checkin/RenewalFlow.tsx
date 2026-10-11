@@ -44,7 +44,7 @@ function inputClass() {
 type Step = "phone" | "notFound" | "children" | "plan" | "done";
 
 export default function RenewalFlow() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
@@ -95,7 +95,7 @@ export default function RenewalFlow() {
     (async () => {
       const { data } = await supabase
         .from("membership_plans")
-        .select("*")
+        .select("id, name, description, plan_type, event_date, validity_value, validity_unit, hours_per_visit, max_visits, price, min_age, max_age")
         .eq("active", true)
         .eq("plan_type", "recurring")
         .order("price", { ascending: true });
@@ -163,8 +163,8 @@ export default function RenewalFlow() {
                 Renew your membership
               </h1>
               <p className="text-sm text-brand-ink/50 mb-5">
-                Enter the mobile number you registered with — we'll pull up your
-                child so you don't have to fill everything again.
+                Enter the mobile number you registered with — we&apos;ll pull up your
+                child so you don&apos;t have to fill everything again.
               </p>
               <input
                 type="tel"
@@ -192,7 +192,7 @@ export default function RenewalFlow() {
           {step === "notFound" && (
             <>
               <h1 className="text-xl font-bold text-brand-ink mb-1">
-                We couldn't find that number
+                We couldn&apos;t find that number
               </h1>
               <p className="text-sm text-brand-ink/50 mb-5">
                 If this is your first time here, register as a new member

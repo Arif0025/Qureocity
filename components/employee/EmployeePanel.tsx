@@ -1,25 +1,25 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useMemo, useCallback, Suspense } from "react";
+import { motion } from "framer-motion";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
-  Fingerprint,
-  Zap,
   Home as HomeIcon,
-  Search as SearchIcon,
+  Users,
   CalendarClock,
   LogOut,
+  Settings as SettingsIcon,
+  Search,
+  ScanLine,
 } from "lucide-react";
 import PunchInFlow from "./PunchInFlow";
-import QuickCheckin from "./QuickCheckin";
 import LiveFloorView from "@/components/admin/LiveFloorView";
 import KidsCheckedInCard, {
   SessionRow,
 } from "@/components/admin/home/KidsCheckedInCard";
-import CustomerSearch from "@/components/shared/CustomerSearch";
+import Directory from "@/components/admin/Directory";
 import AttendanceCalendarTab from "./AttendanceCalendarTab";
-import AttendanceSummaryCard from "./AttendanceSummaryCard";
 import ShiftDetailsCard from "./ShiftDetailsCard";
 import { useTheme } from "@/lib/hooks/useTheme";
 import ThemeToggle from "@/components/shared/ThemeToggle";
@@ -27,9 +27,13 @@ import NotificationsCard from "@/components/shared/NotificationsCard";
 import PushToast from "@/components/shared/PushToast";
 import GlobalSearch, { SearchNavItem } from "@/components/shared/GlobalSearch";
 import HelpTab from "@/components/shared/HelpTab";
+import PageTransition from "@/components/ui/PageTransition";
+import BottomSheet from "@/components/ui/BottomSheet";
+import EmployeeNotificationBell from "./EmployeeNotificationBell";
+import { useInAppBackStack } from "@/lib/hooks/useInAppBackStack";
 
 function ChangePasswordCard() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [isOpen, setIsOpen] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -138,10 +142,9 @@ function ChangePasswordCard() {
 // its own bar button, so Home can show just that card as requested.
 const TAB_META = [
   { id: "home", label: "Home", icon: HomeIcon },
-  { id: "quickcheckin", label: "Club check-in", icon: Zap },
-  { id: "punch", label: "Punch", icon: Fingerprint },
-  { id: "search", label: "Search", icon: SearchIcon },
+  { id: "search", label: "Customers", icon: Users },
   { id: "activity", label: "Attendance", icon: CalendarClock },
+  { id: "settings", label: "Settings", icon: SettingsIcon },
 ] as const;
 
 type Tab = (typeof TAB_META)[number]["id"] | "floor" | "help";
@@ -162,6 +165,11 @@ function EmployeePanelInner({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const replaceInAppView = useCallback(
+    (href: string) => router.replace(href, { scroll: false }),
+    [router],
+  );
+  const rememberInAppView = useInAppBackStack(pathname, replaceInAppView);
 
   const VALID_TABS = [...TAB_META.map((t) => t.id), "floor", "help"] as Tab[];
   // URL is the source of truth for the current view, so Back steps
@@ -171,12 +179,17 @@ function EmployeePanelInner({
     ? (rawTab as Tab)
     : "home";
   const customerSearchQuery = searchParams.get("customer") ?? "";
+  const customerChildId = searchParams.get("child") ?? undefined;
+  const directoryMode = searchParams.get("mode") === "members" ? "members" : "all";
+  const directoryPlanId = searchParams.get("filterplan") ?? undefined;
+  const directoryBrowseAll = searchParams.get("browse") === "all";
   const helpArticleSlug = searchParams.get("article");
   const { theme } = useTheme();
-  const logoClass =
-    theme === "light"
-      ? "opacity-90 hover:opacity-100 transition-opacity"
-      : "brightness-0 invert opacity-90 hover:opacity-100 transition-opacity";
+  const [employeeShift, setEmployeeShift] = useState<{ start_time: string; end_time: string; notes: string | null } | null | undefined>(undefined);
+  const logoClass = "opacity-90 transition-opacity hover:opacity-100";
+  const logoStyle = theme === "dark"
+    ? { filter: "brightness(0) saturate(100%) invert(97%) sepia(18%) saturate(390%) hue-rotate(350deg) brightness(104%) contrast(94%)" }
+    : undefined;
   const initials = employeeName
     .split(" ")
     .map((p) => p[0])
@@ -186,50 +199,58 @@ function EmployeePanelInner({
 
   const navigate = (
     nextTab: Tab,
-    extra: { customer?: string; article?: string } = {},
+    extra: { customer?: string; child?: string; article?: string; mode?: string; filterplan?: string; browse?: string } = {},
   ) => {
     const params = new URLSearchParams();
     params.set("tab", nextTab);
     if (extra.customer) params.set("customer", extra.customer);
+    if (extra.child) params.set("child", extra.child);
     if (extra.article) params.set("article", extra.article);
+    if (extra.mode) params.set("mode", extra.mode);
+    if (extra.filterplan) params.set("filterplan", extra.filterplan);
+    if (extra.browse) params.set("browse", extra.browse);
     const next = `${pathname}?${params.toString()}`;
     if (next === `${pathname}?${searchParams.toString()}`) return;
-    router.push(next, { scroll: false });
+    // The employee page's server component performs auth and snapshot queries.
+    // Updating its query string through the App Router re-ran those on every
+    // tab tap. Next integrates the native History API with useSearchParams,
+    // keeping in-panel navigation instant without repeating server reads.
+    rememberInAppView(next);
+    window.history.pushState(null, "", next);
   };
   const setTab = (id: Tab) => navigate(id);
+  const handleNotificationLink = (url: string) => {
+    const target = new URL(url, window.location.origin);
+    const nextTab = target.searchParams.get("tab");
+    if (nextTab === "floor") setTab("floor");
+    else if (nextTab && VALID_TABS.includes(nextTab as Tab)) setTab(nextTab as Tab);
+    else setTab("home");
+  };
 
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     router.push("/employee/login");
   };
 
-  const openCustomerDirectory = (customerKey: string) =>
-    navigate("search", { customer: customerKey });
+  const openCustomerDirectory = (customerKey: string, childId?: string) =>
+    navigate("search", { customer: customerKey, child: childId });
 
   const openHelpArticle = (slug: string | null) =>
     navigate("help", { article: slug ?? undefined });
 
   const [searchOpen, setSearchOpen] = useState(false);
+  const [punchOpen, setPunchOpen] = useState(false);
   const EMPLOYEE_SEARCH_NAV: SearchNavItem[] = [
     { id: "home", label: "Home", keywords: ["kids on site", "today"] },
-    {
-      id: "quickcheckin",
-      label: "Club check-in",
-      keywords: ["check in", "checkout"],
-    },
-    {
-      id: "punch",
-      label: "Punch",
-      keywords: ["clock in", "clock out", "shift"],
-    },
-    { id: "search", label: "Search", keywords: ["customer", "directory"] },
+    { id: "search", label: "Customers", keywords: ["customer", "directory", "members", "plans"] },
     {
       id: "activity",
       label: "Attendance",
-      keywords: ["notifications", "password"],
+      keywords: ["attendance", "punch history", "shift", "hours"],
     },
+    { id: "settings", label: "Settings", keywords: ["notifications", "password", "theme", "sign out"] },
     { id: "help", label: "Help", keywords: ["faq", "how to"] },
   ];
 
@@ -239,9 +260,7 @@ function EmployeePanelInner({
         return (
           <KidsCheckedInCard
             key="home"
-            initialSessions={initialSessions.filter(
-              (s) => s.status === "active",
-            )}
+            initialSessions={initialSessions.filter((s) => s.status === "active")}
             todayCheckinCount={todayCheckinCount}
             venueCapacity={venueCapacity}
             onViewAll={() => setTab("floor")}
@@ -249,10 +268,8 @@ function EmployeePanelInner({
             variant="full"
           />
         );
-      case "quickcheckin":
-        return <QuickCheckin key="quickcheckin" />;
       case "floor":
-        return <LiveFloorView key="floor" initialSessions={initialSessions} />;
+        return <LiveFloorView key="floor" initialSessions={initialSessions} loadOnMount={initialSessions.length === 0} />;
       case "help":
         return (
           <HelpTab
@@ -265,32 +282,49 @@ function EmployeePanelInner({
       case "activity":
         return (
           <div className="space-y-4">
-            <AttendanceSummaryCard key="activity" employeeId={employeeId} />
-            <AttendanceCalendarTab employeeId={employeeId} />
-            <ShiftDetailsCard employeeId={employeeId} />
+            <AttendanceCalendarTab employeeId={employeeId} shift={employeeShift} />
+            <ShiftDetailsCard employeeId={employeeId} initialShift={employeeShift} onShiftLoaded={setEmployeeShift} />
+          </div>
+        );
+      case "settings":
+        return (
+          <div className="space-y-3">
+            <section className="rounded-2xl border border-white/10 bg-brand-nightSurface p-4">
+              <h2 className="mb-3 text-sm font-semibold text-brand-nightText">Appearance</h2>
+              <ThemeToggle />
+            </section>
             <NotificationsCard />
             <ChangePasswordCard />
+            <button type="button" onClick={handleSignOut} className="flex min-h-12 w-full items-center gap-2 rounded-xl border border-brand-coral/20 bg-brand-coral/5 px-4 text-sm font-semibold text-brand-coral transition-colors hover:bg-brand-coral/10">
+              <LogOut size={16} /> Sign out
+            </button>
           </div>
         );
       case "search":
         return (
-          <CustomerSearch
-            key={`search:${customerSearchQuery}`}
+          <Directory
             isAdmin={false}
+            initialMode={directoryMode}
             initialQuery={customerSearchQuery}
-            focusCustomerPhone={customerSearchQuery}
+            initialChildId={customerChildId}
+            initialPlanId={directoryPlanId}
+            initialBrowseAll={directoryBrowseAll}
+            onOpenMembers={() => navigate("search", { mode: "members" })}
+            onOpenPlan={(planId) => navigate("search", { filterplan: planId })}
+            onOpenSearch={(query) => navigate("search", { customer: query })}
+            onOpenAll={() => navigate("search", { browse: "all" })}
+            onBack={() => navigate("search")}
           />
         );
-      case "punch":
       default:
-        return <PunchInFlow key="punch" />;
+        return null;
     }
   };
 
   return (
     <div className="dark-ui min-h-screen bg-brand-nightBg">
       {/* Header — mirrors the admin panel's top bar: logo, identity block,
-          theme toggle, sign out. Sticky so it stays put while a tab's
+          search and notifications. Sticky so it stays put while a tab's
           content scrolls underneath it. */}
       <div className="sticky top-0 z-30 bg-brand-nightSurface border-b border-white/8">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
@@ -305,6 +339,7 @@ function EmployeePanelInner({
                 src="/logo-full.png"
                 alt="QureoCity"
                 className={`h-7 w-auto object-contain ${logoClass}`}
+                style={logoStyle}
               />
             </button>
             <div className="w-px h-6 bg-white/10 shrink-0" />
@@ -330,16 +365,9 @@ function EmployeePanelInner({
               aria-label="Search"
               className="text-brand-nightText/40 hover:text-brand-nightText p-2 rounded-lg transition-colors"
             >
-              <SearchIcon size={16} />
+              <Search size={16} />
             </button>
-            <ThemeToggle compact />
-            <button
-              onClick={handleSignOut}
-              title="Sign out"
-              className="text-brand-nightText/40 hover:text-brand-coral p-2 rounded-lg transition-colors"
-            >
-              <LogOut size={16} />
-            </button>
+            <EmployeeNotificationBell onOpenLink={handleNotificationLink} />
           </div>
         </div>
       </div>
@@ -357,17 +385,18 @@ function EmployeePanelInner({
             ← Back to Home
           </button>
         )}
-        {renderActiveTab()}
+        <PageTransition pageKey={tab}>{renderActiveTab()}</PageTransition>
       </div>
 
       {/* Real bottom tab bar — fixed, thumb-reachable, same active/badge
           language as the admin sidebar's nav items. */}
       <nav
-        className="fixed bottom-0 inset-x-0 z-30 bg-brand-nightSurface border-t border-white/10 pb-[env(safe-area-inset-bottom)]"
+        className="fixed left-3 right-3 z-40 mx-auto max-w-2xl rounded-2xl border border-white/15 bg-brand-nightSurface/95 p-1.5 shadow-2xl backdrop-blur-xl"
+        style={{ bottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
         aria-label="Employee panel navigation"
       >
         <div
-          className="max-w-2xl mx-auto px-2 py-1.5 grid gap-1"
+          className="grid gap-1"
           style={{
             gridTemplateColumns: `repeat(${TAB_META.length}, minmax(0, 1fr))`,
           }}
@@ -376,29 +405,51 @@ function EmployeePanelInner({
             const Icon = t.icon;
             const isActive = tab === t.id;
             return (
-              <button
+              <motion.button
                 key={t.id}
                 type="button"
                 onClick={() => {
                   setTab(t.id);
                 }}
                 aria-current={isActive ? "page" : undefined}
-                className={`relative flex flex-col items-center justify-center gap-1 min-h-[52px] rounded-xl px-1 transition-colors ${
+                whileTap={{ scale: 0.94 }}
+                className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2.5 transition-colors ${
                   isActive
-                    ? "bg-brand-sky/20 text-brand-skyLight"
+                    ? "text-brand-ink"
                     : "text-brand-nightText/45 hover:bg-white/[0.04] hover:text-brand-nightText"
                 }`}
               >
-                <Icon size={17} strokeWidth={2.25} />
-                <span className="text-[9.5px] font-semibold tracking-wide leading-none text-center">
+                {isActive && <motion.span layoutId="employee-mobile-active-tab" transition={{ type: "spring", stiffness: 430, damping: 34 }} className={`absolute inset-0 rounded-xl border ${theme === "dark" ? "border-brand-sky bg-brand-sky" : "border-brand-sky/55 bg-brand-sky/30"}`} />}
+                <span className="relative z-10"><Icon size={18} strokeWidth={2.25} /></span>
+                <span className="relative z-10 text-[9.5px] font-semibold tracking-wide leading-none text-center">
                   {t.label}
                 </span>
-              </button>
+              </motion.button>
             );
           })}
         </div>
       </nav>
-      <PushToast />
+      {tab === "home" && (
+        <motion.button
+          type="button"
+          onClick={() => setPunchOpen(true)}
+          whileHover={{ scale: 1.06 }}
+          whileTap={{ scale: 0.92 }}
+          aria-label="Scan staff QR to punch in or out"
+          title="Scan staff QR"
+          className="fixed z-40 grid h-12 w-12 place-items-center rounded-full border border-brand-sky/40 bg-brand-sky text-brand-ink shadow-lg shadow-black/25 transition-colors hover:brightness-105"
+          style={{
+            bottom: "calc(env(safe-area-inset-bottom) + 88px)",
+            right: "max(1.25rem, calc((100vw - 42rem) / 2 + 1.25rem))",
+          }}
+        >
+          <ScanLine size={19} strokeWidth={2.2} />
+        </motion.button>
+      )}
+      <PushToast onNavigate={handleNotificationLink} />
+      <BottomSheet open={punchOpen} onClose={() => setPunchOpen(false)} title="Staff punch">
+        <PunchInFlow autoStart />
+      </BottomSheet>
       <GlobalSearch
         open={searchOpen}
         onClose={() => setSearchOpen(false)}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useId } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 // Lightweight count-only subscription for tab badges. Kept separate from
@@ -15,9 +15,8 @@ export function usePendingCount() {
   // .on() listener to a channel someone else had already called
   // .subscribe() on, which Supabase's realtime client rejects outright.
   // A per-instance name keeps every hook call on its own channel.
-  const channelName = useRef(
-    `play_sessions_pending_count_${Math.random().toString(36).slice(2)}`,
-  );
+  const instanceId = useId().replaceAll(":", "");
+  const channelName = useRef(`play_sessions_pending_count_${instanceId}`);
 
   const refetch = useCallback(async () => {
     const { count: c } = await supabase

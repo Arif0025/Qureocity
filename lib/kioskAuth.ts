@@ -27,7 +27,7 @@ export function verifyKioskPassword(password: string, stored: string) {
 }
 
 export async function getKioskSession() {
-  const token = cookies().get(KIOSK_COOKIE)?.value;
+  const token = (await cookies()).get(KIOSK_COOKIE)?.value;
   if (!token) return null;
 
   const admin = createServiceRoleClient();
