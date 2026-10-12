@@ -29,7 +29,7 @@ const dateTime = (value: string) => new Date(value).toLocaleString("en-IN", {
   timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short",
 });
 
-export default function UpcomingConfirmedParties() {
+export default function UpcomingConfirmedParties({ embedded = false }: { embedded?: boolean }) {
   const supabase = useMemo(() => createClient(), []);
   const [open, setOpen] = useState(false);
   const [count, setCount] = useState<number | null>(null);
@@ -72,15 +72,15 @@ export default function UpcomingConfirmedParties() {
     if (next) void load();
   };
 
-  return <section className="overflow-hidden rounded-xl border border-brand-leaf/20 bg-brand-nightSurface2">
-    <button type="button" aria-expanded={open} onClick={toggle} className="flex min-h-14 w-full items-center gap-3 px-3 text-left sm:px-4">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-leaf/10 text-brand-leaf"><CalendarClock size={16} /></span>
-      <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-brand-nightText">Upcoming confirmed parties</span><span className="block text-xs text-brand-nightText/45">Accepted bookings scheduled for a future date</span></span>
+  return <section className={embedded ? "border-t border-brand-leaf/15 pt-3" : "overflow-hidden rounded-xl border border-brand-leaf/20 bg-brand-nightSurface2"}>
+    <button type="button" aria-expanded={open} onClick={toggle} className={`flex w-full items-center gap-2.5 text-left ${embedded ? "min-h-10 rounded-xl bg-brand-leaf/[0.05] px-2.5" : "min-h-14 px-3 sm:px-4"}`}>
+      <span className={`grid shrink-0 place-items-center rounded-lg bg-brand-leaf/10 text-brand-leaf ${embedded ? "h-8 w-8" : "h-9 w-9 rounded-xl"}`}><CalendarClock size={16} /></span>
+      <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-brand-nightText">Confirmed parties</span><span className="block truncate text-[11px] text-brand-nightText/45">Upcoming bookings</span></span>
       {count !== null && <span aria-label={`${count} upcoming confirmed parties`} className="rounded-full bg-brand-leaf/10 px-2.5 py-1 text-xs font-bold tabular-nums text-brand-leaf">{count}</span>}
       <ChevronDown size={16} className={`shrink-0 text-brand-nightText/40 transition-transform ${open ? "rotate-180" : ""}`} />
     </button>
     <AnimatePresence initial={false}>{open && <motion.div {...expandCollapse} className="overflow-hidden">
-      <div className="space-y-2 border-t border-white/[0.06] p-3">
+      <div className={`space-y-2 ${embedded ? "pt-3" : "border-t border-white/[0.06] p-3"}`}>
         {error && <p role="alert" className="rounded-lg border border-brand-coral/20 bg-brand-coral/5 px-3 py-2 text-xs text-brand-coral">{error}</p>}
         {loading && !loaded ? <p className="flex items-center justify-center gap-2 py-6 text-sm text-brand-nightText/45"><LoaderCircle size={15} className="animate-spin" />Loading confirmed parties…</p>
           : rows.length === 0 ? <p className="rounded-lg border border-white/10 bg-brand-nightSurface px-3 py-5 text-center text-sm text-brand-nightText/45">No upcoming confirmed parties.</p>

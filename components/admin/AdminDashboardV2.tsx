@@ -28,6 +28,7 @@ import { useInAppBackStack } from "@/lib/hooks/useInAppBackStack";
 import { expandCollapse } from "@/lib/motion";
 import ContactMessageSheet from "@/components/shared/ContactMessageSheet";
 import PushOvertimeNotifySheet from "./PushOvertimeNotifySheet";
+import { formatTimeIST } from "@/lib/formatTime";
 
 function SettingsDisclosure({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   const [opened, setOpened] = useState(false);
@@ -170,19 +171,22 @@ function AdminDashboardV2Inner({
 
   const [supabase] = useState(() => createClient());
   const messageSessionId = searchParams.get("message_session");
+  const messageEvent = searchParams.get("message_event");
+  const messageTemplateKey = messageEvent === "child_checkout_push" ? "child_checkout_push" : "customer_contact";
+  const messageContextKey = messageSessionId ? `${messageSessionId}:${messageTemplateKey}` : null;
   const overtimeNotifySessionId = searchParams.get("notify_session");
   const processedMessageSession = useRef<string | null>(null);
   const [pushMessageCustomer, setPushMessageCustomer] = useState<{
-    phone: string; parent_name: string; child_name: string; date_of_birth: string;
+    phone: string; parent_name: string; child_name: string; date_of_birth: string; checkout_time: string;
   } | null>(null);
   const [pushMessageError, setPushMessageError] = useState<string | null>(null);
   useEffect(() => {
-    if (!isAdmin || !messageSessionId || processedMessageSession.current === messageSessionId) return;
-    processedMessageSession.current = messageSessionId;
+    if (!isAdmin || !messageSessionId || !messageContextKey || processedMessageSession.current === messageContextKey) return;
+    processedMessageSession.current = messageContextKey;
     let active = true;
     void supabase.rpc("admin_session_message_context", { p_session_id: messageSessionId }).then(({ data, error }) => {
       if (!active) return;
-      const row = data as { phone?: string; parent_name?: string; child_name?: string; date_of_birth?: string } | null;
+      const row = data as { phone?: string; parent_name?: string; child_name?: string; date_of_birth?: string; ended_at?: string | null; end_time?: string | null } | null;
       if (error || !row?.phone) {
         setPushMessageError(error?.message ?? "Customer contact details are unavailable.");
         return;
@@ -192,10 +196,11 @@ function AdminDashboardV2Inner({
         parent_name: row.parent_name ?? "there",
         child_name: row.child_name ?? "your child",
         date_of_birth: row.date_of_birth ?? "",
+        checkout_time: row.ended_at || row.end_time ? formatTimeIST(row.ended_at || row.end_time!) : "",
       });
     });
     return () => { active = false; };
-  }, [isAdmin, messageSessionId, supabase]);
+  }, [isAdmin, messageContextKey, messageSessionId, supabase]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -307,15 +312,33 @@ function AdminDashboardV2Inner({
         />}
         {pushMessageCustomer && <ContactMessageSheet
           open
-          onClose={() => setPushMessageCustomer(null)}
+          onClose={() => {
+            setPushMessageCustomer(null);
+            processedMessageSession.current = null;
+            const params = new URLSearchParams(window.location.search);
+            params.delete("message_session");
+            params.delete("message_event");
+            const query = params.toString();
+            window.history.replaceState(null, "", `${pathname}${query ? `?${query}` : ""}`);
+          }}
           title={`Message ${pushMessageCustomer.parent_name}`}
           phone={pushMessageCustomer.phone}
-          initialMessage="Hi {{parent_name}}! This is {{business_name}}. I’m reaching out about {{child_name}}’s visit. How can we help?"
-          templateKey="customer_contact"
           templateValues={{ ...pushMessageCustomer, business_name: "QureoCity" }}
+          templateKey={messageTemplateKey}
+          initialMessage={messageTemplateKey === "child_checkout_push"
+            ? "Hi {{parent_name}}! This is {{business_name}} — {{child_name}} has finished today's visit. Let us know if you need anything."
+            : "Hi {{parent_name}}! This is {{business_name}}. I’m reaching out about {{child_name}}’s visit. How can we help?"}
           canManageTemplates
         />}
-        {pushMessageError && <div role="alert" className="fixed inset-x-4 top-4 z-[80] mx-auto max-w-lg rounded-xl border border-brand-coral/30 bg-brand-nightSurface p-4 text-sm text-brand-coral shadow-xl">{pushMessageError}<button type="button" className="ml-3 underline" onClick={() => setPushMessageError(null)}>Dismiss</button></div>}
+        {pushMessageError && <div role="alert" className="fixed inset-x-4 top-4 z-[80] mx-auto max-w-lg rounded-xl border border-brand-coral/30 bg-brand-nightSurface p-4 text-sm text-brand-coral shadow-xl">{pushMessageError}<button type="button" className="ml-3 underline" onClick={() => {
+          setPushMessageError(null);
+          processedMessageSession.current = null;
+          const params = new URLSearchParams(window.location.search);
+          params.delete("message_session");
+          params.delete("message_event");
+          const query = params.toString();
+          window.history.replaceState(null, "", `${pathname}${query ? `?${query}` : ""}`);
+        }}>Dismiss</button></div>}
         <div className="max-w-6xl mx-auto">
           <PageTransition pageKey={tab}>
             {tab === "home" && (

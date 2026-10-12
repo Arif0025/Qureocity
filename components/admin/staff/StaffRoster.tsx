@@ -600,31 +600,31 @@ export default function StaffRoster({
                     ` · ${shift.start_time.slice(0, 5)}–${shift.end_time.slice(0, 5)}`}
                 </p>
               </div>
-              <div className="text-right shrink-0">
-                {isAdmin && salaryEarned(salarySettings[s.id], summary) != null && (
-                  <div>
-                    <p className="text-sm font-bold tabular-nums text-brand-skyLight">
-                      {currency(salaryEarned(salarySettings[s.id], summary) ?? 0)}
-                    </p>
-                    <p className="text-[10px] text-brand-nightText/40">payable to date</p>
-                  </div>
-                )}
+              <div className="flex shrink-0 items-center gap-2.5 sm:gap-4">
                 {shift ? (
-                  <>
-                    <p className="text-sm font-medium text-brand-nightText">
+                  <div className="min-w-[48px] text-right" title={`${summary?.actual_working_days ?? 0} present days out of ${summary?.working_days_this_month ?? 0} total days this month`}>
+                    <p className="text-[13px] font-semibold tabular-nums text-brand-nightText sm:text-sm">
                       {loadingSummary
                         ? "…"
-                        : `${summary?.actual_working_days ?? 0}/${summary?.working_days_this_month ?? 0} days`}
+                        : `${summary?.actual_working_days ?? 0}/${summary?.working_days_this_month ?? 0}`}
                     </p>
-                    <p className="flex items-center justify-end gap-1.5 text-xs text-brand-nightText/45">
+                    <p className="flex items-center justify-end gap-1 text-[9px] leading-tight text-brand-nightText/45 sm:text-[10px]">
                       {behind && <span aria-label="Below expected hours" title="Below expected hours" className="h-2 w-2 rounded-full bg-brand-sun ring-2 ring-brand-sun/20" />}
-                      this month
+                      present days
                     </p>
-                  </>
+                  </div>
                 ) : (
-                  <p className="text-xs text-brand-nightText/35 italic">
+                  <p className="max-w-[78px] text-right text-[10px] text-brand-nightText/35 italic">
                     No shift assigned
                   </p>
+                )}
+                {isAdmin && salaryEarned(salarySettings[s.id], summary) != null && (
+                  <div className="min-w-0 text-right">
+                    <p className="text-[13px] font-bold tabular-nums text-brand-skyLight sm:text-sm">
+                      {currency(salaryEarned(salarySettings[s.id], summary) ?? 0)}
+                    </p>
+                    <p className="text-[9px] leading-tight text-brand-nightText/40 sm:text-[10px]">payable to date</p>
+                  </div>
                 )}
               </div>
               <ChevronDown

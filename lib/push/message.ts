@@ -101,7 +101,7 @@ export function buildMessage(
 
     case "child_checkout": {
       const messageUrl = role === "admin" && ctx.session_id
-        ? `/admin?tab=home&message_session=${encodeURIComponent(ctx.session_id)}`
+        ? `/admin?tab=home&message_session=${encodeURIComponent(ctx.session_id)}&message_event=child_checkout_push`
         : null;
       return {
         title: showName ? `${ctx.child_name} checked out` : "Child checked out",

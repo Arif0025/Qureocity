@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, type ReactNode } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import PhoneLinks from "@/components/shared/PhoneLinks";
 import {
@@ -20,7 +20,7 @@ import {
 import SpecialPlanQrModal from "./SpecialPlanQrModal";
 import PartyPlansManager from "./PartyPlansManager";
 import Badge from "@/components/ui/Badge";
-import { tapScale, DURATION } from "@/lib/motion";
+import { tapScale, DURATION, EASE } from "@/lib/motion";
 import { planCardTone } from "./planCardTones";
 
 // Same shared-element id on the browse card and the detail header below —
@@ -177,6 +177,7 @@ export default function PlansManager({
   initialTypeFilter?: "recurring" | "special";
   initialExpandedPlanId?: string | null;
 } = {}) {
+  const reduceMotion = useReducedMotion();
   const supabase = createClient();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
@@ -1120,7 +1121,8 @@ export default function PlansManager({
               <motion.div
                 key={p.id}
                 layoutId={planCardLayoutId(p.id)}
-                transition={{ duration: DURATION.fast }}
+                layout="position"
+                transition={{ layout: { duration: reduceMotion ? 0 : DURATION.base, ease: EASE } }}
                 className={`w-full rounded-2xl border border-l-4 p-4 sm:p-5 transition-colors ${tone.stripe} ${tone.card} ${!p.active ? "opacity-65" : "hover:brightness-[1.03]"}`}
               >
                 <button
@@ -1151,7 +1153,7 @@ export default function PlansManager({
                     <span className={`rounded-full px-3 py-1.5 text-sm font-extrabold flex items-center gap-0.5 ${tone.badge}`}>
                       <IndianRupee size={13} />{p.price}
                     </span>
-                    <ChevronDown size={16} className={`mt-1 text-brand-nightText/45 transition-transform duration-200 ${expandedCardId === p.id ? "rotate-180" : ""}`} />
+                    <ChevronDown size={16} className={`mt-1 text-brand-nightText/45 transition-transform duration-300 ease-out ${expandedCardId === p.id ? "rotate-180" : ""}`} />
                   </span>
                 </button>
 
@@ -1159,10 +1161,12 @@ export default function PlansManager({
                 {expandedCardId === p.id && (
                 <motion.div
                   id={`plan-details-${p.id}`}
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: DURATION.fast }}
+                  initial={reduceMotion ? false : { height: 0, opacity: 0, y: -4 }}
+                  animate={{ height: "auto", opacity: 1, y: 0 }}
+                  exit={{ height: 0, opacity: 0, y: -4 }}
+                  transition={reduceMotion
+                    ? { duration: 0 }
+                    : { height: { duration: DURATION.base, ease: EASE }, opacity: { duration: DURATION.fast }, y: { duration: DURATION.base, ease: EASE } }}
                   className="overflow-hidden"
                 >
 

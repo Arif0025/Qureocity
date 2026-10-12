@@ -66,7 +66,7 @@ export const MESSAGE_TEMPLATE_EVENTS = [
   { key: "party_declined", label: "Party declined" },
   { key: "party_quote", label: "Party quote" },
   { key: "birthday_outreach", label: "Birthday outreach" },
-  { key: "child_checkout_push", label: "Checkout push action" },
+  { key: "child_checkout_push", label: "Child checked out" },
 ] as const;
 
 export type MessageTemplateEvent = (typeof MESSAGE_TEMPLATE_EVENTS)[number]["key"];

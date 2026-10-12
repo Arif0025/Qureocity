@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Cake, ChevronDown, Clock3, Pencil, Plus, Trash2, Users, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { tapScale, DURATION } from "@/lib/motion";
+import { tapScale, DURATION, EASE } from "@/lib/motion";
 import PartyBookingSettingsCard from "./PartyBookingSettingsCard";
 
 type PartyPlan = {
@@ -36,6 +36,7 @@ export default function PartyPlansManager({
 }: {
   onModeChange: (mode: "recurring" | "special") => void;
 }) {
+  const reduceMotion = useReducedMotion();
   const supabase = useMemo(() => createClient(), []);
   const [plans, setPlans] = useState<PartyPlan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -157,12 +158,12 @@ export default function PartyPlansManager({
           {plans.map((plan, index) => {
             const expanded = expandedId === plan.id;
             const tone = ["border-brand-sky/30 bg-brand-sky/[0.08]", "border-brand-leaf/35 bg-brand-leaf/[0.08]", "border-brand-coral/35 bg-brand-coral/[0.08]", "border-brand-sun/40 bg-brand-sun/[0.09]"][index % 4];
-            return <motion.article layout key={plan.id} className={`overflow-hidden rounded-2xl border border-l-4 ${tone} ${plan.active ? "" : "opacity-65"}`}>
+            return <motion.article layout="position" transition={{ layout: { duration: reduceMotion ? 0 : DURATION.base, ease: EASE } }} key={plan.id} className={`overflow-hidden rounded-2xl border border-l-4 ${tone} ${plan.active ? "" : "opacity-65"}`}>
               <button type="button" aria-expanded={expanded} onClick={() => setExpandedId(expanded ? null : plan.id)} className="flex w-full items-start justify-between gap-3 p-4 text-left">
                 <span className="min-w-0"><span className="block font-bold text-brand-nightText">{plan.name}</span><span className="mt-0.5 line-clamp-2 block text-xs text-brand-nightText/55">{plan.description || "Party package"}</span></span>
-                <span className="flex shrink-0 items-center gap-2"><span className="rounded-full bg-white/10 px-3 py-1.5 text-sm font-extrabold text-brand-nightText">₹{Number(plan.price).toLocaleString("en-IN")}</span><ChevronDown size={16} className={`mt-1 text-brand-nightText/45 transition-transform ${expanded ? "rotate-180" : ""}`} /></span>
+                <span className="flex shrink-0 items-center gap-2"><span className="rounded-full bg-white/10 px-3 py-1.5 text-sm font-extrabold text-brand-nightText">₹{Number(plan.price).toLocaleString("en-IN")}</span><ChevronDown size={16} className={`mt-1 text-brand-nightText/45 transition-transform duration-300 ease-out ${expanded ? "rotate-180" : ""}`} /></span>
               </button>
-              <AnimatePresence initial={false}>{expanded && <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: DURATION.fast }} className="overflow-hidden"><div className="grid grid-cols-2 gap-2 border-t border-white/10 p-4 sm:grid-cols-3">
+              <AnimatePresence initial={false}>{expanded && <motion.div initial={reduceMotion ? false : { height: 0, opacity: 0, y: -4 }} animate={{ height: "auto", opacity: 1, y: 0 }} exit={{ height: 0, opacity: 0, y: -4 }} transition={reduceMotion ? { duration: 0 } : { height: { duration: DURATION.base, ease: EASE }, opacity: { duration: DURATION.fast }, y: { duration: DURATION.base, ease: EASE } }} className="overflow-hidden"><div className="grid grid-cols-2 gap-2 border-t border-white/10 p-4 sm:grid-cols-3">
                 <Detail icon={<Users size={14} />} label="Guests" value={`${plan.kids_count} kids · ${plan.adults_count} adults`} />
                 <Detail icon={<Clock3 size={14} />} label="Time period" value={`${plan.duration_minutes} minutes`} />
                 <Detail icon={<Cake size={14} />} label="Cake" value={plan.includes_cake ? "Included" : "Not included"} />

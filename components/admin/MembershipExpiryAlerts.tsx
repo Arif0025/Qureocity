@@ -79,9 +79,9 @@ export default function MembershipExpiryAlerts({ embedded = false }: { embedded?
   const setFilter = (next: ExpiryStatus) => { setError(null); setStatus(next); };
 
   return <section className={embedded ? "border-t border-brand-sun/15 pt-3" : "overflow-hidden rounded-2xl border border-white/[0.08] bg-brand-nightSurface"}>
-    <button type="button" aria-expanded={opened} onClick={() => setOpened((value) => !value)} className={`flex w-full items-center gap-3 text-left ${embedded ? "min-h-12 rounded-xl bg-brand-sun/[0.06] px-3" : "min-h-14 border-b border-white/[0.06] px-4 sm:px-5"}`}>
+    <button type="button" aria-expanded={opened} onClick={() => setOpened((value) => !value)} className={`flex w-full items-center gap-2.5 text-left ${embedded ? "min-h-10 rounded-xl bg-brand-sun/[0.06] px-2.5" : "min-h-14 border-b border-white/[0.06] px-4 sm:px-5"}`}>
       <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${embedded ? "bg-brand-sun/15 text-brand-sun" : "h-9 w-9 rounded-xl bg-brand-sun/15 text-brand-sun"}`}><CalendarClock size={16} /></span>
-      <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-brand-nightText">Membership expiry</span><span className="block text-xs text-brand-nightText/40">Expiring within 7 days or already expired</span></span>
+      <span className="min-w-0 flex-1"><span className="flex flex-wrap items-baseline gap-x-1.5"><span className="text-sm font-semibold text-brand-nightText">Membership expiry</span><span className="text-[11px] text-brand-nightText/40">Expired · next 7 days</span></span></span>
       {counts && <span aria-label={`${counts.expiring_soon} expiring soon, ${counts.expired} expired`} className="rounded-full bg-brand-sun/10 px-2.5 py-1 text-xs font-bold tabular-nums text-brand-sun">{counts.expiring_soon + counts.expired}</span>}
       <ChevronDown size={16} className={`shrink-0 text-brand-nightText/40 transition-transform ${opened ? "rotate-180" : ""}`} />
     </button>

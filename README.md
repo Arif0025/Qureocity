@@ -1,61 +1,53 @@
-# QureoCity
+<p align="center">
+  <img src="public/logo-full.png" alt="QureoCity" width="280" />
+</p>
 
-QureoCity is a mobile-friendly venue management app for customer records, child check-ins, memberships, party bookings, staff attendance, and notifications. Admins manage the venue; employees use a focused daily-work view; families register and check in through the public kiosk.
+<h1 align="center">A better day at the play space.</h1>
 
-## Roles and workflows
+<p align="center">
+  QureoCity brings the front desk, floor team, families, and venue operations into one calm, mobile-first workspace.
+</p>
 
-### Admin
+<p align="center">
+  <img src="https://img.shields.io/badge/Next.js-16-171717?logo=next.js&logoColor=white" alt="Next.js 16" />
+  <img src="https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white" alt="React 19" />
+  <img src="https://img.shields.io/badge/Supabase-data%20%26%20auth-3FCF8E?logo=supabase&logoColor=white" alt="Supabase" />
+  <img src="https://img.shields.io/badge/Mobile--first-built%20for%20the%20floor-705084" alt="Mobile-first" />
+</p>
 
-- **Overview:** daily check-in summary, children currently on site, team attendance, and monthly activity.
-- **Customers:** search and browse family/child records, filter active memberships and plans, view history, add customers, and contact parents.
-- **Plans:** create and manage membership, special-day, and party plans; share or display special-day QR codes. Party settings are managed in the party-plans area.
-- **Notifications:** review membership, special-day, and party registrations; approve or decline requests, prepare messages, and review confirmed/upcoming parties. Birthday and membership-expiry outreach is available where records qualify.
-- **Staff:** manage employees, shifts, attendance and punch records, salary settings/calculations, and staff notifications.
-- **Settings:** configure desk/kiosk access, notification rules and message templates, account/password and appearance settings. Export selected data groups or a full backup from the admin export control.
+---
 
-### Employee
+## One workspace, three perspectives
 
-The employee panel provides **Home**, **Customers**, **Attendance**, and **Settings**. Employees can scan the desk QR code to punch in/out, check children in or out, search customer records, see their attendance/shift details, and manage their own notification and account preferences. Admin-only management and messaging actions stay restricted to admins.
+| **Families** | **Employees** | **Admins** |
+|:--|:--|:--|
+| Walk in, register, renew a membership, choose a special-day pass, or request a party. | Scan in for a shift, see who is on site, check children in or out, and find customer records. | See the day at a glance, manage customers and plans, review requests, coordinate staff, and keep venue settings in one place. |
 
-### Family check-in (`/checkin`)
+## From arrival to follow-up
 
-The public check-in flow supports walk-ins, new or returning families, membership registration and renewal, special-day passes, and party bookings. Party bookings use a separate flow: select a package or request a custom party, provide the requested date/time and contact details, then submit for admin review. A submitted party request is not confirmed until approved.
+```mermaid
+flowchart LR
+    Family[Family] --> Desk[Check-in & bookings]
+    Desk --> Floor[Live floor & attendance]
+    Desk --> Review[Admin review]
+    Review --> Plans[Memberships · special days · parties]
+    Floor --> Alerts[Timely notifications]
+    Review --> Outreach[Messages & follow-up]
+    Staff[Venue team] --> Floor
+    Admin[Admin] --> Review
+```
 
-### Front desk (`/desk`)
+## Made for the rhythm of a busy venue
 
-Displays the rotating employee punch QR when dynamic desk mode is enabled. The kiosk and QR access are configured by an admin in Settings.
+- **Know what’s happening now** — daily check-ins, live occupancy, session timers, and team attendance.
+- **Find the right family quickly** — searchable child and parent records, membership status, plans, and visit history.
+- **Keep registrations moving** — review membership and special-day requests; approve, decline, quote, and confirm party bookings.
+- **Coordinate the team** — shifts, QR-based punches, attendance history, editable records, and payable-to-date salary estimates.
+- **Reach people at the right moment** — role-aware push alerts, saved message formats, birthday outreach, and membership-expiry reminders.
+- **Stay in control** — configurable kiosk and desk access, notification preferences, and selectable data exports.
 
-## Local development
+## Designed around the floor
 
-1. Install the project’s Node.js dependencies with `npm install` (use `npm ci` for a lockfile-exact install).
-2. Copy `.env.example` to `.env.local` and fill in the values described below.
-3. Apply the SQL migrations in `supabase/migrations/` to the Supabase project, in filename order.
-4. Start the app with `npm run dev` and open [http://localhost:3000](http://localhost:3000).
+Fast, touch-friendly views keep everyday actions close at hand on phones and desktops. Admin tools stay organized around the work: **Overview · Customers · Notifications · Plans · Staff · Settings**.
 
-Useful scripts:
-
-| Command | Purpose |
-| --- | --- |
-| `npm run dev` | Local development server |
-| `npm run lint` | ESLint checks |
-| `npm run build` | Production build |
-| `npm run start` | Serve a completed production build locally |
-
-## Environment variables
-
-See `.env.example` for the full list. Required values include:
-
-- `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase project URL and public client key.
-- `SUPABASE_SERVICE_ROLE_KEY` — server-only Supabase admin access for employee account creation. Never expose this with a `NEXT_PUBLIC_` prefix.
-- `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` — browser push notifications. Generate a matching key pair with `npx web-push generate-vapid-keys`; keep the private key server-only.
-- `NEXT_PUBLIC_DESK_QR_VALUE` and `QR_SIGNING_SECRET` — desk punch QR configuration.
-- `CRON_SECRET` — only if using the Vercel cron endpoint as the fallback for the database scheduled job.
-
-## Deployment workflow
-
-1. Apply any new Supabase migrations to the target database, in order, before deploying code that depends on them.
-2. Set environment variables in Vercel for the intended environment. Preview and Production have separate values; the VAPID public key is included in the client build, so redeploy after changing push keys.
-3. Deploy and check the build output and Vercel function logs. Use a Preview deployment to verify login, role access, check-in, party request/review, and push notification setup before promoting to Production.
-4. The configured Vercel cron runs `/api/cron/expire-sessions` daily. If the database cron is used instead, `CRON_SECRET` is only needed for the Vercel fallback.
-
-Keep `.env.local`, service-role keys, VAPID private keys, and signing secrets out of source control. `.env.example` contains names and placeholders, not deployable secrets.
+<p align="center"><sub>QureoCity · Venue operations, made clearer.</sub></p>
