@@ -50,7 +50,7 @@ export default function MembershipRegistrations() {
   const [notice, setNotice] = useState<string | null>(null);
   // Per-instance channel name — a hardcoded shared name means the
   // second mount's .subscribe() silently fails (see usePendingCount.ts).
-  const instanceId = useId().replaceAll(":", "");
+  const instanceId = useId().replace(/:/g, "");
   const channelName = useRef(`membership_registrations_pending_${instanceId}`);
 
   const refetch = useCallback(async () => {

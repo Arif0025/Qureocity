@@ -37,7 +37,7 @@ export function useInAppBackStack(pathname: string, replaceRoute: ReplaceRoute) 
         // framework process this traversal as an exit to the public root.
         event.stopImmediatePropagation();
         stackRef.current.pop();
-        const previous = stackRef.current.at(-1);
+        const previous = stackRef.current[stackRef.current.length - 1];
         if (previous) replaceRoute(previous);
       }
     };

@@ -19,7 +19,8 @@ import PillSelect from "./PillSelect";
 import ListRow from "./ListRow";
 import PhoneLinks from "./PhoneLinks";
 import MessageButton from "./MessageButton";
-import AddMembershipButton from "./AddMembershipButton";
+import AddToPlanButton from "./AddToPlanButton";
+import EditMembershipDatesButton from "./EditMembershipDatesButton";
 
 type ChildInfo = {
   id: string;
@@ -648,7 +649,8 @@ export default function CustomerSearch({
           const kids = r.children ?? [];
           const childHasActivePlan = (child: ChildInfo) =>
             child.subscription_active &&
-            (!child.subscription_expires_on || child.subscription_expires_on >= today);
+            (!child.subscription_expires_on || child.subscription_expires_on >= today) &&
+            (child.max_visits == null || (child.visits_used ?? 0) < child.max_visits);
           const visibleKids = planFilter
             ? kids.filter((child) => child.plan_id === planFilter || child.special_plan_ids?.includes(planFilter))
             : membersOnly && membershipFilter !== "expired" ? kids.filter(childHasActivePlan) : kids;
@@ -673,6 +675,9 @@ export default function CustomerSearch({
               <div className="space-y-1.5">
                 {visibleKids.map((child) => {
                   const isMember = childHasActivePlan(child);
+                  const visitsExhausted = child.max_visits != null && (child.visits_used ?? 0) >= child.max_visits;
+                  const dateExpired = !!child.subscription_expires_on && child.subscription_expires_on < today;
+                  const hasMembershipRecord = !!(child.plan_id || child.plan_name || child.subscription_started_on || child.subscription_expires_on || child.max_visits != null);
                   const isSelectedSpecialPass = !!planFilter && !!child.special_plan_ids?.includes(planFilter);
                   const siblings = kids.filter((sibling) => sibling.id !== child.id);
                   const isOpen = expandedChildId === child.id;
@@ -688,7 +693,7 @@ export default function CustomerSearch({
                       subtitle={r.parent_name}
                       statusDot={child.currently_checked_in ? "sky" : isMember ? "leaf" : "directoryGeneral"}
                       facts={[
-                        { icon: <BadgeCheck size={11} />, value: <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${isSelectedSpecialPass ? "bg-brand-sun/10 text-brand-sun" : isMember ? "bg-brand-leaf/10 text-brand-leaf" : child.plan_name ? "bg-brand-sun/10 text-brand-sun" : "bg-white/[0.06] text-brand-nightText/45"}`}>{isSelectedSpecialPass ? "Special pass" : isMember ? child.plan_name ?? "Member" : child.plan_name ? child.subscription_expires_on && child.subscription_expires_on < today ? "Expired" : "Past plan" : "No plan"}</span> },
+                        { icon: <BadgeCheck size={11} />, value: <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${isSelectedSpecialPass ? "bg-brand-sun/10 text-brand-sun" : isMember ? "bg-brand-leaf/10 text-brand-leaf" : child.plan_name ? "bg-brand-sun/10 text-brand-sun" : "bg-white/[0.06] text-brand-nightText/45"}`}>{isSelectedSpecialPass ? "Special pass" : isMember ? child.plan_name ?? "Member" : child.plan_name ? (visitsExhausted || dateExpired || !child.subscription_active ? "Expired" : "Past plan") : "No plan"}</span> },
                         ...(child.currently_checked_in ? [{ icon: undefined, value: <span className="rounded-full bg-brand-sky/10 px-2 py-1 text-[10px] font-bold uppercase text-brand-skyLight">On site</span> }] : []),
                       ]}
                       factsLayout="right"
@@ -864,17 +869,31 @@ export default function CustomerSearch({
                                       ? ` · ${Math.max(child.max_visits - (child.visits_used ?? 0), 0)} of ${child.max_visits} visits left`
                                       : ""
                                   }`
-                                : child.plan_name
-                                  ? `${child.subscription_expires_on && child.subscription_expires_on < today ? "Expired" : "Past plan"} · ${child.plan_name}${child.subscription_expires_on ? ` · ended ${new Date(child.subscription_expires_on + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : ""}`
+                                  : child.plan_name
+                                  ? `${visitsExhausted ? "Expired · visit limit reached" : dateExpired || !child.subscription_active ? "Expired" : "Past plan"} · ${child.plan_name}${dateExpired && !visitsExhausted ? ` · ended ${new Date(child.subscription_expires_on! + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : ""}`
                                   : "No membership on file"}
                             </p>
                           )}
                           {isAdmin && (
-                            <AddMembershipButton
-                              childId={child.id}
-                              childName={child.name}
-                              onApplied={refetch}
-                            />
+                            <div className="flex flex-wrap items-center gap-2">
+                              <AddToPlanButton
+                                childId={child.id}
+                                childName={child.name}
+                                registeredSpecialPlanIds={child.special_plan_ids ?? []}
+                                onApplied={refetch}
+                              />
+                              <EditMembershipDatesButton
+                                childId={child.id}
+                                childName={child.name}
+                                startedOn={child.subscription_started_on}
+                                expiresOn={child.subscription_expires_on}
+                                maxVisits={child.max_visits ?? null}
+                                visitsUsed={child.visits_used ?? 0}
+                                hasMembership={hasMembershipRecord}
+                                expired={hasMembershipRecord && !isMember}
+                                onSaved={refetch}
+                              />
+                            </div>
                           )}
 
                           <section className="rounded-xl border border-brand-sky/15 bg-brand-sky/[0.04] p-3">

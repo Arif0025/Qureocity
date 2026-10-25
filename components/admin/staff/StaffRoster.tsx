@@ -35,6 +35,8 @@ type Summary = {
   actual_working_days: number;
   total_hours_this_month: number;
   scheduled_hours_this_month: number | null;
+  paid_leave_hours_this_month?: number;
+  paid_leave_days_this_month?: number;
   working_days_this_month: number;
 };
 type LogRow = {
@@ -43,6 +45,7 @@ type LogRow = {
   punch_out: string | null;
   auto_punched_out?: boolean;
 };
+type LeaveDay = { date: string; paid: boolean };
 type AutoPunchoutRow = {
   employee_id: string;
   employee_name: string;
@@ -62,7 +65,7 @@ function isBehindSchedule(summary?: Summary): boolean {
   if (!summary || summary.scheduled_hours_this_month == null) return false;
   if (summary.scheduled_hours_this_month <= 0) return false;
   return (
-    summary.total_hours_this_month <
+    Number(summary.total_hours_this_month) + Number(summary.paid_leave_hours_this_month || 0) <
     summary.scheduled_hours_this_month * BEHIND_SCHEDULE_THRESHOLD
   );
 }
@@ -79,8 +82,8 @@ function salaryEarned(setting: SalarySetting | undefined, summary: Summary | und
   if (!setting?.salary_type || setting.salary_rate == null || !summary) return null;
   const rate = Number(setting.salary_rate);
   if (!Number.isFinite(rate) || rate < 0) return null;
-  if (setting.salary_type === "hourly") return rate * Number(summary.total_hours_this_month || 0);
-  const actualHours = Number(summary.total_hours_this_month || 0);
+  const actualHours = Number(summary.total_hours_this_month || 0) + Number(summary.paid_leave_hours_this_month || 0);
+  if (setting.salary_type === "hourly") return rate * actualHours;
   const scheduledHours = Number(summary.scheduled_hours_this_month || 0);
   if (scheduledHours > 0) {
     const monthProgress = getMonthProgressRatio();
@@ -88,7 +91,7 @@ function salaryEarned(setting: SalarySetting | undefined, summary: Summary | und
     return rate * monthProgress * Math.min(1, Math.max(0, attendanceRatio));
   }
   return rate * getMonthProgressRatio() * (summary.working_days_this_month > 0
-    ? Math.min(1, Number(summary.actual_working_days || 0) / summary.working_days_this_month)
+    ? Math.min(1, (Number(summary.actual_working_days || 0) + Number(summary.paid_leave_days_this_month || 0)) / summary.working_days_this_month)
     : 0);
 }
 
@@ -143,6 +146,7 @@ export default function StaffRoster({
   const [historyByEmployee, setHistoryByEmployee] = useState<
     Record<string, LogRow[]>
   >({});
+  const [leaveDaysByEmployee, setLeaveDaysByEmployee] = useState<Record<string, LeaveDay[]>>({});
   const [historyLoadingId, setHistoryLoadingId] = useState<string | null>(null);
   const [varianceThreshold, setVarianceThreshold] = useState(30);
   const [editingThreshold, setEditingThreshold] = useState(false);
@@ -162,6 +166,39 @@ export default function StaffRoster({
     null,
   );
   const [punchingInId, setPunchingInId] = useState<string | null>(null);
+  const [leaveReminderDays, setLeaveReminderDays] = useState(1);
+  const [savedLeaveReminderDays, setSavedLeaveReminderDays] = useState(1);
+  const [editingLeaveReminder, setEditingLeaveReminder] = useState(false);
+  const [savingLeaveReminder, setSavingLeaveReminder] = useState(false);
+  const [leaveReminderNote, setLeaveReminderNote] = useState("");
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    void supabase.rpc("admin_leave_overview").then(({ data, error }) => {
+      if (error) setLeaveReminderNote(error.message);
+      else {
+        const days = (data as { reminder_days?: number } | null)?.reminder_days ?? 1;
+        setLeaveReminderDays(days);
+        setSavedLeaveReminderDays(days);
+      }
+    });
+  }, [supabase, isAdmin]);
+
+  const saveLeaveReminder = async () => {
+    if (!Number.isInteger(leaveReminderDays) || leaveReminderDays < 0 || leaveReminderDays > 60) {
+      setLeaveReminderNote("Choose a whole number from 0 to 60.");
+      return;
+    }
+    setSavingLeaveReminder(true);
+    setLeaveReminderNote("");
+    const { error } = await supabase.rpc("admin_set_leave_reminder_days", { p_days: leaveReminderDays });
+    setSavingLeaveReminder(false);
+    if (error) setLeaveReminderNote(error.message);
+    else {
+      setSavedLeaveReminderDays(leaveReminderDays);
+      setEditingLeaveReminder(false);
+    }
+  };
 
   useEffect(() => {
     if (initialShiftsLoaded) {
@@ -370,17 +407,35 @@ export default function StaffRoster({
   const loadHistory = useCallback(
     async (employeeId: string) => {
       setHistoryLoadingId(employeeId);
-      const { data } = await supabase
+      const [{ data }, { data: leaveRows }] = await Promise.all([supabase
         .from("attendance_logs")
         .select("id, punch_in, punch_out, auto_punched_out")
         .eq("employee_id", employeeId)
         .order("punch_in", { ascending: false })
-        .limit(1000);
+        .limit(1000), supabase
+        .from("employee_leave_requests")
+        .select("start_date, end_date, paid_dates")
+        .eq("employee_id", employeeId)
+        .eq("status", "approved")]);
+      const leaveDays: LeaveDay[] = [];
+      for (const row of (leaveRows ?? []) as { start_date: string; end_date: string; paid_dates: string[] }[]) {
+        const paid = new Set(row.paid_dates ?? []);
+        const day = new Date(`${row.start_date}T00:00:00Z`);
+        const end = new Date(`${row.end_date}T00:00:00Z`);
+        while (day <= end) {
+          if (day.getUTCDay() !== 2) {
+            const date = day.toISOString().slice(0, 10);
+            leaveDays.push({ date, paid: paid.has(date) });
+          }
+          day.setUTCDate(day.getUTCDate() + 1);
+        }
+      }
       setHistoryLoadingId(null);
       setHistoryByEmployee((prev) => ({
         ...prev,
         [employeeId]: (data as LogRow[]) ?? [],
       }));
+      setLeaveDaysByEmployee((prev) => ({ ...prev, [employeeId]: leaveDays }));
     },
     [supabase],
   );
@@ -480,6 +535,32 @@ export default function StaffRoster({
 
   return (
     <div className="space-y-3">
+      {isAdmin && (
+        <div className="bg-brand-nightSurface rounded-xl border border-white/10 px-4 py-3 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-brand-nightText">Leave reminder</p>
+          </div>
+          {editingLeaveReminder ? (
+            <div className="flex shrink-0 items-center gap-1.5">
+              <input aria-label="Days before staff leave to remind admins" type="number" min={0} max={60} value={leaveReminderDays}
+                onChange={(event) => setLeaveReminderDays(Number(event.target.value))}
+                className="w-16 min-h-[32px] rounded-lg border border-white/15 bg-brand-nightSurface2 px-2 text-sm text-brand-nightText" />
+              <span className="text-xs text-brand-nightText/40">days</span>
+              <button type="button" disabled={savingLeaveReminder || leaveReminderDays < 0 || leaveReminderDays > 60}
+                onClick={() => void saveLeaveReminder()}
+                className="px-2 text-xs font-semibold text-brand-sky disabled:opacity-50">
+                {savingLeaveReminder ? "Saving…" : "Save"}
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => { setLeaveReminderDays(savedLeaveReminderDays); setLeaveReminderNote(""); setEditingLeaveReminder(true); }}
+              className="shrink-0 text-sm font-semibold text-brand-nightText">
+              {savedLeaveReminderDays} {savedLeaveReminderDays === 1 ? "day" : "days"}
+            </button>
+          )}
+        </div>
+      )}
+      {isAdmin && leaveReminderNote && <p role="alert" className="text-xs text-brand-coral">{leaveReminderNote}</p>}
       {isAdmin && (
         <div className="bg-brand-nightSurface rounded-xl border border-white/10 px-4 py-3 flex items-center justify-between gap-3">
           <div>
@@ -647,6 +728,14 @@ export default function StaffRoster({
                         </p>
                       )}
                     </div>
+                    {Number(summary?.paid_leave_hours_this_month || 0) > 0 && (
+                      <p className="mb-2 text-[10px] text-brand-nightText/40">
+                        Includes {Number(summary?.paid_leave_hours_this_month || 0)} paid leave hours
+                        {Number(summary?.paid_leave_days_this_month || 0) > 0
+                          ? ` across ${Number(summary?.paid_leave_days_this_month)} paid day${Number(summary?.paid_leave_days_this_month) === 1 ? "" : "s"}`
+                          : ""}.
+                      </p>
+                    )}
                     <div className="flex flex-wrap items-center gap-2">
                       <select
                         aria-label={`${s.name} salary calculation`}
@@ -807,6 +896,7 @@ export default function StaffRoster({
                 ) : (
                   <EmployeeCalendar
                     logs={historyByEmployee[s.id] ?? []}
+                    leaveDays={leaveDaysByEmployee[s.id] ?? []}
                     shift={shift}
                     varianceThresholdMins={varianceThreshold}
                     showLegend

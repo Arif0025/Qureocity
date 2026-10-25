@@ -30,8 +30,8 @@ export default function RegistrationReviewHistory() {
     setLoading(true);
     const supabase = createClient();
     const [registrations, bookings] = await Promise.all([
-      supabase.from("membership_registrations").select("*").in("status", ["confirmed", "discarded"]).not("reviewed_at", "is", null).order("reviewed_at", { ascending: false }).limit(nextLimit),
-      supabase.from("party_bookings").select("*").in("status", ["confirmed", "cancelled", "quoted"]).not("reviewed_at", "is", null).order("reviewed_at", { ascending: false }).limit(nextLimit),
+      supabase.from("membership_registrations").select("id, child_id, renewal_child_id, renewal_customer_id, registration_type, status, reviewed_at, reviewed_by, child_name, parent_name, phone, secondary_phone, plan_name_snapshot, plan_id").in("status", ["confirmed", "discarded"]).not("reviewed_at", "is", null).order("reviewed_at", { ascending: false }).limit(nextLimit),
+      supabase.from("party_bookings").select("id, child_name, status, reviewed_at, reviewed_by, parent_name, phone, plan_name, child_id").in("status", ["confirmed", "cancelled", "quoted"]).not("reviewed_at", "is", null).order("reviewed_at", { ascending: false }).limit(nextLimit),
     ]);
     const regRows = registrations.data ?? [];
     const partyRows = bookings.data ?? [];

@@ -40,7 +40,7 @@ export default function ListRow({
   title: ReactNode;
   titleClassName?: string;
   subtitle?: ReactNode;
-  statusDot?: "leaf" | "sun" | "coral" | "sky" | "muted" | "teamPresent" | "teamMuted" | "directoryGeneral";
+  statusDot?: "leaf" | "sun" | "coral" | "sky" | "muted" | "teamPresent" | "teamLeft" | "teamAbsent" | "teamLeave" | "teamLeavePaid" | "teamLeaveUnpaid" | "teamMuted" | "directoryGeneral";
   facts?: ListRowFact[];
   action?: ReactNode;
   safetyFlag?: ReactNode;
@@ -57,6 +57,11 @@ export default function ListRow({
     sky: "bg-brand-sky",
     muted: "bg-brand-ink/20",
     teamPresent: "bg-team-attendance-present",
+    teamLeft: "bg-team-attendance-left",
+    teamAbsent: "bg-team-attendance-absent",
+    teamLeave: "bg-team-attendance-leave",
+    teamLeavePaid: "bg-team-attendance-leave-paid",
+    teamLeaveUnpaid: "bg-team-attendance-leave-unpaid",
     teamMuted: "bg-team-attendance-muted",
     directoryGeneral: "bg-directory-general-dot",
   };

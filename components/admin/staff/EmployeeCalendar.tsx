@@ -105,7 +105,9 @@ type DayStatus =
   | "absent"
   | "undertime"
   | "present"
-  | "overtime";
+  | "overtime"
+  | "leave-paid"
+  | "leave-unpaid";
 
 const STATUS_TONE: Record<DayStatus, string> = {
   closed: "bg-white/[0.08] text-brand-nightText/35",
@@ -115,6 +117,8 @@ const STATUS_TONE: Record<DayStatus, string> = {
   undertime: "staff-calendar-undertime",
   present: "staff-calendar-present",
   overtime: "staff-calendar-overtime",
+  "leave-paid": "staff-calendar-leave-paid",
+  "leave-unpaid": "staff-calendar-leave-unpaid",
 };
 
 const LEGEND: { status: DayStatus; label: string }[] = [
@@ -122,6 +126,8 @@ const LEGEND: { status: DayStatus; label: string }[] = [
   { status: "overtime", label: "Overtime" },
   { status: "undertime", label: "Undertime" },
   { status: "absent", label: "Absent" },
+  { status: "leave-paid", label: "Paid leave" },
+  { status: "leave-unpaid", label: "Unpaid leave" },
   { status: "closed", label: "Closed" },
 ];
 
@@ -151,6 +157,7 @@ const WEEKDAY_NAMES = [
 
 export default function EmployeeCalendar({
   logs,
+  leaveDays = [],
   shift = null,
   varianceThresholdMins = 30,
   showLegend = false,
@@ -159,6 +166,7 @@ export default function EmployeeCalendar({
   onDeleteAttendance,
 }: {
   logs: LogRow[];
+  leaveDays?: { date: string; paid: boolean }[];
   // When provided, days get classified against the shift (present /
   // overtime / undertime) instead of just showing whether a punch
   // happened. Without a shift there's nothing to compare hours against,
@@ -182,6 +190,7 @@ export default function EmployeeCalendar({
     });
     return map;
   }, [logs]);
+  const leaveByDay = useMemo(() => new Map(leaveDays.map((day) => [day.date, day.paid])), [leaveDays]);
 
   const today = useMemo(() => istDateParts(new Date().toISOString()), []);
   const shiftMins = useMemo(() => shiftMinutes(shift), [shift]);
@@ -218,6 +227,8 @@ export default function EmployeeCalendar({
   const statusFor = (day: DayParts, records: LogRow[]): DayStatus => {
     if (weekdayOf(day) === CLOSED_WEEKDAY) return "closed";
     if (isAfter(day, today)) return "future";
+    const leavePaid = leaveByDay.get(dateKey(day));
+    if (records.length === 0 && leavePaid !== undefined) return leavePaid ? "leave-paid" : "leave-unpaid";
     if (records.length === 0) return shift ? "absent" : "no-data";
     if (!shift) return "present";
     const workedMins = records.reduce(
@@ -319,13 +330,14 @@ export default function EmployeeCalendar({
             const status = statusFor(day, records);
             const tone = STATUS_TONE[status];
             const autoClosed = records.some((r) => r.auto_punched_out);
+            const statusLabel = status === "leave-paid" ? "paid leave" : status === "leave-unpaid" ? "unpaid leave" : status;
             return (
               <button
                 key={key}
                 type="button"
                 disabled={!inMonth}
                 onClick={() => setSelectedDay(key)}
-                title={autoClosed ? `${status} · auto clocked out` : status}
+                title={autoClosed ? `${statusLabel} · auto clocked out` : statusLabel}
                 className={`relative aspect-square rounded-lg text-xs font-medium disabled:opacity-20 transition-colors ${tone} ${
                   selectedDay === key
                     ? "ring-2 ring-brand-skyLight ring-offset-1 ring-offset-brand-nightSurface"
@@ -390,9 +402,7 @@ export default function EmployeeCalendar({
             </p>
             {selectedLogs.length === 0 ? (
               <>
-                <p className="text-sm text-brand-nightText/35">
-                  No attendance record.
-                </p>
+                {selectedDay && leaveByDay.has(selectedDay) ? <p className={`text-sm font-semibold ${leaveByDay.get(selectedDay) ? "text-sky-400" : "text-pink-400"}`}>{leaveByDay.get(selectedDay) ? "Approved paid leave." : "Approved unpaid leave."}</p> : <p className="text-sm text-brand-nightText/35">No attendance record.</p>}
                 {editable &&
                   !isAfter(
                     {

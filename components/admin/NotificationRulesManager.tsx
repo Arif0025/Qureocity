@@ -51,11 +51,8 @@ export default function NotificationRulesManager() {
     {},
   );
   const [expandedRules, setExpandedRules] = useState<Record<string, boolean>>({});
-
   const load = useCallback(async () => {
-    const { data, error: rpcError } = await supabase.rpc(
-      "admin_notification_overview",
-    );
+    const { data, error: rpcError } = await supabase.rpc("admin_notification_overview");
     if (rpcError) {
       setError(rpcError.message);
       setLoading(false);
@@ -266,7 +263,7 @@ export default function NotificationRulesManager() {
             {expanded && <div id={`notification-rule-${event}`} className="mt-4 border-t border-white/10 pt-4">
             {rule.enabled && (
               <div className="mt-3 space-y-4 border-t border-white/10 pt-4">
-                <div>
+                {event !== "employee_leave" && <div>
                   <p className="text-xs font-semibold text-brand-nightText/50 uppercase tracking-wide mb-2">
                     Who receives it
                   </p>
@@ -289,7 +286,10 @@ export default function NotificationRulesManager() {
                   <p className="text-xs text-brand-nightText/40 mt-1">
                     Admins who have turned notifications on always receive it.
                   </p>
-                </div>
+                </div>}
+                {event === "employee_leave" && <div className="space-y-3">
+                  <p className="text-xs text-brand-nightText/40">This alert is for staff leave requests only. Admins who enable it receive new request and upcoming leave notifications. Set the reminder timing in the Staff tab.</p>
+                </div>}
 
                 {event === "session_ending" && (
                   <label className="block">

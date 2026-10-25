@@ -20,6 +20,7 @@ import KidsCheckedInCard, {
 } from "@/components/admin/home/KidsCheckedInCard";
 import Directory from "@/components/admin/Directory";
 import AttendanceCalendarTab from "./AttendanceCalendarTab";
+import EmployeeLeaveRequests from "./EmployeeLeaveRequests";
 import ShiftDetailsCard from "./ShiftDetailsCard";
 import { useTheme } from "@/lib/hooks/useTheme";
 import ThemeToggle from "@/components/shared/ThemeToggle";
@@ -284,6 +285,7 @@ function EmployeePanelInner({
           <div className="space-y-4">
             <AttendanceCalendarTab employeeId={employeeId} shift={employeeShift} />
             <ShiftDetailsCard employeeId={employeeId} initialShift={employeeShift} onShiftLoaded={setEmployeeShift} />
+            <EmployeeLeaveRequests />
           </div>
         );
       case "settings":

@@ -45,19 +45,11 @@ export default function MonthlyStatsCard({
         Date.UTC(year, month, 1, 0, 0, 0) - 5.5 * 3600_000,
       ).toISOString();
       const monthStartDate = `${year}-${String(month + 1).padStart(2, "0")}-01`;
-      const today = `${year}-${String(month + 1).padStart(2, "0")}-${String(istDateParts(new Date().toISOString()).date).padStart(2, "0")}`;
-      const sevenDaysOut = new Date(
-        Date.UTC(year, month, istDateParts(new Date().toISOString()).date + 7),
-      )
-        .toISOString()
-        .slice(0, 10);
-
       const [
         { count: customers },
         { count: subs },
         { data: typeSummary },
-        { count: activeMembers },
-        { count: expiringSoon },
+        { data: membershipCounts },
       ] = await Promise.all([
         supabase
           .from("customers")
@@ -73,17 +65,7 @@ export default function MonthlyStatsCard({
         supabase.rpc("checkin_type_summary", {
           p_since: monthStartISO,
         }),
-        supabase
-          .from("child_subscriptions")
-          .select("child_id", { count: "exact", head: true })
-          .eq("active", true)
-          .gte("expires_on", today),
-        supabase
-          .from("child_subscriptions")
-          .select("child_id", { count: "exact", head: true })
-          .eq("active", true)
-          .gte("expires_on", today)
-          .lte("expires_on", sevenDaysOut),
+        supabase.rpc("admin_membership_status_counts"),
       ]);
 
       const byType = new Map(
@@ -102,8 +84,8 @@ export default function MonthlyStatsCard({
         memberVisits,
         specialVisits,
         totalVisits: walkIns + memberVisits + specialVisits,
-        activeMembers: activeMembers ?? 0,
-        expiringSoon: expiringSoon ?? 0,
+        activeMembers: (membershipCounts as { active?: number } | null)?.active ?? 0,
+        expiringSoon: (membershipCounts as { expiring_soon?: number } | null)?.expiring_soon ?? 0,
       });
     })();
   }, [supabase]);
