@@ -77,9 +77,20 @@ export async function POST(req: NextRequest) {
       ? (ctx.employee_id ?? null)
       : null;
 
+  let leaveReminderEmployee: string | null = null;
+  if (event === "employee_leave" && ctx.leave_kind === "reminder" && ctx.leave_request_id) {
+    const { data: leaveRow, error: leaveLookupError } = await supabase
+      .from("employee_leave_requests")
+      .select("employee_id")
+      .eq("id", ctx.leave_request_id)
+      .maybeSingle();
+    if (leaveLookupError) console.error("[push] leave reminder recipient lookup failed", leaveLookupError.message);
+    leaveReminderEmployee = leaveRow?.employee_id ?? null;
+  }
+
   const { data: recipientData, error: recipientError } = await supabase.rpc(
     "push_resolve_recipients",
-    { p_event: event, p_exclude_user: excludeUser },
+    { p_event: event, p_exclude_user: excludeUser, p_target_user: leaveReminderEmployee },
   );
   if (recipientError) {
     console.error("[push] recipients failed", recipientError.message);
@@ -101,7 +112,7 @@ export async function POST(req: NextRequest) {
   const inboxCategory = event === "new_registration" || event === "party_registration"
     ? "admin"
     : "system";
-  const inboxRows = [...new Map(recipients.map((r) => {
+  const inboxRows = event === "employee_leave" ? [] : [...new Map(recipients.map((r) => {
     const message = buildMessage(event, ctx, r.role === "admin" ? "admin" : "staff");
     return [r.user_id, {
       user_id: r.user_id,
@@ -111,7 +122,7 @@ export async function POST(req: NextRequest) {
       target_url: message.url,
     }] as const;
   })).values()];
-  const inboxWrite = Promise.resolve(supabase.from("employee_notifications").insert(inboxRows))
+  const inboxWrite = inboxRows.length === 0 ? Promise.resolve() : Promise.resolve(supabase.from("employee_notifications").insert(inboxRows))
     .then(({ error }) => {
       if (error) console.error("[push] inbox insert failed", error.message);
     })

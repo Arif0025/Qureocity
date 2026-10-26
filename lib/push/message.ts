@@ -24,6 +24,11 @@ export type PushContext = {
   event_date?: string | null;
   booking_id?: string;
   starts_at?: string;
+  leave_request_id?: string;
+  leave_start_date?: string;
+  leave_end_date?: string;
+  leave_status?: string;
+  leave_kind?: string;
   punch_in?: string;
   punch_out?: string | null;
   auto?: boolean;
@@ -218,5 +223,26 @@ export function buildMessage(
         url: "/admin?tab=notifications",
         tag: `party_registration:${ctx.booking_id ?? "x"}`,
       };
+
+    case "employee_leave": {
+      const formatDate = (value?: string) => value
+        ? new Date(`${value}T12:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })
+        : "date unavailable";
+      const range = ctx.leave_start_date === ctx.leave_end_date
+        ? formatDate(ctx.leave_start_date)
+        : `${formatDate(ctx.leave_start_date)}–${formatDate(ctx.leave_end_date)}`;
+      const reminder = ctx.leave_kind === "reminder";
+      const personalReminder = reminder && role === "staff";
+      return {
+        title: personalReminder ? "Your upcoming leave" : reminder ? "Upcoming staff leave" : "Staff leave request",
+        body: personalReminder
+          ? `Your ${ctx.leave_status ?? "leave"} leave · ${range}`
+          : reminder
+            ? `${ctx.employee_name ?? "An employee"} · ${range} · ${ctx.leave_status ?? "leave"}`
+          : `${ctx.employee_name ?? "An employee"} requested ${range}`,
+        url: personalReminder ? "/employee?tab=activity" : "/admin?tab=notifications",
+        tag: `employee_leave:${ctx.leave_request_id ?? "x"}:${ctx.leave_kind ?? "request"}`,
+      };
+    }
   }
 }

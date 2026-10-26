@@ -34,8 +34,13 @@ export default function BottomSheet({
     const mq = window.matchMedia("(min-width: 640px)");
     setIsDesktop(mq.matches);
     const onChange = () => setIsDesktop(mq.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
+    // Safari < 14 only has the deprecated addListener/removeListener.
+    if (mq.addEventListener) {
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    }
+    mq.addListener(onChange);
+    return () => mq.removeListener(onChange);
   }, []);
 
   useEffect(() => {

@@ -15,7 +15,7 @@ export function usePendingCount() {
   // .on() listener to a channel someone else had already called
   // .subscribe() on, which Supabase's realtime client rejects outright.
   // A per-instance name keeps every hook call on its own channel.
-  const instanceId = useId().replaceAll(":", "");
+  const instanceId = useId().replace(/:/g, "");
   const channelName = useRef(`play_sessions_pending_count_${instanceId}`);
 
   const refetch = useCallback(async () => {

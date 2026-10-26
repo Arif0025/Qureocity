@@ -12,6 +12,8 @@ type ChildInfo = {
   subscription_active: boolean;
   subscription_started_on: string | null;
   subscription_expires_on: string | null;
+  max_visits?: number | null;
+  visits_used?: number;
 };
 
 type SearchResult = {
@@ -253,7 +255,8 @@ export default function SubscriptionsManager({
     .slice(0, 10);
   const monthStartStr = `${todayStr.slice(0, 7)}-01`;
   const isExpired = (s: SubscriberRow) =>
-    !s.active || (s.expires_on ?? "") < todayStr;
+    !s.active || (s.expires_on != null && s.expires_on < todayStr) ||
+    (s.max_visits != null && (s.visits_used ?? 0) >= s.max_visits);
 
   const filtered = subscribers
     .filter((s) => {
@@ -264,7 +267,8 @@ export default function SubscriptionsManager({
           s.active &&
           !!s.expires_on &&
           s.expires_on >= todayStr &&
-          s.expires_on <= sevenDaysOutStr
+          s.expires_on <= sevenDaysOutStr &&
+          (s.max_visits == null || (s.visits_used ?? 0) < s.max_visits)
         );
       if (statusFilter === "new_this_month")
         return !!s.started_on && s.started_on >= monthStartStr;
@@ -363,7 +367,8 @@ export default function SubscriptionsManager({
                   const active =
                     child.subscription_active &&
                     (!child.subscription_expires_on ||
-                      child.subscription_expires_on >= todayStr);
+                      child.subscription_expires_on >= todayStr) &&
+                    (child.max_visits == null || (child.visits_used ?? 0) < child.max_visits);
                   return (
                     <button
                       key={child.id}

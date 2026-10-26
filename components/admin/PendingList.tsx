@@ -60,7 +60,7 @@ export default function PendingList({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [response, setResponse] = useState<{ registration: Registration; approved: boolean } | null>(null);
-  const instanceId = useId().replaceAll(":", "");
+  const instanceId = useId().replace(/:/g, "");
   const channelName = useRef(`directory_pending_${instanceId}`);
 
   const refetch = useCallback(async () => {

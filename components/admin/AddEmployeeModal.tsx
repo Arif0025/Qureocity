@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createEmployee } from "@/app/admin/actions";
+import { randomUUID } from "@/lib/randomId";
 
 export default function AddEmployeeModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
@@ -19,7 +20,7 @@ export default function AddEmployeeModal({ onClose }: { onClose: () => void }) {
     // simpler and less error-prone than emailing invite links for a
     // small front-desk team — swap for Supabase's invite flow later
     // if the roster grows.
-    const tempPassword = crypto.randomUUID().slice(0, 12);
+    const tempPassword = randomUUID().slice(0, 12);
     const result = await createEmployee({
       name,
       email,

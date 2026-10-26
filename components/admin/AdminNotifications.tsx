@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { BellRing, ChevronDown, Settings2, UserPlus } from "lucide-react";
 import PendingList from "./PendingList";
@@ -8,15 +8,33 @@ import PushDeliveryLog from "./PushDeliveryLog";
 import PartyBookingRequests from "./PartyBookingRequests";
 import RegistrationReviewHistory from "./RegistrationReviewHistory";
 import MembershipExpiryAlerts from "./MembershipExpiryAlerts";
+import LeaveRequestsManager from "./LeaveRequestsManager";
 import { expandCollapse } from "@/lib/motion";
+import { createClient } from "@/lib/supabase/client";
 
 export default function AdminNotifications({ onOpenSettings }: { onOpenSettings: () => void }) {
+  const supabase = useMemo(() => createClient(), []);
   const [showActivity, setShowActivity] = useState(false);
+  const [showRegistrations, setShowRegistrations] = useState(false);
+  const [registrationCount, setRegistrationCount] = useState(0);
+  const refreshRegistrationCount = useCallback(async () => {
+    const { count } = await supabase.from("membership_registrations").select("id", { count: "exact", head: true }).eq("status", "pending");
+    setRegistrationCount(count ?? 0);
+  }, [supabase]);
+
+  useEffect(() => {
+    void refreshRegistrationCount();
+    const channel = supabase.channel("admin-notifications-registration-count")
+      .on("postgres_changes", { event: "*", schema: "public", table: "membership_registrations" }, refreshRegistrationCount)
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [supabase, refreshRegistrationCount]);
 
   return (
     <div className="space-y-5">
+      <LeaveRequestsManager />
       <section className="overflow-hidden rounded-2xl border border-brand-sky/20 bg-brand-nightSurface shadow-sm">
-        <header className="flex items-start gap-3 border-b border-white/[0.07] bg-brand-sky/[0.06] px-4 py-4 sm:px-5">
+        <button type="button" aria-expanded={showRegistrations} onClick={() => setShowRegistrations((value) => !value)} className="flex min-h-16 w-full items-center gap-3 bg-brand-sky/[0.06] px-4 py-4 text-left sm:px-5">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-sky/15 text-brand-skyLight">
             <UserPlus size={19} />
           </span>
@@ -26,12 +44,13 @@ export default function AdminNotifications({ onOpenSettings }: { onOpenSettings:
               Membership, renewal, and special-day requests waiting for review.
             </p>
           </div>
-          <BellRing size={16} className="mt-1 shrink-0 text-brand-skyLight/70" />
-        </header>
-        <div className="space-y-3 p-3 sm:p-5">
-          <PendingList />
+          {registrationCount > 0 && <span aria-label={`${registrationCount} pending registrations`} className="grid h-8 min-w-8 shrink-0 place-items-center rounded-full bg-brand-sun/15 px-2.5 text-xs font-bold tabular-nums text-brand-sun">{registrationCount}</span>}
+          <ChevronDown size={17} className={`mt-1 shrink-0 text-brand-nightText/40 transition-transform ${showRegistrations ? "rotate-180" : ""}`} />
+        </button>
+        <AnimatePresence initial={false}>{showRegistrations && <motion.div {...expandCollapse} className="overflow-hidden"><div className="space-y-3 border-t border-white/[0.07] p-3 sm:p-5">
+          <PendingList onCountChange={setRegistrationCount} />
           <MembershipExpiryAlerts embedded />
-        </div>
+        </div></motion.div>}</AnimatePresence>
       </section>
 
       <PartyBookingRequests />

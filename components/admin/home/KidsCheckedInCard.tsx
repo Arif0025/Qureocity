@@ -8,12 +8,13 @@ import {
   Hourglass,
   BadgeCheck,
   Timer,
-  CalendarDays,
-  Clock3,
-  UserRound,
+  Pencil,
+  Save,
+  X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatTimeIST } from "@/lib/formatTime";
+import { todayISTDateString } from "@/lib/istTime";
 import ListRow from "@/components/shared/ListRow";
 
 export type CheckedInKid = {
@@ -27,7 +28,7 @@ export type CheckedInKid = {
   parent_name: string;
   phone: string;
   has_medical_info: boolean;
-  visit_type: "membership" | "walk_in" | "special";
+  visit_type?: "membership" | "walk_in" | "special" | null;
   membership_started_on: string | null;
   membership_expires_on: string | null;
   is_membership_expired: boolean;
@@ -110,6 +111,24 @@ function sessionLength(start: string): string {
   return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
+function toTimeLocalIST(value: string): string {
+  return new Date(new Date(value).getTime() + 330 * 60_000).toISOString().slice(11, 16);
+}
+
+function toIsoFromIST(value: string): string | null {
+  if (!value) return null;
+  const parsed = new Date(`${todayISTDateString()}T${value}:00+05:30`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function checkoutPreviewIST(startTime: string, endTime: string | null, draftTime: string, addedMinutes = 0): string {
+  const draftStart = toIsoFromIST(draftTime);
+  if (!draftStart || !endTime) return "No time set";
+  const durationMs = new Date(endTime).getTime() - new Date(startTime).getTime();
+  if (!Number.isFinite(durationMs) || durationMs < 0) return "No time set";
+  return formatTimeIST(new Date(new Date(draftStart).getTime() + durationMs + addedMinutes * 60_000).toISOString());
+}
+
 export default function KidsCheckedInCard({
   todayCheckinCount,
   venueCapacity,
@@ -140,6 +159,11 @@ export default function KidsCheckedInCard({
   const [now, setNow] = useState(() => Date.now());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [checkingOut, setCheckingOut] = useState<string | null>(null);
+  const [editingCheckinFor, setEditingCheckinFor] = useState<string | null>(null);
+  const [checkinTimeDraft, setCheckinTimeDraft] = useState("");
+  const [savingCheckinFor, setSavingCheckinFor] = useState<string | null>(null);
+  const [addedMinutesDraft, setAddedMinutesDraft] = useState(0);
+  const [actionError, setActionError] = useState<{ sessionId: string; message: string } | null>(null);
 
   const refetch = useCallback(async () => {
     const { data } = await supabase.rpc("dashboard_list_checked_in_kids");
@@ -179,6 +203,29 @@ export default function KidsCheckedInCard({
     } finally {
       setCheckingOut(null);
     }
+  };
+
+  const handleCorrectCheckin = async (kid: CheckedInKid) => {
+    const startedAt = toIsoFromIST(checkinTimeDraft);
+    if (!startedAt) {
+      setActionError({ sessionId: kid.session_id, message: "Enter a valid check-in time." });
+      return;
+    }
+    setSavingCheckinFor(kid.session_id);
+    setActionError(null);
+    const { error } = await supabase.rpc("staff_update_session_checkin_and_duration", {
+      p_session_id: kid.session_id,
+      p_started_at: startedAt,
+      p_additional_minutes: addedMinutesDraft,
+    });
+    setSavingCheckinFor(null);
+    if (error) {
+      setActionError({ sessionId: kid.session_id, message: error.message });
+      return;
+    }
+    setEditingCheckinFor(null);
+    setAddedMinutesDraft(0);
+    await refetch();
   };
 
   return (
@@ -234,6 +281,9 @@ export default function KidsCheckedInCard({
           kids.map((k) => {
             const state = statusFor(k.end_time, now);
             const isOpen = expandedId === k.session_id;
+            const canAddSessionTime = Boolean(k.end_time)
+              && !k.is_special_today
+              && k.visit_type !== "special";
             return (
               <ListRow
                 key={k.session_id}
@@ -274,46 +324,80 @@ export default function KidsCheckedInCard({
                 }
                 expandedContent={
                   <div className="space-y-2">
-                    <div className="rounded-lg border border-white/10 bg-brand-nightSurface2/70 px-2.5 py-2">
-                      <p className="flex flex-wrap items-center gap-1.5 text-[13px] font-semibold text-brand-nightText">
-                        <BadgeCheck size={13} className="text-brand-skyLight" />
-                        {k.visit_type === "special"
-                          ? `Special event · ${k.special_plan_name ?? k.plan_name ?? "Pass"}`
-                          : k.visit_type === "membership"
-                            ? `Membership · ${k.plan_name ?? "Member"}`
-                            : `Walk-in visit${k.plan_name ? ` · ${k.plan_name}` : ""}`}
-                        {k.is_membership_expired && <span className="rounded-full bg-brand-coral/15 px-2 py-0.5 text-[10px] font-semibold text-brand-coral">Expired</span>}
-                      </p>
-                      {k.membership_started_on && <p className="mt-1 flex items-center gap-1.5 text-[11px] text-brand-nightText/50"><CalendarDays size={11} className="shrink-0" />{new Date(`${k.membership_started_on}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" })} – {k.membership_expires_on ? new Date(`${k.membership_expires_on}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" }) : "No expiry"}</p>}
-                    </div>
+                    <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-brand-nightText/65">
+                      <BadgeCheck size={13} className="shrink-0 text-brand-skyLight" />
+                      {k.visit_type === "special"
+                        ? <>Special event · {k.special_plan_name ?? k.plan_name ?? "Pass"}</>
+                        : k.visit_type === "membership"
+                          ? <>{k.plan_name ?? "Membership"}{k.membership_expires_on && <> · Expires {new Date(`${k.membership_expires_on}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</>}</>
+                          : <>Walk-in visit{k.plan_name ? ` · ${k.plan_name}` : ""}</>}
+                      {k.is_membership_expired && <span className="font-semibold text-brand-coral">· Expired</span>}
+                    </p>
+                    <p className="text-xs text-brand-nightText/65">
+                      <span className="font-medium text-brand-nightText/45">Check-in</span> <span className="font-semibold tabular-nums">{timeStr(k.start_time)}</span>
+                      <span className="mx-2 text-brand-nightText/25">·</span>
+                      <span className="font-medium text-brand-nightText/45">Check-out</span> <span className="font-semibold tabular-nums">{k.end_time ? timeStr(k.end_time) : "No time set"}</span>
+                    </p>
+                    <p className="flex min-w-0 items-center gap-1.5 text-xs text-brand-nightText/65">
+                      <Phone size={12} className="shrink-0 text-brand-nightText/45" />
+                      <span className="shrink-0 text-brand-nightText/45">Mobile</span>
+                      {k.phone ? <a href={`tel:${k.phone}`} onClick={(event) => event.stopPropagation()} className="font-medium underline-offset-2 hover:underline">{k.phone}</a> : <span>Not available</span>}
+                      <span className="truncate text-brand-nightText/40">· {k.parent_name}</span>
+                    </p>
 
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <div className="rounded-lg border border-white/10 bg-brand-nightSurface2/70 px-2.5 py-2">
-                        <p className="flex items-center gap-1 text-[10px] font-semibold text-brand-nightText/45"><Clock3 size={10} />Check-in</p>
-                        <p className="mt-0.5 text-[13px] font-semibold tabular-nums text-brand-nightText">{timeStr(k.start_time)}</p>
-                      </div>
-                      <div className="rounded-lg border border-white/10 bg-brand-nightSurface2/70 px-2.5 py-2">
-                        <p className="flex items-center gap-1 text-[10px] font-semibold text-brand-nightText/45"><Clock3 size={10} />Checkout</p>
-                        <p className="mt-0.5 text-[13px] font-semibold tabular-nums text-brand-nightText">{k.end_time ? timeStr(k.end_time) : "No time set"}</p>
-                      </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                    <button type="button" onClick={() => onOpenCustomerDirectory(k.phone || k.child_name, k.child_id)} className="min-h-11 rounded-lg bg-brand-sky/15 px-1 text-[10px] font-semibold leading-tight text-brand-skyLight sm:px-2 sm:text-xs">View details</button>
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <button type="button" onClick={() => {
+                        setActionError(null);
+                        setCheckinTimeDraft(toTimeLocalIST(k.start_time));
+                        setAddedMinutesDraft(0);
+                        setEditingCheckinFor(k.session_id);
+                      }} className="inline-flex min-h-11 items-center justify-center gap-1 rounded-lg border border-white/10 px-1 text-[10px] font-semibold leading-tight text-brand-nightText/70 hover:border-brand-sky/30 hover:text-brand-skyLight sm:px-2 sm:text-xs">
+                        <Pencil size={12} className="shrink-0" /> <span>Edit time</span>
+                      </button>
                     </div>
-
-                    <div className="flex items-center gap-2 rounded-lg border border-white/10 px-2.5 py-1.5">
-                      <UserRound size={13} className="shrink-0 text-brand-nightText/45" />
-                      <p className="min-w-0 flex-1 truncate text-xs font-medium text-brand-nightText">{k.parent_name}<span className="font-normal text-brand-nightText/50"> · {k.phone}</span></p>
-                      <a href={`tel:${k.phone}`} onClick={(event) => event.stopPropagation()} aria-label={`Call ${k.parent_name}`} className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-md border border-white/10 px-2 text-[11px] font-semibold text-brand-nightText"><Phone size={12} />Call</a>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-1.5">
-                    <button type="button" onClick={() => onOpenCustomerDirectory(k.phone || k.child_name, k.child_id)} className="min-h-9 rounded-lg bg-brand-sky/15 px-2 text-xs font-semibold text-brand-skyLight">View details</button>
                     <button
                       onClick={() => handleCheckout(k.session_id)}
                       disabled={checkingOut === k.session_id}
-                      className="min-h-9 rounded-lg bg-brand-sky text-white text-xs font-semibold hover:bg-brand-sky/85 disabled:opacity-50 transition-colors"
+                      className="min-h-11 rounded-lg bg-brand-sky px-1 text-[10px] font-semibold leading-tight text-white transition-colors hover:bg-brand-sky/85 disabled:opacity-50 sm:px-2 sm:text-xs"
                     >
                       {checkingOut === k.session_id ? "Checking out…" : "Check out"}
                     </button>
                     </div>
+                    {editingCheckinFor === k.session_id && <div className="space-y-2 py-1">
+                      <div className="flex flex-wrap items-end gap-2">
+                      <label className="min-w-[190px] flex-1 text-[10px] font-semibold text-brand-nightText/45">Correct check-in time (IST)
+                        <input type="time" value={checkinTimeDraft} onChange={(event) => setCheckinTimeDraft(event.target.value)}
+                          style={{ colorScheme: "dark" }}
+                          className="mt-1 min-h-10 w-full rounded-lg border border-brand-sky/25 bg-brand-nightSurface px-3 text-sm font-medium text-brand-nightText accent-brand-sky focus:border-brand-sky/60 focus:outline-none focus:ring-2 focus:ring-brand-sky/20" />
+                      </label>
+                      <div className="min-w-[190px] flex-1">
+                        <p className="text-[10px] font-semibold text-brand-nightText/45">Updated check-out time</p>
+                        <div className="mt-1 flex min-h-10 flex-wrap items-center gap-1.5">
+                          <span className="mr-1 text-sm font-semibold tabular-nums text-brand-nightText">{checkoutPreviewIST(k.start_time, k.end_time, checkinTimeDraft, addedMinutesDraft)}</span>
+                          {canAddSessionTime && <>
+                            <button type="button" aria-pressed={addedMinutesDraft === 30} onClick={() => setAddedMinutesDraft(addedMinutesDraft === 30 ? 0 : 30)}
+                              className={`min-h-8 rounded-lg border px-2 text-[10px] font-bold ${addedMinutesDraft === 30 ? "border-brand-sky bg-brand-sky/20 text-brand-skyLight" : "border-brand-sky/25 bg-brand-sky/10 text-brand-skyLight"}`}>
+                              +30m
+                            </button>
+                            <button type="button" aria-pressed={addedMinutesDraft === 60} onClick={() => setAddedMinutesDraft(addedMinutesDraft === 60 ? 0 : 60)}
+                              className={`min-h-8 rounded-lg border px-2 text-[10px] font-bold ${addedMinutesDraft === 60 ? "border-brand-sky bg-brand-sky/20 text-brand-skyLight" : "border-brand-sky/25 bg-brand-sky/10 text-brand-skyLight"}`}>
+                              +1h
+                            </button>
+                          </>}
+                        </div>
+                      </div>
+                      <button type="button" disabled={savingCheckinFor === k.session_id} onClick={() => void handleCorrectCheckin(k)}
+                        className="inline-flex min-h-9 items-center gap-1 rounded-lg bg-brand-sky px-3 text-xs font-semibold text-brand-ink disabled:opacity-50">
+                        <Save size={12} /> {savingCheckinFor === k.session_id ? "Saving…" : "Save time"}
+                      </button>
+                      <button type="button" onClick={() => { setEditingCheckinFor(null); setAddedMinutesDraft(0); }} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-white/10 px-3 text-xs font-semibold text-brand-nightText/60">
+                        <X size={12} /> Cancel
+                      </button>
+                      </div>
+                    </div>}
+                    {actionError?.sessionId === k.session_id && <p role="alert" className="text-xs text-brand-coral">{actionError.message}</p>}
                   </div>
                 }
               />

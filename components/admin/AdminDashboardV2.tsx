@@ -232,16 +232,10 @@ function AdminDashboardV2Inner({
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [newRegistrationAlert, setNewRegistrationAlert] = useState(false);
-  useEffect(() => {
-    const channel = supabase
-      .channel(`admin_registration_alert_${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "membership_registrations" }, () => {
-        setNewRegistrationAlert(true);
-        window.setTimeout(() => setNewRegistrationAlert(false), 6500);
-      })
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [supabase]);
+  const handleNewRegistration = useCallback(() => {
+    setNewRegistrationAlert(true);
+    window.setTimeout(() => setNewRegistrationAlert(false), 6500);
+  }, []);
   const ADMIN_SEARCH_NAV: SearchNavItem[] = [
     { id: "home", label: "Overview", keywords: ["dashboard", "today"] },
     {
@@ -278,6 +272,7 @@ function AdminDashboardV2Inner({
         active={tab}
         onSelect={setTab}
         onNotificationsClick={goToNotifications}
+        onNewRegistration={handleNewRegistration}
         employeeName={employeeName}
         onSearchClick={() => setSearchOpen(true)}
       />

@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarClock, PartyPopper, Users, Phone } from "lucide-react";
+import { CalendarClock, ChevronDown, PartyPopper, Users, Phone } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import ContactMessageSheet from "@/components/shared/ContactMessageSheet";
 import type { MessageTemplateEvent, MessageTemplateValues } from "@/lib/message-template-format";
 import BirthdayOutreach from "./BirthdayOutreach";
 import UpcomingConfirmedParties from "./UpcomingConfirmedParties";
+import { expandCollapse } from "@/lib/motion";
 
 type Booking = {
   id: string; plan_name: string; plan_price: number | null; area_type: "party_room" | "entire_play_area";
@@ -24,6 +26,7 @@ export default function PartyBookingRequests() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [open, setOpen] = useState(false);
   const supabase = useMemo(() => createClient(), []);
 
   const load = useCallback(async () => {
@@ -69,8 +72,8 @@ export default function PartyBookingRequests() {
   };
 
   return <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-brand-nightSurface">
-    <header className="flex items-center justify-between gap-3 border-b border-white/[0.07] px-4 py-4 sm:px-5"><div className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-coral/10 text-brand-coral"><PartyPopper size={17} /></span><div><h2 className="font-semibold text-brand-nightText">Party requests</h2><p className="text-xs text-brand-nightText/45">Review requests and prepare a response message.</p></div></div><span aria-label={`${rows.length} party requests`} className="grid h-8 min-w-8 place-items-center rounded-full bg-brand-sun/15 px-2.5 text-sm font-bold tabular-nums text-brand-sun">{rows.length}</span></header>
-    <div className="space-y-2.5 p-3 sm:p-5">
+    <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)} className="flex min-h-16 w-full items-center justify-between gap-3 px-4 py-4 text-left sm:px-5"><span className="flex min-w-0 items-center gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-coral/10 text-brand-coral"><PartyPopper size={17} /></span><span><span className="block font-semibold text-brand-nightText">Party requests</span><span className="block text-xs text-brand-nightText/45">Review requests and prepare a response message.</span></span></span><span className="flex shrink-0 items-center gap-2">{rows.length > 0 && <span aria-label={`${rows.length} party requests`} className="grid h-8 min-w-8 place-items-center rounded-full bg-brand-sun/15 px-2.5 text-sm font-bold tabular-nums text-brand-sun">{rows.length}</span>}<ChevronDown size={17} className={`text-brand-nightText/40 transition-transform ${open ? "rotate-180" : ""}`} /></span></button>
+    <AnimatePresence initial={false}>{open && <motion.div {...expandCollapse} className="overflow-hidden"><div className="space-y-2.5 border-t border-white/[0.07] p-3 sm:p-5">
       {error && <p role="alert" className="rounded-xl border border-brand-coral/20 bg-brand-coral/5 px-3 py-2 text-sm text-brand-coral">{error}</p>}
       {loading ? <p className="py-6 text-center text-sm text-brand-nightText/40">Loading party requests…</p> : rows.length === 0 ? <p className="rounded-xl border border-white/10 bg-brand-nightSurface2 px-4 py-6 text-center text-sm text-brand-nightText/45">No party requests need a response.</p> : rows.map((booking) => <article key={booking.id} className="rounded-xl border border-white/10 bg-brand-nightSurface2 p-3.5 sm:p-4">
         <div className="space-y-2">
@@ -85,7 +88,7 @@ export default function PartyBookingRequests() {
       </article>)}
       <UpcomingConfirmedParties embedded />
       <BirthdayOutreach embedded />
-    </div>
+    </div></motion.div>}</AnimatePresence>
     {draft && <ContactMessageSheet open onClose={() => setDraft(null)} title={draft.declined ? "Party request declined" : "Review party message"} phone={draft.booking.phone} initialMessage={draft.message} templateKey={draft.templateKey} templateValues={draft.values} canManageTemplates askBeforeSend={Boolean(draft.declined)} preferredTemplateName={draft.preferredTemplateName} />}
   </section>;
 }

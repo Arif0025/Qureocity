@@ -12,6 +12,7 @@ export const PUSH_EVENTS = [
   "staff_punch_out",
   "new_registration",
   "party_registration",
+  "employee_leave",
 ] as const;
 
 export type PushEventType = (typeof PUSH_EVENTS)[number];
@@ -54,6 +55,10 @@ export const PUSH_EVENT_META: Record<
   party_registration: {
     label: "New party booking request",
     description: "An admin-only alert when a family requests a party booking.",
+  },
+  employee_leave: {
+    label: "Staff leave request and reminder",
+    description: "Admins receive request alerts; the employee taking leave can receive a personal reminder before it begins.",
   },
 };
 

@@ -1,5 +1,41 @@
-@import "tailwindcss";
-@config "../tailwind.config.ts";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tailwind 3.4 (kept for older Safari/Chrome support) — these base rules
+   reproduce the two Tailwind 4 preflight behaviours the UI was built on,
+   so nothing looks different after the downgrade:
+   - placeholder text is the current text colour at 50%
+   - buttons keep the default (arrow) cursor */
+@layer base {
+  input::placeholder,
+  textarea::placeholder {
+    color: currentColor;
+    opacity: 0.5;
+  }
+  button:not(:disabled) {
+    cursor: default;
+  }
+  /* Tailwind 4 resets form controls to transparent with square corners;
+     3.x leaves the browser's own grey background on inputs/selects. */
+  button,
+  input,
+  select,
+  optgroup,
+  textarea,
+  ::file-selector-button {
+    background-color: transparent;
+    border-radius: 0;
+    opacity: 1;
+  }
+  /* Tailwind 4's default ring colour is the current text colour
+     (3.x defaults to a translucent blue). */
+  *,
+  ::before,
+  ::after {
+    --tw-ring-color: currentColor;
+  }
+}
 
 html {
   -webkit-tap-highlight-color: transparent;
@@ -74,16 +110,16 @@ html {
 /* Status markers in the admin's team attendance list stay distinct from
    the dark card surface without changing general ListRow status colors. */
 [data-theme="dark"] .dark-ui .bg-team-attendance-present {
-  background-color: #a8d69a;
+  background-color: #6fa36b;
 }
 [data-theme="dark"] .dark-ui .bg-team-attendance-muted {
-  background-color: #8b8981;
+  background-color: #a29f95;
 }
 [data-theme="light"] .dark-ui .bg-team-attendance-present {
-  background-color: #5b7d50;
+  background-color: #6fa36b;
 }
 [data-theme="light"] .dark-ui .bg-team-attendance-muted {
-  background-color: #15130f;
+  background-color: #8d918f;
 }
 [data-theme="dark"] .dark-ui .bg-directory-general-dot {
   background-color: #8b8981;
@@ -101,14 +137,29 @@ html {
   border: 1px solid transparent;
   font-weight: 600;
 }
+.staff-calendar-leave-paid,
+.staff-calendar-leave-unpaid {
+  border: 1px solid transparent;
+  font-weight: 600;
+}
+.bg-team-attendance-left { background-color: #d6bb55; }
+.bg-team-attendance-absent { background-color: #ef4444; }
+.bg-team-attendance-leave { background-color: #ad79d5; }
+.bg-team-attendance-leave-paid { background-color: #38bdf8; }
+.bg-team-attendance-leave-unpaid { background-color: #e879b2; }
+.team-attendance-muted-badge { background-color: #a29f95; color: #15130f; }
 .staff-calendar-absent { background: #ef4444; color: #15130f; }
 .staff-calendar-undertime { background: #facc15; color: #15130f; }
 .staff-calendar-present { background: #22c55e; color: #15130f; }
 .staff-calendar-overtime { background: #a855f7; color: #15130f; }
+.staff-calendar-leave-paid { background: #38bdf8; color: #10202a; }
+.staff-calendar-leave-unpaid { background: #f472b6; color: #2b111e; }
 .staff-calendar-absent:hover,
 .staff-calendar-undertime:hover,
 .staff-calendar-present:hover,
 .staff-calendar-overtime:hover { border-color: currentColor; }
+.staff-calendar-leave-paid:hover,
+.staff-calendar-leave-unpaid:hover { border-color: currentColor; }
 
 /* Reference-palette button fills use dark ink labels in both themes. */
 .bg-brand-sky,
@@ -183,4 +234,35 @@ html {
 }
 [data-theme="light"] .dark-ui .hover\:border-white\/10:hover {
   border-color: rgb(61 54 53 / 0.16);
+}
+
+/* ---- Older-browser fallbacks -------------------------------------------
+   Each block only applies where the browser lacks the feature, so modern
+   browsers are completely unaffected. */
+
+/* `inset` shorthand: Safari < 14.1, Chrome < 87 */
+@supports not (inset: 0) {
+  .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+  .inset-x-4 { left: 1rem; right: 1rem; }
+}
+
+/* dynamic viewport units: Safari < 15.4, Chrome < 108 */
+@supports not (height: 100dvh) {
+  [class~="h-[calc(100dvh-200px)]"] { height: calc(100vh - 200px); }
+  [class~="max-h-[92dvh]"] { max-height: 92vh; }
+  [class~="max-h-[min(90dvh,400px)]"] { max-height: min(90vh, 400px); }
+}
+
+/* aspect-ratio: Safari < 15, Chrome < 88 — classic padding square */
+@supports not (aspect-ratio: 1 / 1) {
+  .aspect-square:not(.flex)::before {
+    content: "";
+    float: left;
+    padding-top: 100%;
+  }
+  .aspect-square:not(.flex)::after {
+    content: "";
+    display: block;
+    clear: both;
+  }
 }

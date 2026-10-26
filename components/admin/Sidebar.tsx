@@ -52,17 +52,19 @@ export default function Sidebar({
   active,
   onSelect,
   onNotificationsClick,
+  onNewRegistration,
   employeeName,
   onSearchClick,
 }: {
   active: AdminTabId;
   onSelect: (id: AdminTabId) => void;
   onNotificationsClick: () => void;
+  onNewRegistration: () => void;
   employeeName: string;
   onSearchClick: () => void;
 }) {
   const router = useRouter();
-  const pendingCount = usePendingRegistrationsCount();
+  const pendingCount = usePendingRegistrationsCount(onNewRegistration);
   const { theme } = useTheme();
   // Keep the mark warm ivory against the charcoal theme rather than pure white.
   const logoClass = "opacity-95";
@@ -98,7 +100,7 @@ export default function Sidebar({
         >
           <Search size={18} />
         </button>
-        <button type="button" onClick={onNotificationsClick} title="Notifications" aria-label={`Notifications${pendingCount ? `, ${pendingCount} pending registrations` : ""}`} className="relative text-brand-nightText/40 hover:text-brand-nightText p-1.5 rounded-lg transition-colors">
+        <button type="button" onClick={onNotificationsClick} title="Notifications" aria-label={`Notifications${pendingCount ? `, ${pendingCount} pending requests` : ""}`} className="relative text-brand-nightText/40 hover:text-brand-nightText p-1.5 rounded-lg transition-colors">
           <Bell size={18} />
           {pendingCount > 0 && <span className="absolute -right-1 -top-1 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-brand-coral px-1 text-[9px] font-bold leading-none text-white ring-2 ring-brand-nightSurface">{pendingCount > 9 ? "9+" : pendingCount}</span>}
         </button>
@@ -169,7 +171,7 @@ export default function Sidebar({
           >
             <Search size={18} />
           </button>
-          <button type="button" onClick={onNotificationsClick} title="Notifications" aria-label={`Notifications${pendingCount ? `, ${pendingCount} pending registrations` : ""}`} className="relative text-brand-nightText/50 hover:text-brand-nightText p-2 rounded-lg transition-colors">
+          <button type="button" onClick={onNotificationsClick} title="Notifications" aria-label={`Notifications${pendingCount ? `, ${pendingCount} pending requests` : ""}`} className="relative text-brand-nightText/50 hover:text-brand-nightText p-2 rounded-lg transition-colors">
             <Bell size={18} />
             {pendingCount > 0 && <span className="absolute right-0 top-0 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-brand-coral px-1 text-[9px] font-bold leading-none text-white ring-2 ring-brand-nightSurface">{pendingCount > 9 ? "9+" : pendingCount}</span>}
           </button>

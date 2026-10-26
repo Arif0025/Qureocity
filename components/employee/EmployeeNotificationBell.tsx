@@ -74,7 +74,6 @@ export default function EmployeeNotificationBell({ onOpenLink }: { onOpenLink: (
   }, [refreshUnread]);
 
   useEffect(() => {
-    if (!open) return;
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let active = true;
     void supabase.auth.getSession().then(({ data }) => {
@@ -82,14 +81,17 @@ export default function EmployeeNotificationBell({ onOpenLink }: { onOpenLink: (
       if (!active || !userId) return;
       channel = supabase
         .channel(`employee-inbox-${userId}`)
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "employee_notifications", filter: `user_id=eq.${userId}` }, () => { void load(); })
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "employee_notifications", filter: `user_id=eq.${userId}` }, () => {
+          void refreshUnread();
+          if (open) void load();
+        })
         .subscribe();
     });
     return () => {
       active = false;
       if (channel) void supabase.removeChannel(channel);
     };
-  }, [open, supabase, load]);
+  }, [open, supabase, load, refreshUnread]);
 
   const openInbox = () => {
     setOpen(true);

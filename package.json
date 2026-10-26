@@ -15,23 +15,35 @@
     "framer-motion": "^11.18.2",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^1.28.0",
-    "next": "^16.4.0",
+    "next": "15.5.28",
     "qrcode": "^1.5.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "web-push": "^3.6.7"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^20.14.15",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/web-push": "^3.6.4",
+    "autoprefixer": "^10.6.1",
     "eslint": "^9.39.5",
-    "eslint-config-next": "^16.4.0",
-    "postcss": "^8.4.40",
-    "tailwindcss": "^4.3.3",
+    "eslint-config-next": "15.5.28",
+    "postcss": "8.5.23",
+    "supabase": "^2.122.0",
+    "tailwindcss": "3.4",
     "typescript": "^5.5.4"
+  },
+  "browserslist": [
+    "ios_saf >= 14.0",
+    "safari >= 14",
+    "chrome >= 88",
+    "edge >= 88",
+    "firefox >= 80",
+    "samsung >= 15"
+  ],
+  "overrides": {
+    "postcss": "8.5.23"
   }
 }
