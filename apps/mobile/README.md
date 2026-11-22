@@ -1,10 +1,10 @@
 # QureoCity Mobile
 
-Expo application that opens the live QureoCity employee/admin web application at `/employee` in a persistent native WebView. The website is the source of truth for sign-in, navigation, page layout, and workflows; role routing redirects admins to `/admin` and staff to `/employee`. Website deployments therefore update the app's UI without rebuilding the APK.
+Native Expo application for QureoCity staff and admins. The mobile app has its own React Native sign-in and role-specific screens, designed to follow the web product's UI and workflows without embedding the website in a WebView.
 
-The native shell keeps the QureoCity launcher artwork, status/navigation safe areas, Android back navigation, external phone/email links, Expo Updates, and notification foreground handling. Website authentication and its Supabase session persist in WebView storage across launches. The launcher, adaptive, monochrome, splash, and favicon artwork use the existing QureoCity logo. Launcher artwork is part of the native build, so install a newly built APK to see it; Expo Go continues to use Expo Go's own app icon.
+The native app uses the QureoCity launcher artwork, system safe areas, external phone/email links, Expo Updates, and native notification handling. Supabase credentials are stored with SecureStore; the verified employee profile is cached locally so returning sessions can open without repeating the employee-role lookup. The launcher, adaptive, monochrome, splash, and favicon artwork use the QureoCity logo. Launcher artwork is part of the native build, so install a newly built APK to see it; Expo Go continues to use Expo Go's own app icon.
 
-Adding `react-native-webview` changes the native binary. Expo version `1.0.2` / Android version code `3` requires a fresh APK; older `1.0.1` builds cannot receive an OTA that imports the WebView native module. After that build is installed, website-only UI changes are served by the website and do not need an Expo OTA.
+The current Expo config is version `1.0.2` / Android version code `3`. Do not build or publish an update without product-owner approval. JavaScript-only UI changes can use EAS Update when the installed binary's runtime version and channel are compatible. Native module or app configuration changes require a new APK.
 
 ## Sign-in
 

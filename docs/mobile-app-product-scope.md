@@ -2,9 +2,9 @@
 
 ## Product direction
 
-The mobile app must display the QureoCity employee/admin web application as deployed, without a parallel native recreation of its screens. The Expo app loads `/employee` in a persistent WebView; the website routes admins to `/admin`, employees to `/employee`, and unauthenticated users to its existing login. The website is the source of truth for UI and workflows. Website deploys therefore update the app's screens without an APK rebuild.
+The mobile app is a dedicated native Expo application for employees and admins. Its React Native screens should closely follow the web application's visual design and workflows while adapting to mobile layouts. Do not embed the website in a WebView. The mobile app retains native session storage, authentication, notifications, camera/QR attendance, and other implemented device features.
 
-The native shell remains responsible for the launcher identity, system safe areas, Android back handling, Expo Updates, and any explicitly bridged device features. Adding native modules requires a new APK. Keep the WebView restricted to the QureoCity origin and open external actions such as phone calls with native handlers.
+The native app remains responsible for the launcher identity, system safe areas, Android back handling, Expo Updates, and device features. Adding native modules requires a new APK. Website UI changes must be implemented in the native app separately; only JavaScript/assets compatible with an installed binary can be delivered by OTA.
 
 This document is the working feature inventory. Items remain in scope until the product owner removes or changes them. No product behavior is changed by this document.
 
