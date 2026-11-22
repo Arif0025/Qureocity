@@ -540,7 +540,7 @@ export default function AdminDashboard({
   }, [activeView, detailKind, goBack, moreOpen]);
 
   let secondaryScreen: ReactNode = null;
-  if (activeView === 'requests') secondaryScreen = <AdminRequests onBack={goBack} />;
+  if (activeView === 'requests') secondaryScreen = <AdminRequests onBack={goBack} onOpenSettings={() => navigate('settings')} />;
   else if (activeView === 'customers') secondaryScreen = <AdminCustomers initialQuery={customerSearchSeed} initialChildId={customerChildSeed} onBack={goBack} />;
   else if (activeView === 'plans') secondaryScreen = <AdminPlans onBack={goBack} />;
   else if (activeView === 'staff') secondaryScreen = <AdminStaff initialEmployeeId={staffSearchSeed} onBack={goBack} />;

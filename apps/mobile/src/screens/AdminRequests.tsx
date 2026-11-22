@@ -49,8 +49,8 @@ function displayDate(value: string | null | undefined) {
   return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export default function AdminRequests({ onBack }: { onBack: () => void }) {
-  const [section, setSection] = useState<'registrations' | 'parties' | 'leave' | 'history' | 'expiry' | 'push'>('registrations');
+export default function AdminRequests({ onBack, onOpenSettings }: { onBack: () => void; onOpenSettings?: () => void }) {
+  const [section, setSection] = useState<'hub' | 'registrations' | 'parties' | 'leave' | 'history' | 'expiry' | 'push'>('hub');
   const [rows, setRows] = useState<Registration[]>([]);
   const [registrationOffset, setRegistrationOffset] = useState(0);
   const [registrationHasMore, setRegistrationHasMore] = useState(false);
@@ -92,11 +92,31 @@ export default function AdminRequests({ onBack }: { onBack: () => void }) {
     void loadRegistrationDetail(row);
   };
 
-  if (section === 'parties') return <AdminPartyRequests onBack={() => setSection('registrations')} />;
-  if (section === 'leave') return <AdminLeaveRequests onBack={() => setSection('registrations')} />;
-  if (section === 'history') return <AdminRequestHistory onBack={() => setSection('registrations')} />;
-  if (section === 'expiry') return <AdminExpiryAlerts onBack={() => setSection('registrations')} />;
-  if (section === 'push') return <AdminPushHistory onBack={() => setSection('registrations')} />;
+  if (section === 'parties') return <AdminPartyRequests onBack={() => setSection('hub')} />;
+  if (section === 'leave') return <AdminLeaveRequests onBack={() => setSection('hub')} />;
+  if (section === 'history') return <AdminRequestHistory onBack={() => setSection('hub')} />;
+  if (section === 'expiry') return <AdminExpiryAlerts onBack={() => setSection('hub')} />;
+  if (section === 'push') return <AdminPushHistory onBack={() => setSection('hub')} />;
+
+  if (section === 'hub') {
+    const routes = [
+      { key: 'leave' as const, icon: '◷', title: 'Staff leave requests', detail: 'Review and respond to leave applications.' },
+      { key: 'registrations' as const, icon: '＋', title: 'New registrations', detail: 'Membership, renewal, and special-day requests.', count: loading ? '…' : `${rows.length}${registrationHasMore ? '+' : ''}` },
+      { key: 'parties' as const, icon: '✦', title: 'Party requests', detail: 'Review upcoming bookings and customer requests.' },
+      { key: 'history' as const, icon: '↺', title: 'Registration history', detail: 'See recent decisions and completed requests.' },
+      { key: 'expiry' as const, icon: '⌛', title: 'Membership expiry', detail: 'Review expired and soon-to-expire memberships.' },
+      { key: 'push' as const, icon: '◉', title: 'Push activity', detail: 'Inspect recent notification delivery attempts.' },
+    ];
+    return <View style={styles.root}><ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.header}><Pressable accessibilityRole="button" onPress={onBack} style={styles.backButton}><Text style={styles.backText}>‹ Overview</Text></Pressable><Text style={styles.hubHeaderLabel}>Notifications</Text><View style={styles.headerSpacer} /></View>
+      <Text style={styles.eyebrow}>ADMIN WORKSPACE</Text><Text accessibilityRole="header" style={styles.title}>Notifications</Text><Text style={styles.description}>Review new registrations and keep important requests visible.</Text>
+      {error ? <Pressable onPress={() => void load()} style={styles.errorBox}><Text style={styles.errorTitle}>Inbox needs attention</Text><Text style={styles.errorText}>{error}</Text></Pressable> : null}
+      {routes.map((route) => <Pressable key={route.key} accessibilityRole="button" onPress={() => setSection(route.key)} style={({ pressed }) => [styles.hubCard, route.key === 'registrations' && styles.hubRegistrationCard, pressed && styles.hubPressed]}>
+        <View style={[styles.hubIcon, route.key === 'registrations' && styles.hubRegistrationIcon]}><Text style={styles.hubIconText}>{route.icon}</Text></View><View style={styles.hubCopy}><Text style={styles.hubTitle}>{route.title}</Text><Text style={styles.hubDetail}>{route.detail}</Text></View>{route.count ? <Text style={styles.hubCount}>{route.count}</Text> : null}<Text style={styles.hubChevron}>›</Text>
+      </Pressable>)}
+      {onOpenSettings ? <Pressable accessibilityRole="button" onPress={onOpenSettings} style={styles.settingsLink}><Text style={styles.settingsLinkText}>Notification delivery preferences are in Settings</Text><Text style={styles.hubChevron}>›</Text></Pressable> : null}
+    </ScrollView></View>;
+  }
 
   const runAction = (row: Registration, action: 'confirm' | 'discard') => {
     const isConfirm = action === 'confirm';
@@ -141,8 +161,8 @@ export default function AdminRequests({ onBack }: { onBack: () => void }) {
     <View style={styles.root}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Pressable accessibilityRole="button" onPress={onBack} style={styles.backButton}>
-            <Text style={styles.backText}>‹ Back</Text>
+          <Pressable accessibilityRole="button" onPress={() => setSection('hub')} style={styles.backButton}>
+            <Text style={styles.backText}>‹ Notifications</Text>
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Refresh pending requests" onPress={() => void load()} style={styles.refreshButton}>
             <Text style={styles.refreshText}>↻</Text>
@@ -237,6 +257,7 @@ export default function AdminRequests({ onBack }: { onBack: () => void }) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.canvas }, scroll: { flexGrow: 1, width: '100%', maxWidth: 600, alignSelf: 'center', paddingHorizontal: 18, paddingTop: 12, paddingBottom: 30 },
   queueTabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, padding: 4, borderRadius: 13, backgroundColor: '#EDE8EB', marginBottom: 14 }, queueTab: { minHeight: 36, flexBasis: '31%', flexGrow: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 10, paddingHorizontal: 3 }, queueTabSelected: { backgroundColor: C.surface }, queueTabText: { color: C.muted, fontSize: 8, fontWeight: '800', textAlign: 'center' }, queueTabTextSelected: { color: C.plumDark },
+  hubHeaderLabel:{color:C.ink,fontSize:12,fontWeight:'800'},headerSpacer:{width:58},hubCard:{minHeight:78,flexDirection:'row',alignItems:'center',gap:11,borderRadius:16,borderWidth:1,borderColor:C.line,backgroundColor:C.surface,paddingHorizontal:13,paddingVertical:11,marginBottom:9},hubRegistrationCard:{borderColor:'#D7C6E2',backgroundColor:'#F8F3FA'},hubPressed:{opacity:0.82},hubIcon:{width:38,height:38,borderRadius:12,alignItems:'center',justifyContent:'center',backgroundColor:'#F0EBF2'},hubRegistrationIcon:{backgroundColor:C.plumTint},hubIconText:{color:C.plum,fontSize:17,fontWeight:'900'},hubCopy:{flex:1,minWidth:0},hubTitle:{color:C.ink,fontSize:12,fontWeight:'800'},hubDetail:{color:C.muted,fontSize:9,lineHeight:13,marginTop:4},hubCount:{minWidth:29,textAlign:'center',color:C.plumDark,fontSize:10,fontWeight:'900',backgroundColor:C.plumTint,borderRadius:20,paddingHorizontal:7,paddingVertical:6,overflow:'hidden'},hubChevron:{color:C.plum,fontSize:21,paddingLeft:2},settingsLink:{minHeight:46,flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingHorizontal:9,marginTop:3},settingsLinkText:{color:C.muted,fontSize:10,fontWeight:'700'},
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 }, backButton: { minHeight: 42, justifyContent: 'center', paddingHorizontal: 4 }, backText: { color: C.plum, fontSize: 13, fontWeight: '800' }, refreshButton: { width: 42, height: 42, borderRadius: 14, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center' }, refreshText: { color: C.plum, fontSize: 25 },
   eyebrow: { color: C.plum, fontSize: 10, letterSpacing: 1.2, fontWeight: '900' }, title: { color: C.ink, fontSize: 26, fontWeight: '900', letterSpacing: -0.7, marginTop: 5 }, description: { color: C.muted, fontSize: 12, lineHeight: 18, marginTop: 5 }, countPill: { alignSelf: 'flex-start', backgroundColor: C.plumTint, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7, marginTop: 14, marginBottom: 13 }, countText: { color: C.plumDark, fontSize: 10, fontWeight: '800' },
   requestCard: { backgroundColor: C.surface, borderRadius: 17, borderWidth: 1, borderColor: C.line, overflow: 'hidden', marginBottom: 9 }, requestSummary: { minHeight: 74, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 13, paddingVertical: 12 }, requestText: { flex: 1, minWidth: 0 }, childName: { color: C.ink, fontSize: 13, fontWeight: '800' }, summaryLine: { color: C.muted, fontSize: 10, lineHeight: 15, marginTop: 4 }, receiptBox: { alignItems: 'flex-end', marginLeft: 7 }, receipt: { color: C.muted, fontSize: 9, fontWeight: '700' }, chevron: { color: C.plum, fontSize: 19, lineHeight: 21, marginTop: 3 }, details: { borderTopWidth: 1, borderTopColor: C.line, padding: 13, gap: 13, backgroundColor: '#FCFBFA' }, detailBlock: { gap: 3 }, detailLabel: { color: C.muted, fontSize: 9, fontWeight: '900', letterSpacing: 0.9 }, detailValue: { color: C.ink, fontSize: 12, fontWeight: '700' }, detailSecondary: { color: C.muted, fontSize: 10, lineHeight: 15 }, phoneLink: { color: C.plum, fontSize: 11, fontWeight: '700', paddingVertical: 3 }, medicalBox: { backgroundColor: '#FFF2F0', borderColor: '#EDC5B9', borderWidth: 1, borderRadius: 12, padding: 11, gap: 3 }, medicalTitle: { color: C.coral, fontSize: 10, fontWeight: '900', marginBottom: 2 }, medicalText: { color: C.ink, fontSize: 10, lineHeight: 15 }, consentText: { color: C.muted, fontSize: 9, lineHeight: 14 }, actions: { flexDirection: 'row', gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.line }, actionButton: { minHeight: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 }, discardButton: { borderWidth: 1, borderColor: '#E8C9C6', backgroundColor: '#FFFFFF', minWidth: 84 }, confirmButton: { flex: 1, backgroundColor: C.mint }, discardText: { color: C.coral, fontSize: 11, fontWeight: '800' }, confirmText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900' }, disabled: { opacity: 0.55 },
