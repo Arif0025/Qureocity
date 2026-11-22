@@ -27,6 +27,7 @@ import AdminPartyRequests from './AdminPartyRequests';
 import AdminExpiryAlerts from './AdminExpiryAlerts';
 import AdminRequestHistory from './AdminRequestHistory';
 import AdminPushHistory from './AdminPushHistory';
+import AdminHelp from './AdminHelp';
 import { openCustomerMessageDraft } from '../integrations/customerMessaging';
 
 const C = { ...colors };
@@ -68,7 +69,7 @@ type StaffDetail = {
   shiftEnd: string | null;
 };
 type DetailItem = { title: string; subtitle: string; checkin?: CheckinDetail; staff?: StaffDetail };
-type AdminView = 'overview' | 'requests' | 'customers' | 'plans' | 'staff' | 'settings' | 'leave' | 'parties' | 'expiry' | 'history' | 'pushHistory';
+type AdminView = 'overview' | 'requests' | 'customers' | 'plans' | 'staff' | 'settings' | 'help' | 'leave' | 'parties' | 'expiry' | 'history' | 'pushHistory';
 
 const emptyMetrics: Metrics = {
   onSite: null,
@@ -545,6 +546,7 @@ export default function AdminDashboard({
   else if (activeView === 'plans') secondaryScreen = <AdminPlans onBack={goBack} />;
   else if (activeView === 'staff') secondaryScreen = <AdminStaff initialEmployeeId={staffSearchSeed} onBack={goBack} />;
   else if (activeView === 'settings') secondaryScreen = <AdminSettings onBack={goBack} onSignOut={onSignOut} />;
+  else if (activeView === 'help') secondaryScreen = <AdminHelp onBack={goBack} />;
   else if (activeView === 'leave') secondaryScreen = <AdminLeaveRequests onBack={goBack} />;
   else if (activeView === 'parties') secondaryScreen = <AdminPartyRequests onBack={goBack} />;
   else if (activeView === 'expiry') secondaryScreen = <AdminExpiryAlerts onBack={goBack} />;
@@ -558,6 +560,7 @@ export default function AdminDashboard({
     { label: 'Membership expiry', icon: '⌛', view: 'expiry' },
     { label: 'Review history', icon: '↺', view: 'history' },
     { label: 'Push history', icon: '◉', view: 'pushHistory' },
+    { label: 'Help', icon: '?', view: 'help' },
     { label: 'Sign out', icon: '↗', action: 'signOut' },
   ];
 
