@@ -16,7 +16,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFF5D8"
+      "backgroundColor": "#000000"
     },
     "userInterfaceStyle": "light",
     "ios": {
@@ -27,7 +27,7 @@
       "package": "com.qureocity.staff",
       "versionCode": 3,
       "adaptiveIcon": {
-        "backgroundColor": "#FFF5D8",
+        "backgroundColor": "#000000",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
