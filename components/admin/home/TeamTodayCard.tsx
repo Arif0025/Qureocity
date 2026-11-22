@@ -175,7 +175,7 @@ export default function TeamTodayCard() {
               factsLayout="right"
               facts={[{
                 value: (
-                  <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold sm:text-xs ${
+                  <span className={`team-attendance-status-badge rounded-full border px-2.5 py-1 text-[10px] font-semibold sm:text-xs ${
                     displayStatus === "present" ? "border-[#22c55e]/20 bg-[#22c55e]/10 text-[#15130f]" :
                     displayStatus === "left" ? "border-[#facc15]/20 bg-[#facc15]/10 text-[#15130f]" :
                     displayStatus === "leave" ? member.leavePayStatus === "paid" ? "border-[#38bdf8]/20 bg-[#38bdf8]/10 text-[#15130f]" : "border-[#f472b6]/20 bg-[#f472b6]/10 text-[#15130f]" :

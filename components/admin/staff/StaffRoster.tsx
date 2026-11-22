@@ -11,7 +11,7 @@ import {
   UserMinus,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { resetEmployeePassword, removeEmployee, setEmployeeSalary } from "@/app/admin/actions";
+import { resetEmployeePassword, removeEmployee, setEmployeeSalary, setEmployeePhone, getEmployeeSalaryHistory } from "@/app/admin/actions";
 import { startOfTodayIST } from "@/lib/istTime";
 import EmployeeCalendar from "./EmployeeCalendar";
 import ShiftEditor from "./ShiftEditor";
@@ -20,7 +20,7 @@ import { Clock3 } from "lucide-react";
 import NotifyButton from "../home/NotifyButton";
 import { expandCollapse } from "@/lib/motion";
 
-type Staff = { id: string; name: string; role: string };
+type Staff = { id: string; name: string; role: string; phone?: string | null };
 type Shift = {
   id: string;
   employee_id: string;
@@ -54,6 +54,7 @@ type AutoPunchoutRow = {
 };
 type SalaryType = "monthly" | "hourly";
 type SalarySetting = { salary_type: SalaryType | null; salary_rate: number | null };
+type SalaryHistory = { id: string; salary_type: SalaryType; salary_rate: number; effective_at: string };
 
 // An employee is "falling behind" once actual hours drop meaningfully
 // under what their shift + days-open-so-far would predict. 80% gives
@@ -137,6 +138,9 @@ export default function StaffRoster({
   const [salarySettings, setSalarySettings] = useState<Record<string, SalarySetting>>({});
   const [salaryDrafts, setSalaryDrafts] = useState<Record<string, { type: SalaryType; rate: string }>>({});
   const [savingSalaryFor, setSavingSalaryFor] = useState<string | null>(null);
+  const [phoneDrafts, setPhoneDrafts] = useState<Record<string, string>>({});
+  const [savingPhoneFor, setSavingPhoneFor] = useState<string | null>(null);
+  const [salaryHistory, setSalaryHistory] = useState<Record<string, SalaryHistory[]>>({});
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingShiftFor, setEditingShiftFor] = useState<string | null>(null);
@@ -362,7 +366,14 @@ export default function StaffRoster({
 
   useEffect(() => {
     setStaffList(staff ?? []);
+    setPhoneDrafts(Object.fromEntries((staff ?? []).map((employee) => [employee.id, employee.phone ?? ""])));
   }, [staff]);
+
+  const loadSalaryHistory = async (employeeId: string) => {
+    const result = await getEmployeeSalaryHistory(employeeId);
+    if (result.error) return;
+    setSalaryHistory((current) => ({ ...current, [employeeId]: result.history ?? [] }));
+  };
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -395,6 +406,7 @@ export default function StaffRoster({
     if (!activeEmployeeId) return;
     setExpandedId(activeEmployeeId);
     setEditingShiftFor(null);
+    if (isAdmin && !salaryHistory[activeEmployeeId]) void loadSalaryHistory(activeEmployeeId);
     if (!historyByEmployee[activeEmployeeId]) {
       void loadHistory(activeEmployeeId);
     }
@@ -495,6 +507,16 @@ export default function StaffRoster({
       ...current,
       [employeeId]: { salary_type: draft.type, salary_rate: rate },
     }));
+    await loadSalaryHistory(employeeId);
+  };
+
+  const savePhone = async (employeeId: string) => {
+    setSavingPhoneFor(employeeId);
+    const result = await setEmployeePhone(employeeId, phoneDrafts[employeeId] ?? "");
+    setSavingPhoneFor(null);
+    if (result.error) return alert(result.error);
+    setStaffList((current) => current.map((employee) => employee.id === employeeId
+      ? { ...employee, phone: (phoneDrafts[employeeId] ?? "").trim() || null } : employee));
   };
 
   const toggleExpand = (employeeId: string) => {
@@ -504,6 +526,7 @@ export default function StaffRoster({
     }
     setExpandedId(employeeId);
     setEditingShiftFor(null);
+    if (isAdmin && !salaryHistory[employeeId]) void loadSalaryHistory(employeeId);
     if (!historyByEmployee[employeeId]) void loadHistory(employeeId);
   };
 
@@ -773,6 +796,39 @@ export default function StaffRoster({
                       >
                         {savingSalaryFor === s.id ? "Saving…" : "Save"}
                       </button>
+                    </div>
+                    <div className="mt-3 border-t border-white/8 pt-3">
+                      <p className="mb-2 text-xs font-semibold text-brand-nightText">Phone number</p>
+                      <div className="flex flex-wrap gap-2">
+                        <input
+                          aria-label={`${s.name} phone number`}
+                          type="tel"
+                          value={phoneDrafts[s.id] ?? ""}
+                          onChange={(event) => setPhoneDrafts((current) => ({ ...current, [s.id]: event.target.value }))}
+                          placeholder="Add phone number"
+                          className="min-h-10 min-w-0 flex-1 rounded-lg border border-white/15 bg-brand-nightSurface px-3 text-sm text-brand-nightText placeholder:text-brand-nightText/30"
+                        />
+                        <button type="button" disabled={savingPhoneFor === s.id}
+                          onClick={() => void savePhone(s.id)}
+                          className="min-h-10 rounded-lg bg-brand-sky px-3 text-xs font-semibold text-brand-ink disabled:opacity-50">
+                          {savingPhoneFor === s.id ? "Saving…" : "Save phone"}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-3 border-t border-white/8 pt-3">
+                      <p className="mb-2 text-xs font-semibold text-brand-nightText">Salary history</p>
+                      {!salaryHistory[s.id]?.length ? (
+                        <p className="text-xs text-brand-nightText/40">No saved salary changes yet.</p>
+                      ) : (
+                        <ul className="space-y-1.5">
+                          {salaryHistory[s.id].map((entry) => (
+                            <li key={entry.id} className="flex justify-between gap-3 text-xs text-brand-nightText/65">
+                              <span>{new Date(entry.effective_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })}</span>
+                              <span className="font-medium text-brand-nightText">{currency(Number(entry.salary_rate))} / {entry.salary_type === "hourly" ? "hour" : "month"}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   </div>
                 )}

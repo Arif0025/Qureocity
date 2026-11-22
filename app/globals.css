@@ -92,19 +92,29 @@ html {
 
 .dark-ui {
   color-scheme: dark;
+  /* Staff web app accents follow the purple, black, and white mobile theme. */
+  --palette-sky: 139 92 246;
+  --sky-light: 167 139 250;
 }
 [data-theme="dark"] .dark-ui {
   --palette-sun: 255 254 150; /* #FFFE96 */
-  --palette-sky: 192 155 221; /* #C09BDD */
+  --palette-sky: 139 92 246; /* #8B5CF6 */
   --palette-coral: 255 98 91; /* #FF625B */
   --palette-leaf: 213 214 172; /* #D5D6AC */
-  --sky-light: 192 155 221;
+  --sky-light: 167 139 250; /* #A78BFA */
   --checkin-walkin: 192 155 221; /* #C09BDD */
   --checkin-membership: 213 214 172; /* #D5D6AC */
   --checkin-special: 255 98 91; /* #FF625B */
 }
 [data-theme="light"] .dark-ui {
   color-scheme: light;
+}
+
+/* The team attendance badges use dark ink on their colored fills in light
+   mode. In dark mode the low-opacity fills sit on a charcoal card, so use
+   the warm foreground for readable labels. */
+[data-theme="dark"] .dark-ui .team-attendance-status-badge {
+  color: rgb(var(--night-text));
 }
 
 /* Status markers in the admin's team attendance list stay distinct from

@@ -38,7 +38,7 @@ export default async function AdminPage({
   // Staff powers GlobalSearch and the Staff tab. Settings are fetched only
   // when that tab is requested, so ordinary navigation skips that lookup.
   const [{ data: staff }, { data: settings }] = await Promise.all([
-    supabase.from("employees").select("id, name, role"),
+    supabase.from("employees").select("id, name, role, phone"),
     loadSettings
       ? supabase.from("app_settings").select("qr_mode").eq("id", true).single()
       : Promise.resolve({ data: null }),

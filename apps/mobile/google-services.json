@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "991730618324",
+    "project_id": "qureocity",
+    "storage_bucket": "qureocity.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:991730618324:android:9a638d4eef5c8caeaf1041",
+        "android_client_info": {
+          "package_name": "com.qureocity.staff"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBu0L7LOJ5CN2s7ek2OHhZK0Ed6qvh8mQs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

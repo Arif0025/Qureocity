@@ -65,7 +65,7 @@ function BackToHomeButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-type Staff = { id: string; name: string; role: string };
+type Staff = { id: string; name: string; role: string; phone?: string | null };
 type Shift = {
   id: string;
   employee_id: string;

@@ -1,0 +1,74 @@
+{
+  "expo": {
+    "name": "QureoCity",
+    "slug": "qureocity-staff",
+    "version": "1.0.2",
+    "orientation": "portrait",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/bd79991c-66b1-4b72-a800-56205ceb4c16"
+    },
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFF5D8"
+    },
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "buildNumber": "3"
+    },
+    "android": {
+      "package": "com.qureocity.staff",
+      "versionCode": 3,
+      "adaptiveIcon": {
+        "backgroundColor": "#FFF5D8",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "QureoCity uses the camera to scan the venue QR code for shift check-in.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "staff-updates",
+          "color": "#7A558C"
+        }
+      ],
+      "expo-sharing",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "buildArchs": ["armeabi-v7a", "arm64-v8a"]
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "bd79991c-66b1-4b72-a800-56205ceb4c16"
+      }
+    },
+    "owner": "arif0025s-team"
+  }
+}

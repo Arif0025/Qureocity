@@ -175,11 +175,61 @@ export async function setEmployeeSalary(
     return { error: "Enter a valid non-negative salary rate." };
   }
 
-  const { error } = await createServiceRoleClient()
+  const admin = createServiceRoleClient();
+  const normalizedRate = Math.round(salaryRate * 100) / 100;
+  const { error } = await admin
     .from("employees")
-    .update({ salary_type: salaryType, salary_rate: Math.round(salaryRate * 100) / 100 })
+    .update({ salary_type: salaryType, salary_rate: normalizedRate })
     .eq("id", employeeId);
   return error ? { error: error.message } : {};
+}
+
+export async function setEmployeePhone(
+  employeeId: string,
+  phone: string,
+): Promise<{ error?: string }> {
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth;
+  const normalized = phone.trim();
+  if (!employeeId || (normalized && !/^\+?[0-9 ()-]{7,20}$/.test(normalized))) {
+    return { error: "Enter a valid phone number, or leave it blank." };
+  }
+  const { error } = await createServiceRoleClient()
+    .from("employees").update({ phone: normalized || null }).eq("id", employeeId);
+  return error ? { error: error.message } : {};
+}
+
+export async function setCustomerPhone(
+  customerId: string,
+  phone: string,
+): Promise<{ error?: string }> {
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth;
+  const normalized = phone.trim();
+  const digits = normalized.replace(/\D/g, "");
+  if (!customerId || digits.length < 10 || digits.length > 15) {
+    return { error: "Enter a valid phone number with 10 to 15 digits." };
+  }
+  const { error } = await createServiceRoleClient()
+    .from("customers")
+    .update({ phone: digits })
+    .eq("id", customerId);
+  if (error?.code === "23505") return { error: "That phone number is already used by another customer." };
+  return error ? { error: error.message } : {};
+}
+
+export async function getEmployeeSalaryHistory(employeeId: string): Promise<{
+  history?: { id: string; salary_type: "monthly" | "hourly"; salary_rate: number; effective_at: string }[];
+  error?: string;
+}> {
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth;
+  const { data, error } = await createServiceRoleClient()
+    .from("employee_salary_history")
+    .select("id, salary_type, salary_rate, effective_at")
+    .eq("employee_id", employeeId)
+    .order("effective_at", { ascending: false });
+  return error ? { error: error.message } : { history: data ?? [] };
 }
 
 async function requireAdmin() {

@@ -104,19 +104,23 @@ async function openTarget(url) {
   clientList = clientList.filter(function (client) {
     return new URL(client.url).origin === self.location.origin;
   });
-  // Prefer a visible/focused app tab if there are several open.
+  // Prefer the app window the person is already using. Keep this selection
+  // limited to this origin: a notification must never navigate another site.
   clientList.sort(function (a, b) {
-    return Number(b.visibilityState === "visible" && b.focused) - Number(a.visibilityState === "visible" && a.focused);
+    var score = function (client) {
+      return (client.visibilityState === "visible" ? 2 : 0) + (client.focused ? 1 : 0);
+    };
+    return score(b) - score(a);
   });
   for (var i = 0; i < clientList.length; i++) {
     var client = clientList[i];
     try {
-      if ("navigate" in client) {
-        var navigatedClient = await client.navigate(targetUrl);
-        if (navigatedClient) {
-          await navigatedClient.focus();
-          return;
-        }
+      // Navigate the existing window first. This preserves the single-tab
+      // behavior for both the notification's main URL and action URLs.
+      var navigatedClient = await client.navigate(targetUrl);
+      if (navigatedClient) {
+        await navigatedClient.focus();
+        return;
       }
     } catch (e) {
       // Older browsers may not support WindowClient.navigate reliably.

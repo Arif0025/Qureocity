@@ -21,6 +21,7 @@ import PhoneLinks from "./PhoneLinks";
 import MessageButton from "./MessageButton";
 import AddToPlanButton from "./AddToPlanButton";
 import EditMembershipDatesButton from "./EditMembershipDatesButton";
+import { setCustomerPhone } from "@/app/admin/actions";
 
 type ChildInfo = {
   id: string;
@@ -171,6 +172,7 @@ export default function CustomerSearch({
     customerId: string;
     childId: string;
     parentName: string;
+    phone: string;
     childName: string;
     dateOfBirth: string;
     address: string;
@@ -179,6 +181,9 @@ export default function CustomerSearch({
     specialInstructions: string;
   } | null>(null);
   const [savingNames, setSavingNames] = useState(false);
+  const [phoneEditCustomerId, setPhoneEditCustomerId] = useState<string | null>(null);
+  const [phoneDraft, setPhoneDraft] = useState("");
+  const [savingCustomerPhone, setSavingCustomerPhone] = useState(false);
   const [deletingCustomer, setDeletingCustomer] = useState(false);
 
   const patchChild = (
@@ -294,6 +299,8 @@ export default function CustomerSearch({
       parentName:
         results.find((result) => result.customer_id === customerId)
           ?.parent_name ?? "",
+      phone: results.find((result) => result.customer_id === customerId)
+        ?.phone ?? "",
       childName: child.name,
       dateOfBirth: childData.date_of_birth,
       address: childData.address ?? "",
@@ -321,9 +328,16 @@ export default function CustomerSearch({
         p_special_instructions: editingNames.specialInstructions,
       },
     );
-    setSavingNames(false);
     if (error) {
+      setSavingNames(false);
       setActionError(error.message);
+      return;
+    }
+    const phoneResult = await setCustomerPhone(editingNames.customerId, editingNames.phone);
+    setSavingNames(false);
+    if (phoneResult.error) {
+      setSavingNames(false);
+      setActionError(phoneResult.error);
       return;
     }
     setResults((prev) =>
@@ -333,6 +347,7 @@ export default function CustomerSearch({
           : {
               ...result,
               parent_name: editingNames.parentName.trim(),
+              phone: editingNames.phone.replace(/\D/g, ""),
               children: (result.children ?? []).map((child) =>
                 child.id !== editingNames.childId
                   ? child
@@ -361,6 +376,20 @@ export default function CustomerSearch({
     detailsCacheRef.current.set(editingNames.childId, savedDetails);
     setDetailsByChild((current) => ({ ...current, [editingNames.childId]: savedDetails }));
     setEditingNames(null);
+  };
+
+  const saveCustomerPhone = async (customerId: string) => {
+    setSavingCustomerPhone(true);
+    setActionError(null);
+    const result = await setCustomerPhone(customerId, phoneDraft);
+    setSavingCustomerPhone(false);
+    if (result.error) {
+      setActionError(result.error);
+      return;
+    }
+    setResults((current) => current.map((row) => row.customer_id === customerId
+      ? { ...row, phone: phoneDraft.replace(/\D/g, "") } : row));
+    setPhoneEditCustomerId(null);
   };
 
   const handleDeleteCustomer = async (
@@ -666,9 +695,20 @@ export default function CustomerSearch({
                   <p className="text-sm font-semibold text-brand-nightText">
                     {r.parent_name}
                   </p>
-                  <p className="text-xs text-brand-nightText/40">
-                    {r.phone} · No children registered yet
-                  </p>
+                  {phoneEditCustomerId === r.customer_id ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <input aria-label={`${r.parent_name} phone number`} type="tel" inputMode="tel" value={phoneDraft}
+                        onChange={(event) => setPhoneDraft(event.target.value)}
+                        className="min-h-9 min-w-0 flex-1 rounded-lg border border-white/15 bg-brand-nightSurface2 px-2.5 text-sm text-brand-nightText" />
+                      <button type="button" disabled={savingCustomerPhone} onClick={() => void saveCustomerPhone(r.customer_id)} className="min-h-9 rounded-lg bg-brand-sky px-3 text-xs font-semibold text-white disabled:opacity-50">{savingCustomerPhone ? "Saving…" : "Save phone"}</button>
+                      <button type="button" onClick={() => setPhoneEditCustomerId(null)} className="min-h-9 rounded-lg border border-white/10 px-3 text-xs text-brand-nightText/60">Cancel</button>
+                    </div>
+                  ) : (
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <p className="text-xs text-brand-nightText/40">{r.phone} · No children registered yet</p>
+                      {isAdmin && <button type="button" onClick={() => { setPhoneEditCustomerId(r.customer_id); setPhoneDraft(r.phone); }} className="text-xs font-semibold text-brand-skyLight">Edit phone</button>}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -716,6 +756,16 @@ export default function CustomerSearch({
                                       parentName: event.target.value,
                                     })
                                   }
+                                  className="mt-1 w-full rounded-lg border border-white/15 bg-brand-nightSurface px-2.5 py-2 text-sm text-brand-nightText"
+                                />
+                              </label>
+                              <label className="block text-xs font-semibold text-brand-nightText/55">
+                                Customer phone number
+                                <input
+                                  type="tel"
+                                  inputMode="tel"
+                                  value={editingNames.phone}
+                                  onChange={(event) => setEditingNames({ ...editingNames, phone: event.target.value })}
                                   className="mt-1 w-full rounded-lg border border-white/15 bg-brand-nightSurface px-2.5 py-2 text-sm text-brand-nightText"
                                 />
                               </label>

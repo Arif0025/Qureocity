@@ -16,6 +16,35 @@ type Recipient = {
   auth_secret: string;
   device_label: string | null;
 };
+type MobileRecipient = { user_id: string; role: string; expo_push_token: string; device_label: string };
+
+async function sendExpoPush(target: MobileRecipient, message: ReturnType<typeof buildMessage>, ttl: number) {
+  try {
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Accept-encoding': 'gzip, deflate', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: target.expo_push_token,
+        title: message.title,
+        body: message.body,
+        sound: 'default',
+        channelId: 'staff-updates',
+        ttl,
+        data: { event: 'mobile-event', url: message.url, tag: message.tag },
+      }),
+    });
+    if (!response.ok) return 'failed' as const;
+    const result = await response.json();
+    const ticket = Array.isArray(result?.data) ? result.data[0] : result?.data;
+    if (ticket?.status === 'ok') return 'sent' as const;
+    if (ticket?.details?.error === 'DeviceNotRegistered') return 'gone' as const;
+    console.error('[push] Expo ticket failed', ticket?.message ?? 'unknown error');
+    return 'failed' as const;
+  } catch (error) {
+    console.error('[push] Expo request failed', error);
+    return 'failed' as const;
+  }
+}
 
 function secretMatches(header: string | null): boolean {
   const expected = process.env.PUSH_NOTIFY_SECRET;
@@ -33,13 +62,6 @@ export async function POST(req: NextRequest) {
   if (!secretMatches(req.headers.get("authorization"))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!pushIsConfigured()) {
-    return NextResponse.json(
-      { error: "Push is not configured (VAPID keys missing)." },
-      { status: 503 },
-    );
-  }
-
   let body: { event?: string; payload?: Record<string, unknown> };
   try {
     body = await req.json();
@@ -88,19 +110,21 @@ export async function POST(req: NextRequest) {
     leaveReminderEmployee = leaveRow?.employee_id ?? null;
   }
 
-  const { data: recipientData, error: recipientError } = await supabase.rpc(
-    "push_resolve_recipients",
-    { p_event: event, p_exclude_user: excludeUser, p_target_user: leaveReminderEmployee },
-  );
-  if (recipientError) {
-    console.error("[push] recipients failed", recipientError.message);
-    return NextResponse.json(
-      { error: "Recipient lookup failed" },
-      { status: 500 },
-    );
+  const [webResult, mobileResult] = await Promise.all([
+    pushIsConfigured()
+      ? supabase.rpc("push_resolve_recipients", { p_event: event, p_exclude_user: excludeUser, p_target_user: leaveReminderEmployee })
+      : Promise.resolve({ data: [], error: null }),
+    supabase.rpc("mobile_push_resolve_recipients", { p_event: event, p_exclude_user: excludeUser, p_target_user: leaveReminderEmployee }),
+  ]);
+  const mobileSchemaNotApplied = mobileResult.error?.code === 'PGRST202' || mobileResult.error?.code === '42883';
+  if (mobileSchemaNotApplied) console.warn('[push] mobile push migration is not applied yet; continuing with web subscriptions');
+  if (webResult.error || (mobileResult.error && !mobileSchemaNotApplied)) {
+    console.error("[push] recipient lookup failed", webResult.error?.message ?? mobileResult.error?.message);
+    return NextResponse.json({ error: "Recipient lookup failed" }, { status: 500 });
   }
-  const recipients = (recipientData ?? []) as Recipient[];
-  if (recipients.length === 0) return NextResponse.json({ sent: 0 });
+  const recipients = (webResult.data ?? []) as Recipient[];
+  const mobileRecipients = (mobileSchemaNotApplied ? [] : mobileResult.data ?? []) as MobileRecipient[];
+  if (recipients.length === 0 && mobileRecipients.length === 0) return NextResponse.json({ sent: 0 });
 
   // Time-based alerts go stale fast; everything else can wait a while
   // for a phone that is briefly offline.
@@ -112,7 +136,7 @@ export async function POST(req: NextRequest) {
   const inboxCategory = event === "new_registration" || event === "party_registration"
     ? "admin"
     : "system";
-  const inboxRows = event === "employee_leave" ? [] : [...new Map(recipients.map((r) => {
+  const inboxRows = event === "employee_leave" ? [] : [...new Map([...recipients, ...mobileRecipients].map((r) => {
     const message = buildMessage(event, ctx, r.role === "admin" ? "admin" : "staff");
     return [r.user_id, {
       user_id: r.user_id,
@@ -122,15 +146,15 @@ export async function POST(req: NextRequest) {
       target_url: message.url,
     }] as const;
   })).values()];
-  const inboxWrite = inboxRows.length === 0 ? Promise.resolve() : Promise.resolve(supabase.from("employee_notifications").insert(inboxRows))
-    .then(({ error }) => {
-      if (error) console.error("[push] inbox insert failed", error.message);
-    })
-    .catch((error: unknown) => {
-      console.error("[push] inbox insert failed", error);
-    });
+  const inboxWrite = inboxRows.length === 0 ? Promise.resolve() : Promise.all([
+    supabase.from("employee_notifications").insert(inboxRows),
+    supabase.from("employee_notifications").delete().lt("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+  ]).then(([insertResult, pruneResult]) => {
+    if (insertResult.error) console.error("[push] inbox insert failed", insertResult.error.message);
+    if (pruneResult.error) console.error("[push] inbox prune failed", pruneResult.error.message);
+  }).catch((error: unknown) => console.error("[push] inbox persistence failed", error));
 
-  const results = await Promise.all(
+  const webResults = await Promise.all(
     recipients.map(async (r) => {
       const message = buildMessage(
         event,
@@ -160,11 +184,27 @@ export async function POST(req: NextRequest) {
       return result;
     }),
   );
+  const mobileResults = await Promise.all(mobileRecipients.map(async (r) => {
+    const message = buildMessage(event, ctx, r.role === "admin" ? "admin" : "staff");
+    const result = await sendExpoPush(r, message, ttl);
+    if (result === 'gone') {
+      await supabase.from('mobile_push_devices').delete().eq('expo_push_token', r.expo_push_token);
+    }
+    await supabase.rpc('push_log_send', {
+      p_event_type: event,
+      p_is_test: false,
+      p_user_id: r.user_id,
+      p_device_label: r.device_label,
+      p_endpoint: r.expo_push_token,
+      p_result: result,
+    }).then(() => {}, (err) => console.error('[push] mobile log_send failed', err));
+    return result;
+  }));
   await inboxWrite;
 
   return NextResponse.json({
-    sent: results.filter((r) => r === "sent").length,
-    removed: results.filter((r) => r === "gone").length,
-    failed: results.filter((r) => r === "failed").length,
+    sent: [...webResults, ...mobileResults].filter((r) => r === "sent").length,
+    removed: [...webResults, ...mobileResults].filter((r) => r === "gone").length,
+    failed: [...webResults, ...mobileResults].filter((r) => r === "failed").length,
   });
 }
