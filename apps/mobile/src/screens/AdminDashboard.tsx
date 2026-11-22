@@ -41,6 +41,9 @@ type Metrics = {
   parties: number | null;
   leave: number | null;
 };
+type VisitBreakdown = { membership: number; walk_in: number; special: number };
+type MonthlyOverview = { walkIns: number; newCustomers: number; newMemberships: number; expiringSoon: number; activeMembers: number; totalVisits: number };
+type UpcomingSpecialDay = { id: string; name: string; date: string; moreDates: number; registered: number };
 type DetailKind = 'requests' | 'kids' | 'staff' | 'checkins' | null;
 type CheckinDetail = {
   sessionId: string;
@@ -246,7 +249,47 @@ export default function AdminDashboard({
   const checkinCountAnim = useRef(new Animated.Value(0)).current;
   const [checkinCountDisplay, setCheckinCountDisplay] = useState(0);
   const [staffOnSite, setStaffOnSite] = useState<StaffDetail[]>([]);
+  const [visitBreakdown, setVisitBreakdown] = useState<VisitBreakdown>({ membership: 0, walk_in: 0, special: 0 });
+  const [monthlyOverview, setMonthlyOverview] = useState<MonthlyOverview | null>(null);
+  const [upcomingSpecialDays, setUpcomingSpecialDays] = useState<UpcomingSpecialDay[]>([]);
   const todayKey = useMemo(() => istDateKey(), []);
+
+  useEffect(() => {
+    const dayStart = new Date(`${todayKey}T00:00:00+05:30`).toISOString();
+    const monthStartDate = `${todayKey.slice(0, 7)}-01`;
+    const monthStart = new Date(`${monthStartDate}T00:00:00+05:30`).toISOString();
+    void Promise.all([
+      supabase.rpc('checkin_type_summary', { p_since: dayStart }),
+      supabase.rpc('checkin_type_summary', { p_since: monthStart }),
+      supabase.from('customers').select('id', { count: 'exact', head: true }).gte('created_at', monthStart),
+      supabase.from('child_subscriptions').select('child_id', { count: 'exact', head: true }).gte('started_on', monthStartDate),
+      supabase.rpc('admin_membership_status_counts'),
+      supabase.from('membership_plans').select('id,name,event_date,event_dates').eq('plan_type', 'special').eq('active', true).order('event_date', { ascending: true }).limit(6),
+      supabase.rpc('admin_plan_member_counts'),
+    ]).then(([todayResult, monthVisitsResult, customersResult, subscriptionsResult, membershipResult, plansResult, planCountsResult]) => {
+      const todayCounts = new Map(((todayResult.data ?? []) as { visit_type: string; cnt: number }[]).map((row) => [row.visit_type, Number(row.cnt)]));
+      setVisitBreakdown({ membership: todayCounts.get('membership') ?? 0, walk_in: todayCounts.get('walk_in') ?? 0, special: todayCounts.get('special') ?? 0 });
+
+      if (!monthVisitsResult.error && !customersResult.error && !subscriptionsResult.error && !membershipResult.error) {
+        const monthCounts = new Map(((monthVisitsResult.data ?? []) as { visit_type: string; cnt: number }[]).map((row) => [row.visit_type, Number(row.cnt)]));
+        const membershipStats = membershipResult.data as { active?: number; expiring_soon?: number } | null;
+        const walkIns = monthCounts.get('walk_in') ?? 0;
+        const memberVisits = monthCounts.get('membership') ?? 0;
+        const specialVisits = monthCounts.get('special') ?? 0;
+        setMonthlyOverview({ walkIns, newCustomers: customersResult.count ?? 0, newMemberships: subscriptionsResult.count ?? 0, expiringSoon: membershipStats?.expiring_soon ?? 0, activeMembers: membershipStats?.active ?? 0, totalVisits: walkIns + memberVisits + specialVisits });
+      }
+
+      if (!plansResult.error && !planCountsResult.error) {
+        const countsByPlan = new Map(((planCountsResult.data ?? []) as { plan_id: string; member_count: number }[]).map((row) => [row.plan_id, Number(row.member_count)]));
+        setUpcomingSpecialDays(((plansResult.data ?? []) as { id: string; name: string; event_date: string; event_dates: string[] | null }[])
+          .map((plan) => {
+            const remainingDates = (plan.event_dates?.length ? plan.event_dates : [plan.event_date]).filter((date) => date >= todayKey);
+            return { id: plan.id, name: plan.name, date: remainingDates[0] ?? plan.event_date, moreDates: Math.max(0, remainingDates.length - 1), registered: countsByPlan.get(plan.id) ?? 0 };
+          })
+          .filter((plan) => plan.date >= todayKey));
+      }
+    }).catch(() => undefined);
+  }, [todayKey]);
 
   useEffect(() => {
     if (metrics.today === null) return;
@@ -592,23 +635,83 @@ export default function AdminDashboard({
             </Pressable>
           ) : null}
 
-          <View style={styles.overviewSection}>
-            <Text style={styles.overviewEyebrow}>CHECK-INS TODAY</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="View today's check-ins" onPress={() => void openDetails('checkins')} style={({ pressed }) => [styles.checkinCountRow, pressed && styles.pressed]}>
-              <Text style={styles.checkinCount}>{loading ? '—' : checkinCountDisplay}</Text>
-              <Text style={styles.checkinCountArrow}>›</Text>
+          <Text accessibilityRole="header" style={styles.webOverviewTitle}>Overview</Text>
+
+          <View style={styles.webPanel}>
+            <View style={styles.webPanelHeader}>
+              <View><Text style={styles.webEyebrow}>DAILY OVERVIEW</Text><Text style={styles.webPanelTitle}>Check-ins</Text></View>
+              <Text style={styles.webDatePill}>Today · {new Date(`${todayKey}T12:00:00+05:30`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}</Text>
+            </View>
+            <Pressable accessibilityRole="button" accessibilityLabel="View today's check-ins" onPress={() => void openDetails('checkins')} style={({ pressed }) => [styles.webCheckinTotal, pressed && styles.pressed]}>
+              <Text style={styles.webCheckinNumber}>{loading ? '—' : checkinCountDisplay}</Text>
+              <Text style={styles.webCheckinCaption}>TOTAL CHECK-INS</Text>
+              <Text style={styles.webCheckinArrow}>↗</Text>
             </Pressable>
+            <View style={styles.webBreakdown}>
+              {([
+                { key: 'membership', label: 'Members', color: '#6F855D' },
+                { key: 'walk_in', label: 'Walk-ins', color: '#8C6BA1' },
+                { key: 'special', label: 'Special events', color: '#C25B56' },
+              ] as const).map((item) => (
+                <Pressable key={item.key} accessibilityRole="button" onPress={() => void openDetails('checkins')} style={({ pressed }) => [styles.webBreakdownItem, pressed && styles.pressed]}>
+                  <View style={[styles.webBreakdownDot, { backgroundColor: item.color }]} />
+                  <Text style={styles.webBreakdownLabel}>{item.label}</Text>
+                  <Text style={styles.webBreakdownValue}>{loading ? '—' : visitBreakdown[item.key]}</Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
 
-          <View style={styles.overviewSection}>
-            <View style={styles.overviewSectionTitleRow}><View style={styles.sectionMarker} /><Text style={styles.minimalSectionTitle}>Staff on site</Text><Text style={styles.staffCount}>{loading ? '—' : staffOnSite.length}</Text></View>
-            {staffOnSite.length ? staffOnSite.map((staff) => (
-              <Pressable key={staff.employeeId} accessibilityRole="button" onPress={() => void openDetails('staff')} style={({ pressed }) => [styles.staffOnSiteRow, pressed && styles.pressed]}>
-                <Text style={styles.staffOnSiteName}>{staff.employeeName}</Text>
-                <Text style={styles.staffPunchTime}>In {localClock(staff.punchIn)}</Text>
+          <View style={styles.webTwoColumn}>
+            <View style={styles.webPanel}>
+              <View style={styles.webPanelHeader}>
+                <View><Text style={styles.webEyebrow}>LIVE FLOOR</Text><Text style={styles.webPanelTitle}>Children on site</Text></View>
+                <Text style={styles.webPanelCount}>{loading ? '—' : metrics.onSite ?? 0}</Text>
+              </View>
+              <Pressable accessibilityRole="button" onPress={() => void openDetails('kids')} style={({ pressed }) => [styles.webPanelAction, pressed && styles.pressed]}>
+                <Text style={styles.webPanelActionText}>View checked-in children</Text><Text style={styles.webActionArrow}>↗</Text>
               </Pressable>
-            )) : <Text style={styles.overviewQuietText}>{loading ? 'Loading attendance…' : 'No staff punched in yet'}</Text>}
+            </View>
+            <View style={styles.webPanel}>
+              <View style={styles.webPanelHeader}>
+                <View><Text style={styles.webEyebrow}>TODAY</Text><Text style={styles.webPanelTitle}>Team attendance</Text></View>
+                <Text style={styles.webPanelCount}>{loading ? '—' : staffOnSite.length}</Text>
+              </View>
+              {staffOnSite.length ? staffOnSite.slice(0, 4).map((staff) => (
+                <Pressable key={staff.employeeId} accessibilityRole="button" onPress={() => void openDetails('staff')} style={({ pressed }) => [styles.webTeamRow, pressed && styles.pressed]}>
+                  <View style={styles.webPresentDot} /><Text numberOfLines={1} style={styles.webTeamName}>{staff.employeeName}</Text><Text style={styles.webTeamTime}>{localClock(staff.punchIn)}</Text>
+                </Pressable>
+              )) : <Text style={styles.webEmptyText}>{loading ? 'Loading attendance…' : 'No staff punched in yet'}</Text>}
+              {staffOnSite.length > 4 ? <Pressable onPress={() => void openDetails('staff')}><Text style={styles.webMoreLink}>View all {staffOnSite.length} staff</Text></Pressable> : null}
+            </View>
           </View>
+
+          <View style={styles.webPanel}>
+            <View style={styles.webPanelHeader}>
+              <View><Text style={styles.webEyebrow}>MONTHLY OVERVIEW</Text><Text style={styles.webPanelTitle}>This month at a glance</Text></View>
+              <Pressable accessibilityRole="button" onPress={() => void openDetails('checkins')} style={styles.webActivityButton}><Text style={styles.webActivityButtonText}>Activity ↗</Text></Pressable>
+            </View>
+            <View style={styles.webMonthlyGrid}>
+              {([
+                { value: monthlyOverview?.walkIns, label: 'Walk-ins this month', icon: '↗', action: undefined },
+                { value: monthlyOverview?.newCustomers, label: 'New families', icon: '＋', action: () => navigate('customers') },
+                { value: monthlyOverview?.newMemberships, label: 'New memberships', icon: '✦', action: () => navigate('plans') },
+                { value: monthlyOverview?.expiringSoon, label: 'Expiring in 7 days', icon: '◷', action: () => navigate('expiry') },
+              ] as const).map((item) => (
+                <Pressable key={item.label} accessibilityRole="button" disabled={!item.action} onPress={item.action} style={({ pressed }) => [styles.webMonthlyTile, pressed && styles.pressed]}>
+                  <Text style={styles.webMonthlyIcon}>{item.icon}</Text><Text style={styles.webMonthlyValue}>{item.value ?? '—'}</Text><Text style={styles.webMonthlyLabel}>{item.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {monthlyOverview ? <View style={styles.webMonthlyFooter}><Text style={styles.webMonthlyFooterText}><Text style={styles.webMonthlyFooterStrong}>{monthlyOverview.activeMembers}</Text> active memberships</Text><Text style={styles.webMonthlyFooterMeta}>{monthlyOverview.totalVisits} check-ins</Text></View> : null}
+          </View>
+
+          {upcomingSpecialDays.length ? <View style={styles.webPanel}>
+            <View style={styles.webPanelHeader}><View><Text style={styles.webEyebrow}>UP NEXT</Text><Text style={styles.webPanelTitle}>Upcoming special days</Text></View><Pressable accessibilityRole="button" onPress={() => navigate('plans')}><Text style={styles.webManageLink}>Manage plans</Text></Pressable></View>
+            {upcomingSpecialDays.slice(0, 4).map((day) => <Pressable key={day.id} accessibilityRole="button" onPress={() => navigate('plans')} style={({ pressed }) => [styles.webSpecialRow, pressed && styles.pressed]}>
+              <View style={styles.webSpecialIcon}><Text style={styles.webMonthlyIcon}>✦</Text></View><View style={styles.webSpecialCopy}><Text numberOfLines={1} style={styles.webSpecialName}>{day.name}</Text><Text style={styles.webSpecialMeta}>{new Date(`${day.date}T12:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}{day.moreDates ? ` + ${day.moreDates} more` : ''} · {day.registered} registered</Text></View><Text style={styles.webActionArrow}>›</Text>
+            </Pressable>)}
+          </View> : null}
 
           {(() => {
             const pendingReviews = [
@@ -705,7 +808,7 @@ export default function AdminDashboard({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.canvas },
-  overviewRoot: { backgroundColor: '#FFFFFF' },
+  overviewRoot: { backgroundColor: C.canvas },
   scrollContent: { flexGrow: 1, paddingTop: 10, paddingBottom: 116 },
   overviewScroll: { paddingTop: 17 },
   secondaryLayout: { flex: 1, paddingHorizontal: 18, paddingTop: 8 },
@@ -732,6 +835,49 @@ const styles = StyleSheet.create({
   refreshGlyph: { color: C.plum, fontSize: 25, lineHeight: 29, fontWeight: '500' },
   greetingBlock: { marginBottom: 20 },
   overviewSection: { marginBottom: 29 },
+  webOverviewTitle: { color: C.ink, fontSize: 22, lineHeight: 28, fontWeight: '800', letterSpacing: -0.45, marginTop: -14, marginBottom: 16 },
+  webPanel: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 20, padding: 16, marginBottom: 14 },
+  webPanelHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 15 },
+  webEyebrow: { color: C.muted, fontSize: 9, fontWeight: '800', letterSpacing: 1.1 },
+  webPanelTitle: { color: C.ink, fontSize: 15, fontWeight: '800', marginTop: 3 },
+  webDatePill: { color: C.muted, fontSize: 10, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1, borderColor: C.line, borderRadius: 10, overflow: 'hidden' },
+  webCheckinTotal: { alignSelf: 'center', minWidth: 156, minHeight: 150, alignItems: 'center', justifyContent: 'center', borderRadius: 100, borderWidth: 10, borderColor: C.plumTint, marginBottom: 14 },
+  webCheckinNumber: { color: C.ink, fontSize: 37, lineHeight: 43, fontWeight: '800', letterSpacing: -1.4 },
+  webCheckinCaption: { color: C.muted, fontSize: 8, fontWeight: '800', letterSpacing: 1 },
+  webCheckinArrow: { position: 'absolute', right: 9, top: 5, color: C.plum, fontSize: 19 },
+  webBreakdown: { flexDirection: 'row', gap: 7 },
+  webBreakdownItem: { flex: 1, minWidth: 0, minHeight: 72, padding: 9, borderRadius: 13, borderWidth: 1, borderColor: '#EEE8D9', backgroundColor: '#FFFCF4', justifyContent: 'space-between' },
+  webBreakdownDot: { width: 8, height: 8, borderRadius: 5 },
+  webBreakdownLabel: { color: C.muted, fontSize: 9, lineHeight: 12 },
+  webBreakdownValue: { color: C.ink, fontSize: 19, lineHeight: 22, fontWeight: '800' },
+  webTwoColumn: { gap: 0 },
+  webPanelCount: { color: C.ink, fontSize: 24, lineHeight: 29, fontWeight: '800' },
+  webPanelAction: { minHeight: 39, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: C.line, paddingTop: 10 },
+  webPanelActionText: { color: C.plum, fontSize: 11, fontWeight: '700' },
+  webActionArrow: { color: C.plum, fontSize: 20 },
+  webTeamRow: { minHeight: 38, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, gap: 8 },
+  webPresentDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.mint },
+  webTeamName: { flex: 1, color: C.ink, fontSize: 11, fontWeight: '700' },
+  webTeamTime: { color: C.muted, fontSize: 10 },
+  webEmptyText: { color: C.muted, fontSize: 11, paddingVertical: 8 },
+  webMoreLink: { color: C.plum, fontSize: 10, fontWeight: '800', marginTop: 8 },
+  webActivityButton: { borderWidth: 1, borderColor: C.plumTint, backgroundColor: '#F5EFF8', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
+  webActivityButtonText: { color: C.plum, fontSize: 10, fontWeight: '800' },
+  webMonthlyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  webMonthlyTile: { width: '47%', minHeight: 95, borderWidth: 1, borderColor: '#EEE8D9', borderRadius: 13, padding: 11, backgroundColor: '#FFFCF4' },
+  webMonthlyIcon: { color: C.plum, fontSize: 16, fontWeight: '800' },
+  webMonthlyValue: { color: C.ink, fontSize: 22, lineHeight: 27, fontWeight: '800', marginTop: 4 },
+  webMonthlyLabel: { color: C.muted, fontSize: 9, lineHeight: 13, marginTop: 2 },
+  webMonthlyFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: C.line, marginTop: 12, paddingTop: 11 },
+  webMonthlyFooterText: { color: C.muted, fontSize: 10 },
+  webMonthlyFooterStrong: { color: C.ink, fontWeight: '900' },
+  webMonthlyFooterMeta: { color: C.muted, fontSize: 10 },
+  webManageLink: { color: C.plum, fontSize: 10, fontWeight: '800' },
+  webSpecialRow: { minHeight: 55, flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line },
+  webSpecialIcon: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: C.plumTint },
+  webSpecialCopy: { flex: 1 },
+  webSpecialName: { color: C.ink, fontSize: 11, fontWeight: '800' },
+  webSpecialMeta: { color: C.muted, fontSize: 9, marginTop: 3 },
   overviewEyebrow: { color: '#77727F', fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1, marginBottom: 3 },
   checkinCountRow: { minHeight: 74, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   checkinCount: { color: '#0A0A0A', fontSize: 54, lineHeight: 62, fontWeight: '700', letterSpacing: -2 },
