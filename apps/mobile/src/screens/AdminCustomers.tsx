@@ -31,7 +31,8 @@ type Customer = {
 type ChildDetail = { date_of_birth: string; address: string | null; allergies: string | null; medical_conditions: string | null; special_instructions: string | null };
 type CustomerContact = { phone: string; secondary_phone: string | null; whatsapp_consent: boolean; photo_consent: boolean; how_heard: string | null };
 type VisitRow = { visit_day: string; status: string; checked_in_at: string; checked_out_at: string | null; intended_duration_mins: number | null; actual_duration_mins: number | null };
-type PlanOption = { id: string; name: string; plan_type: 'recurring' | 'special'; event_date: string | null; active?: boolean };
+type PlanOption = { id: string; name: string; plan_type: 'recurring' | 'special'; event_date: string | null; active?: boolean; description?: string | null; price?: number };
+type LandingPlan = PlanOption;
 type MembershipFilter = 'all' | 'active' | 'expiring' | 'expired';
 type MembershipEdit = { customerId: string; childId: string; childName: string; start: string; end: string; maxVisits: number | null; visitsUsed: number; expired: boolean };
 type EditingDetails = { customerId: string; childId: string; parentName: string; phone: string; secondaryPhone: string; childName: string; dateOfBirth: string; address: string; allergies: string; medicalConditions: string; specialInstructions: string };
@@ -50,6 +51,8 @@ function ageFromDate(value: string) {
 
 export default function AdminCustomers({ onBack, initialQuery = '', initialChildId }: { onBack: () => void; initialQuery?: string; initialChildId?: string }) {
   const [query, setQuery] = useState(initialQuery);
+  const [landing, setLanding] = useState(!initialQuery.trim() && !initialChildId);
+  const [landingPlans, setLandingPlans] = useState<LandingPlan[] | null>(null);
   const [membershipFilter, setMembershipFilter] = useState<MembershipFilter>('all');
   const [planFilter, setPlanFilter] = useState<string | null>(null);
   const [planFilterOptions, setPlanFilterOptions] = useState<PlanOption[]>([]);
@@ -86,14 +89,15 @@ export default function AdminCustomers({ onBack, initialQuery = '', initialChild
   const [planForChild, setPlanForChild] = useState<{ customerId: string; child: ChildSummary } | null>(null);
   const [applyingPlan, setApplyingPlan] = useState(false);
 
-  const search = useCallback(async (nextOffset = 0, append = false, queryOverride?: string, filterOverride?: MembershipFilter, planOverride?: string | null) => {
+  const search = useCallback(async (nextOffset = 0, append = false, queryOverride?: string, filterOverride?: MembershipFilter, planOverride?: string | null, allowBrowse = false) => {
     const normalized = (queryOverride ?? query).trim();
     const activeFilter = filterOverride ?? membershipFilter;
     const activePlanId = planOverride !== undefined ? planOverride : planFilter;
-    if (normalized.length < 2 && activeFilter === 'all') {
+    if (normalized.length < 2 && activeFilter === 'all' && !activePlanId && !allowBrowse) {
       setError('Enter at least two characters or choose a membership filter.');
       return;
     }
+    setLanding(false);
     setLoading(true);
     setError(null);
     const todayIst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -122,6 +126,17 @@ export default function AdminCustomers({ onBack, initialQuery = '', initialChild
     setHasMore(page.length === PAGE_SIZE);
     setExpandedId(null);
   }, [membershipFilter, planFilter, query]);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all([
+      supabase.from('membership_plans').select('id,name,description,plan_type,event_date,active,price').order('active', { ascending: false }).order('plan_type').order('name'),
+      supabase.rpc('admin_plan_member_counts'),
+    ]).then(([plansResult]) => {
+      if (active && !plansResult.error) setLandingPlans((plansResult.data as LandingPlan[]) ?? []);
+    });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (initialQuery.trim().length >= 2) void search(0, false, initialQuery);
@@ -377,7 +392,7 @@ export default function AdminCustomers({ onBack, initialQuery = '', initialChild
             keyboardType="default"
             onChangeText={setQuery}
             onSubmitEditing={() => void search()}
-            placeholder="Parent, child, or phone"
+            placeholder="Search a child, parent, or phone number"
             placeholderTextColor="#8B8373"
             returnKeyType="search"
             value={query}
@@ -387,10 +402,28 @@ export default function AdminCustomers({ onBack, initialQuery = '', initialChild
             {loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.searchButtonText}>Search</Text>}
           </Pressable>
         </View>
-        <View style={styles.membershipFilters}>{([['all','All'],['active','Active'],['expiring','Expiring'],['expired','Expired']] as const).map(([value,label])=><Pressable key={value} accessibilityRole="button" accessibilityState={{selected:membershipFilter===value}} onPress={()=>{setMembershipFilter(value);if(value==='expired'){setPlanFilter(null);void search(0,false,query,value,null);}else void search(0,false,query,value);}} style={[styles.membershipFilter,membershipFilter===value&&styles.membershipFilterOn]}><Text style={[styles.membershipFilterText,membershipFilter===value&&styles.membershipFilterTextOn]}>{label}</Text></Pressable>)}</View>
-        {membershipFilter !== 'expired' ? <View style={styles.planFilterRow}><Pressable accessibilityRole="button" onPress={()=>void openPlanFilter()} style={styles.planFilterButton}><Text style={styles.planFilterText}>{planFilterOptions.find((plan)=>plan.id===planFilter)?.name ?? 'Filter by plan'}</Text><Text style={styles.planFilterCaret}>⌄</Text></Pressable>{planFilter ? <Pressable accessibilityRole="button" onPress={()=>choosePlanFilter(null)} style={styles.clearFilter}><Text style={styles.clearFilterText}>Clear</Text></Pressable> : null}</View> : null}
+        {landing ? <>
+          <View style={styles.landingShortcuts}>
+            <Pressable accessibilityRole="button" onPress={() => { setMembershipFilter('all'); setPlanFilter(null); void search(0, false, '', 'all', null, true); }} style={({ pressed }) => [styles.landingShortcut, styles.landingShortcutGreen, pressed && styles.pressed]}>
+              <Text style={styles.landingShortcutIcon}>⌕</Text><Text style={styles.landingShortcutText}>Browse all customers</Text><Text style={styles.landingShortcutArrow}>›</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={() => { setMembershipFilter('active'); setPlanFilter(null); void search(0, false, '', 'active', null, true); }} style={({ pressed }) => [styles.landingShortcut, styles.landingShortcutPurple, pressed && styles.pressed]}>
+              <Text style={styles.landingShortcutIcon}>✓</Text><Text style={styles.landingShortcutText}>Show active customers</Text><Text style={styles.landingShortcutArrow}>›</Text>
+            </Pressable>
+          </View>
+          <View style={styles.landingSectionHeader}><Text style={styles.landingSectionIcon}>✦</Text><Text style={styles.landingSectionTitle}>Plans</Text></View>
+          {landingPlans === null ? <ActivityIndicator color={C.plum} style={styles.landingLoading} /> : landingPlans.length === 0 ? <View style={styles.landingEmpty}><Text style={styles.landingEmptyText}>No plans are set up yet.</Text></View> : landingPlans.map((plan, index) => (
+            <Pressable key={plan.id} accessibilityRole="button" onPress={() => { setPlanFilter(plan.id); setMembershipFilter('all'); void search(0, false, '', 'all', plan.id, true); }} style={({ pressed }) => [styles.landingPlanCard, index % 2 === 0 ? styles.landingPlanLavender : styles.landingPlanPeach, !plan.active && styles.landingPlanInactive, pressed && styles.pressed]}>
+              <View style={styles.landingPlanTop}><Text numberOfLines={1} style={styles.landingPlanName}>{plan.name}</Text><Text style={styles.landingPlanBadge}>{plan.plan_type === 'special' ? 'SPECIAL DAY' : 'MEMBERSHIP'}</Text></View>
+              <View style={styles.landingPlanBottom}><Text numberOfLines={1} style={styles.landingPlanMeta}>{plan.event_date ? new Date(`${plan.event_date}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : plan.description || 'Tap to view customers'}</Text><Text style={[styles.landingPlanStatus, !plan.active && styles.landingPlanInactiveText]}>{plan.active ? 'Active' : 'Inactive'}</Text></View>
+            </Pressable>
+          ))}
+        </> : <>
+          <View style={styles.membershipFilters}>{([['all','All'],['active','Active'],['expiring','Expiring'],['expired','Expired']] as const).map(([value,label])=><Pressable key={value} accessibilityRole="button" accessibilityState={{selected:membershipFilter===value}} onPress={()=>{setMembershipFilter(value);if(value==='expired'){setPlanFilter(null);void search(0,false,query,value,null);}else void search(0,false,query,value);}} style={[styles.membershipFilter,membershipFilter===value&&styles.membershipFilterOn]}><Text style={[styles.membershipFilterText,membershipFilter===value&&styles.membershipFilterTextOn]}>{label}</Text></Pressable>)}</View>
+          {membershipFilter !== 'expired' ? <View style={styles.planFilterRow}><Pressable accessibilityRole="button" onPress={()=>void openPlanFilter()} style={styles.planFilterButton}><Text style={styles.planFilterText}>{planFilterOptions.find((plan)=>plan.id===planFilter)?.name ?? 'Filter by plan'}</Text><Text style={styles.planFilterCaret}>⌄</Text></Pressable>{planFilter ? <Pressable accessibilityRole="button" onPress={()=>choosePlanFilter(null)} style={styles.clearFilter}><Text style={styles.clearFilterText}>Clear</Text></Pressable> : null}</View> : null}
+        </>}
         {error ? <View accessibilityRole="alert" style={styles.errorBox}><Text style={styles.errorTitle}>Couldn’t load customer data</Text><Text style={styles.errorText}>{error}</Text></View> : null}
-        {rows.length === 0 && !loading ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>Search to get started</Text><Text style={styles.emptyText}>Customer records are loaded only after you search.</Text></View> : null}
+        {!landing && rows.length === 0 && !loading ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>{query.trim().length >= 2 ? 'No customers found' : 'No customers to show'}</Text><Text style={styles.emptyText}>Try another search or membership filter.</Text></View> : null}
         {rows.map((customer) => {
           const expanded = expandedId === customer.customer_id;
           return (
@@ -528,6 +561,31 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.canvas }, scroll: { flexGrow: 1, width: '100%', maxWidth: 600, alignSelf: 'center', paddingHorizontal: 18, paddingTop: 12, paddingBottom: 30 },
   header: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 19 }, backButton: { minHeight: 42, justifyContent: 'center', paddingHorizontal: 4 }, backText: { color: C.plum, fontSize: 13, fontWeight: '800' }, addButton: { minHeight: 39, borderRadius: 12, backgroundColor: C.plum, paddingHorizontal: 12, justifyContent: 'center' }, addButtonText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' }, eyebrow: { color: C.muted, fontSize: 9, letterSpacing: 1, fontWeight: '900' },
   title: { color: C.ink, fontSize: 19, fontWeight: '800', letterSpacing: -0.35 }, description: { color: C.muted, fontSize: 12, lineHeight: 18, marginTop: 5, marginBottom: 14 }, searchRow: { flexDirection: 'row', gap: 8 }, searchInput: { flex: 1, minWidth: 0, height: 46, borderWidth: 1, borderColor: C.line, borderRadius: 12, paddingHorizontal: 13, backgroundColor: C.surface, color: C.ink, fontSize: 13 }, searchButton: { minWidth: 78, borderRadius: 12, backgroundColor: C.plum, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 }, searchButtonText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' }, disabled: { opacity: 0.55 }, membershipFilters: { flexDirection:'row',gap:6,marginVertical:10 }, membershipFilter: { flex:1,minHeight:38,borderRadius:10,borderWidth:1,borderColor:C.line,backgroundColor:C.surface,alignItems:'center',justifyContent:'center' }, membershipFilterOn: { borderColor:C.plum,backgroundColor:C.plumTint }, membershipFilterText: { color:C.muted,fontSize:9,fontWeight:'800' }, membershipFilterTextOn: { color:C.plumDark }, planFilterRow:{flexDirection:'row',gap:7,marginBottom:11}, planFilterButton:{flex:1,minHeight:40,borderRadius:11,borderWidth:1,borderColor:C.line,backgroundColor:C.surface,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between'}, planFilterText:{color:C.plumDark,fontSize:10,fontWeight:'800'},planFilterCaret:{color:C.muted,fontSize:16},clearFilter:{minHeight:40,borderRadius:10,justifyContent:'center',paddingHorizontal:12,backgroundColor:C.plumTint},clearFilterText:{color:C.plumDark,fontSize:10,fontWeight:'800'}, expiredNotice:{borderRadius:10,borderWidth:1,borderColor:'#E7D3A6',backgroundColor:'#FBF3E3',padding:11,marginBottom:12},expiredNoticeText:{fontSize:10,color:'#8A6518',lineHeight:15}, filterToggle: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 11 }, checkbox: { width: 19, height: 19, borderRadius: 6, borderWidth: 1, borderColor: '#C9BECF', backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center' }, checkboxChecked: { borderColor: C.plum, backgroundColor: C.plum }, checkmark: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' }, filterText: { color: C.ink, fontSize: 11, fontWeight: '700' },
+  landingShortcuts: { flexDirection: 'row', gap: 9, marginTop: 13, marginBottom: 24 },
+  landingShortcut: { flex: 1, minWidth: 0, minHeight: 61, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 15, paddingHorizontal: 9 },
+  landingShortcutGreen: { backgroundColor: '#EEF4E8', borderColor: '#C7D9B8' },
+  landingShortcutPurple: { backgroundColor: '#F0EAF4', borderColor: '#D7C9E0' },
+  landingShortcutIcon: { color: C.plum, fontSize: 16, fontWeight: '900' },
+  landingShortcutText: { flex: 1, color: C.ink, fontSize: 9, lineHeight: 13, fontWeight: '800' },
+  landingShortcutArrow: { color: C.plum, fontSize: 19, fontWeight: '700' },
+  landingSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  landingSectionIcon: { color: C.plum, fontSize: 15, fontWeight: '900' },
+  landingSectionTitle: { color: C.ink, fontSize: 14, fontWeight: '800' },
+  landingLoading: { marginTop: 22 },
+  landingEmpty: { borderRadius: 15, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface, padding: 18 },
+  landingEmptyText: { color: C.muted, fontSize: 11 },
+  landingPlanCard: { minHeight: 82, justifyContent: 'space-between', borderWidth: 1, borderLeftWidth: 4, borderRadius: 15, padding: 12, marginBottom: 9 },
+  landingPlanLavender: { backgroundColor: '#F1EBF5', borderColor: '#DACDE3', borderLeftColor: '#9B78AA' },
+  landingPlanPeach: { backgroundColor: '#FAEEE5', borderColor: '#EAD3C2', borderLeftColor: '#D0936C' },
+  landingPlanInactive: { opacity: 0.62 },
+  landingPlanTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  landingPlanName: { flex: 1, color: C.ink, fontSize: 12, fontWeight: '800' },
+  landingPlanBadge: { color: C.plum, fontSize: 7, fontWeight: '900', letterSpacing: 0.45 },
+  landingPlanBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 10 },
+  landingPlanMeta: { flex: 1, color: C.muted, fontSize: 9 },
+  landingPlanStatus: { color: C.mint, fontSize: 9, fontWeight: '800' },
+  landingPlanInactiveText: { color: C.muted },
+  pressed: { opacity: 0.82 },
   customerCard: { borderWidth: 1, borderColor: C.line, borderRadius: 16, backgroundColor: C.surface, overflow: 'hidden', marginBottom: 9 }, customerSummary: { minHeight: 72, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 11 }, customerInitial: { width: 39, height: 39, borderRadius: 14, backgroundColor: C.plumTint, alignItems: 'center', justifyContent: 'center', marginRight: 10 }, initialText: { color: C.plumDark, fontSize: 15, fontWeight: '900' }, customerText: { flex: 1, minWidth: 0 }, customerName: { color: C.ink, fontSize: 12, fontWeight: '800' }, customerMeta: { color: C.muted, fontSize: 10, marginTop: 4 }, badgeColumn: { gap: 4, alignItems: 'flex-end', marginLeft: 6 }, onsiteBadge: { color: C.mint, backgroundColor: '#EAF2E4', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3, fontSize: 7, fontWeight: '900' }, memberBadge: { color: C.plum, backgroundColor: C.plumTint, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3, fontSize: 7, fontWeight: '900' },
   childrenList: { borderTopWidth: 1, borderTopColor: C.line, padding: 10, gap: 8, backgroundColor: '#FCFBFA' }, parentExtra: { color: C.muted, fontSize: 9, paddingHorizontal: 4, paddingBottom: 2 }, contactCard:{borderWidth:1,borderColor:C.line,borderRadius:12,backgroundColor:C.surface,padding:11},contactHeading:{color:C.ink,fontSize:10,fontWeight:'900'},contactLine:{color:C.muted,fontSize:9,marginTop:5},contactConsent:{color:C.plumDark,fontSize:9,fontWeight:'700',marginTop:6},contactHint:{color:C.muted,fontSize:8,lineHeight:12,marginTop:5},contactActions:{flexDirection:'row',flexWrap:'wrap',gap:6,marginTop:9},contactButton:{minHeight:34,borderRadius:9,borderWidth:1,borderColor:C.line,justifyContent:'center',paddingHorizontal:10},contactButtonText:{color:C.plumDark,fontSize:8,fontWeight:'800'},whatsappButton:{minHeight:34,borderRadius:9,backgroundColor:'#EAF2E4',justifyContent:'center',paddingHorizontal:10},whatsappButtonText:{color:C.mint,fontSize:8,fontWeight:'900'}, deleteFamily: { minHeight: 36, alignSelf: 'flex-start', borderRadius: 9, borderWidth: 1, borderColor: '#E8C9C6', paddingHorizontal: 10, justifyContent: 'center' }, deleteFamilyText: { color: C.coral, fontSize: 8, fontWeight: '900' }, childCard: { borderWidth: 1, borderColor: C.line, borderRadius: 12, backgroundColor: C.surface, overflow: 'hidden' }, childHeader: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10, paddingVertical: 9 }, childTitleBlock: { flex: 1, minWidth: 0, paddingRight: 6 }, childName: { color: C.ink, fontSize: 11, fontWeight: '800' }, childSub: { color: C.muted, fontSize: 9, marginTop: 4 }, detailsLink: { color: C.plum, fontSize: 9, fontWeight: '800' }, childDetails: { borderTopWidth: 1, borderTopColor: C.line, padding: 10, gap: 4 }, childDetailLine: { color: C.muted, fontSize: 9, lineHeight: 14 }, medicalLine: { color: C.coral, fontSize: 9, lineHeight: 14 }, childActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 9, paddingBottom: 9 }, smallAction: { minHeight: 35, borderRadius: 9, paddingHorizontal: 9, justifyContent: 'center', backgroundColor: C.plumTint }, smallActionText: { color: C.plumDark, fontSize: 8, fontWeight: '800' }, checkInAction: { minHeight: 35, borderRadius: 9, paddingHorizontal: 11, justifyContent: 'center', backgroundColor: '#EAF2E4' }, checkInText: { color: C.mint, fontSize: 8, fontWeight: '900' }, checkOutAction: { minHeight: 35, borderRadius: 9, paddingHorizontal: 11, justifyContent: 'center', backgroundColor: '#FBE8E2' }, checkOutText: { color: C.coral, fontSize: 8, fontWeight: '900' }, historyBox: { borderTopWidth: 1, borderTopColor: C.line, padding: 9, gap: 6, backgroundColor: '#FAF8F7' }, historyRow: { borderRadius: 9, padding: 8, backgroundColor: C.surface }, historyTitle: { color: C.ink, fontSize: 9, fontWeight: '800' }, historyText: { color: C.muted, fontSize: 8, marginTop: 3 },
   errorBox: { backgroundColor: '#FBE8E2', borderColor: '#EDC5B9', borderWidth: 1, borderRadius: 13, padding: 11, marginBottom: 10 }, errorTitle: { color: C.coral, fontSize: 10, fontWeight: '900' }, errorText: { color: '#9F625D', fontSize: 9, lineHeight: 14, marginTop: 3 }, emptyCard: { padding: 24, borderRadius: 16, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface, alignItems: 'center' }, emptyTitle: { color: C.ink, fontSize: 13, fontWeight: '800' }, emptyText: { color: C.muted, fontSize: 10, marginTop: 5 }, moreButton: { minHeight: 45, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: C.plumTint, marginTop: 4 }, moreText: { color: C.plumDark, fontSize: 11, fontWeight: '800' }, modalScrim: { flex: 1, backgroundColor: '#00000070', justifyContent: 'center', padding: 20 }, modalCard: { borderRadius: 20, padding: 18, backgroundColor: C.surface }, modalTitle: { color: C.ink, fontSize: 18, fontWeight: '900' }, modalDescription: { color: C.muted, fontSize: 10, lineHeight: 15, marginTop: 5, marginBottom: 15 }, durationOptions: { gap: 8 }, durationButton: { minHeight: 48, borderRadius: 12, backgroundColor: C.plum, alignItems: 'center', justifyContent: 'center' }, durationButtonText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' }, cancelButton: { minHeight: 44, borderRadius: 11, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }, cancelText: { color: C.muted, fontSize: 11, fontWeight: '800' }, addSheet: { flex: 1, backgroundColor: C.canvas, padding: 20, paddingTop: 28 }, fieldLabel: { color: C.ink, fontSize: 10, fontWeight: '800', marginTop: 12, marginBottom: 5 }, formInput: { minHeight: 47, borderRadius: 11, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface, paddingHorizontal: 11, color: C.ink, fontSize: 12 }, multilineInput: { minHeight: 72, paddingTop: 10, textAlignVertical: 'top' }, formError: { color: C.coral, fontSize: 10, lineHeight: 15, marginTop: 10 }, formActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 18 }, saveButton: { minHeight: 44, minWidth: 120, borderRadius: 11, backgroundColor: C.plum, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }, saveText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900' }, modalLoading: { marginTop: 24, marginBottom: 24 }, planList: { flexGrow: 0, maxHeight: '68%' }, planOption: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 11, borderRadius: 12, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, marginBottom: 7 }, planOptionText: { flex: 1, minWidth: 0 }, planOptionName: { color: C.ink, fontSize: 11, fontWeight: '900' }, planOptionMeta: { color: C.muted, fontSize: 9, marginTop: 4 }, planSelect: { color: C.plum, fontSize: 9, fontWeight: '900', marginLeft: 8 }, planCancel: { marginTop: 12 },
