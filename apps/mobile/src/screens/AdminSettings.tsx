@@ -6,6 +6,7 @@ import { colors } from '../theme/tokens';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import MobileNotifications from '../components/MobileNotifications';
+import MessageTemplateSettings from '../components/MessageTemplateSettings';
 
 const C = { ...colors, tint: colors.plumTint };
 type KioskSession = { id: string; name: string; created_at: string; last_seen_at: string };
@@ -219,6 +220,7 @@ export default function AdminSettings({ onBack, onSignOut }: { onBack: () => voi
           onPress={() => toggleSection('notifications')}
         >
           <MobileNotifications />
+          <MessageTemplateSettings />
         </Disclosure>
 
         <View style={styles.dataExport}>

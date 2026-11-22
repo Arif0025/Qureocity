@@ -21,14 +21,16 @@ import AdminPlans from './AdminPlans';
 import AdminStaff from './AdminStaff';
 import AdminSettings from './AdminSettings';
 import { colors } from '../theme/tokens';
+import * as Notifications from 'expo-notifications';
 import AdminGlobalSearch from '../components/AdminGlobalSearch';
+import NativeMessageComposer from '../components/NativeMessageComposer';
+import type { MessageTemplateEvent, MessageTemplateValues } from '../lib/messageTemplates';
 import AdminLeaveRequests from './AdminLeaveRequests';
 import AdminPartyRequests from './AdminPartyRequests';
 import AdminExpiryAlerts from './AdminExpiryAlerts';
 import AdminRequestHistory from './AdminRequestHistory';
 import AdminPushHistory from './AdminPushHistory';
 import AdminHelp from './AdminHelp';
-import { openCustomerMessageDraft } from '../integrations/customerMessaging';
 
 const C = { ...colors };
 
@@ -69,6 +71,7 @@ type StaffDetail = {
   shiftEnd: string | null;
 };
 type DetailItem = { title: string; subtitle: string; checkin?: CheckinDetail; staff?: StaffDetail };
+type DashboardMessageDraft = { phone: string; title: string; event: MessageTemplateEvent; values: MessageTemplateValues; initialMessage: string };
 type AdminView = 'overview' | 'requests' | 'customers' | 'plans' | 'staff' | 'settings' | 'help' | 'leave' | 'parties' | 'expiry' | 'history' | 'pushHistory';
 
 const emptyMetrics: Metrics = {
@@ -242,6 +245,7 @@ export default function AdminDashboard({
   const [activeView, setActiveView] = useState<AdminView>('overview');
   const [moreOpen, setMoreOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [messageDraft, setMessageDraft] = useState<DashboardMessageDraft | null>(null);
   const [customerSearchSeed, setCustomerSearchSeed] = useState('');
   const [customerChildSeed, setCustomerChildSeed] = useState<string | undefined>();
   const [staffSearchSeed, setStaffSearchSeed] = useState<string | undefined>();
@@ -254,6 +258,36 @@ export default function AdminDashboard({
   const [monthlyOverview, setMonthlyOverview] = useState<MonthlyOverview | null>(null);
   const [upcomingSpecialDays, setUpcomingSpecialDays] = useState<UpcomingSpecialDay[]>([]);
   const todayKey = useMemo(() => istDateKey(), []);
+  const handledNotificationIds = useRef(new Set<string>());
+
+  const openMessageFromNotification = useCallback(async (response: Notifications.NotificationResponse) => {
+    const request = response.notification.request;
+    const responseId = request.identifier;
+    if (handledNotificationIds.current.has(responseId)) return;
+    handledNotificationIds.current.add(responseId);
+    const data = request.content.data as { url?: unknown };
+    if (typeof data.url !== 'string') return;
+    let url: URL;
+    try { url = new URL(data.url, 'https://qureocity.app'); } catch { return; }
+    const sessionId = url.searchParams.get('message_session');
+    if (!sessionId) return;
+    const { data: checkins, error: checkinError } = await supabase.rpc('admin_today_checkin_list', { p_day: todayKey, p_visit_type: null });
+    if (checkinError) { Alert.alert('Could not open message', checkinError.message); return; }
+    const row = ((checkins ?? []) as Record<string, unknown>[]).find(item => String(item.session_id) === sessionId);
+    if (!row) { Alert.alert('Visit not found', 'This visit is no longer in today’s check-in list. Open Customers to find the family.'); return; }
+    const event: MessageTemplateEvent = url.searchParams.get('message_event') === 'child_checkout_push' ? 'child_checkout_push' : 'customer_contact';
+    const parentName = String(row.parent_name ?? 'Parent');
+    const childName = String(row.child_name ?? 'your child');
+    const phone = String(row.parent_phone ?? '');
+    if (!phone) { Alert.alert('Phone number unavailable', 'No parent phone number is recorded for this visit.'); return; }
+    setMessageDraft({ phone, title: `Message ${parentName}`, event, values: { parent_name: parentName, child_name: childName, checkout_time: row.checked_out_at ? localClock(String(row.checked_out_at)) : '', business_name: 'QureoCity' }, initialMessage: event === 'child_checkout_push' ? 'Hi {{parent_name}}! This is {{business_name}} — {{child_name}} has finished today’s visit. Let us know if you need anything.' : 'Hi {{parent_name}}! This is {{business_name}}. I’m reaching out about {{child_name}}’s visit. How can we help?' });
+  }, [todayKey]);
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => { void openMessageFromNotification(response); });
+    void Notifications.getLastNotificationResponseAsync().then(response => { if (response) void openMessageFromNotification(response); });
+    return () => subscription.remove();
+  }, [openMessageFromNotification]);
 
   useEffect(() => {
     const dayStart = new Date(`${todayKey}T00:00:00+05:30`).toISOString();
@@ -473,13 +507,9 @@ export default function AdminDashboard({
     catch { Alert.alert('Could not open phone', 'This device could not open the phone dialer.'); }
   };
 
-  const messageParent = async (phone: string, parentName: string, childName: string) => {
+  const messageParent = async (phone: string, parentName: string, childName: string, event: MessageTemplateEvent = 'customer_contact', checkoutTime?: string | null) => {
     if (!phone) { Alert.alert('Phone number unavailable', 'No parent phone number is recorded for this visit.'); return; }
-    try {
-      await openCustomerMessageDraft({ channel: 'whatsapp', phone, message: `Hi ${parentName}, this is QureoCity. We’re contacting you about ${childName}’s visit.` });
-    } catch {
-      Alert.alert('Could not open WhatsApp', 'Check the parent’s phone number and try again.');
-    }
+    setMessageDraft({ phone, title: `Message ${parentName}`, event, values: { parent_name: parentName, child_name: childName, checkout_time: checkoutTime ? localClock(checkoutTime) : '', business_name: 'QureoCity' }, initialMessage: event === 'child_checkout_push' ? 'Hi {{parent_name}}! This is {{business_name}} — {{child_name}} has finished today’s visit. Let us know if you need anything.' : 'Hi {{parent_name}}! This is {{business_name}}. I’m reaching out about {{child_name}}’s visit. How can we help?' });
   };
 
   const sendStaffNotification = async (employee: StaffDetail) => {
@@ -607,6 +637,7 @@ export default function AdminDashboard({
 
   return (
     <View style={[styles.root, activeView === 'overview' && styles.overviewRoot]}>
+      <NativeMessageComposer open={Boolean(messageDraft)} onClose={() => setMessageDraft(null)} title={messageDraft?.title ?? 'Message family'} phone={messageDraft?.phone ?? ''} event={messageDraft?.event ?? 'customer_contact'} values={messageDraft?.values ?? {}} initialMessage={messageDraft?.initialMessage ?? ''} canManageTemplates />
       {activeView === 'overview' ? <ScrollView
         contentContainerStyle={[styles.scrollContent, styles.overviewScroll, { paddingHorizontal: compact ? 21 : 24 }]}
         contentInsetAdjustmentBehavior="automatic"
@@ -768,7 +799,7 @@ export default function AdminDashboard({
                     expanded={expandedCheckinId === item.checkin.sessionId}
                     onToggleParent={() => setExpandedCheckinId((current) => current === item.checkin!.sessionId ? null : item.checkin!.sessionId)}
                     onCall={() => void callParent(item.checkin!.parentPhone)}
-                    onMessage={() => void messageParent(item.checkin!.parentPhone, item.checkin!.parentName, item.checkin!.childName)}
+                    onMessage={() => void messageParent(item.checkin!.parentPhone, item.checkin!.parentName, item.checkin!.childName, item.checkin!.active ? 'customer_contact' : 'child_checkout_push', item.checkin!.checkedOutAt)}
                     onEdit={() => {
                       const visit = item.checkin!;
                       setDetailKind(null);

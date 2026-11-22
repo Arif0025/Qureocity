@@ -13,7 +13,8 @@ import {
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { colors as C } from '../theme/tokens';
-import { openCustomerMessageDraft } from '../integrations/customerMessaging';
+import NativeMessageComposer from '../components/NativeMessageComposer';
+import type { MessageTemplateValues } from '../lib/messageTemplates';
 
 const PAGE_SIZE = 30;
 
@@ -36,6 +37,7 @@ type LandingPlan = PlanOption;
 type MembershipFilter = 'all' | 'active' | 'expiring' | 'expired';
 type MembershipEdit = { customerId: string; childId: string; childName: string; start: string; end: string; maxVisits: number | null; visitsUsed: number; expired: boolean };
 type EditingDetails = { customerId: string; childId: string; parentName: string; phone: string; secondaryPhone: string; childName: string; dateOfBirth: string; address: string; allergies: string; medicalConditions: string; specialInstructions: string };
+type CustomerMessageDraft = { phone: string; parentName: string; childName: string; dateOfBirth?: string; values: MessageTemplateValues };
 
 const phoneDigits = (value: string) => value.replace(/\D/g, '');
 const whatsappDigits = (value: string) => { const digits = phoneDigits(value); return digits.length === 10 ? `91${digits}` : digits; };
@@ -88,6 +90,7 @@ export default function AdminCustomers({ onBack, initialQuery = '', initialChild
   const [planOptionsLoading, setPlanOptionsLoading] = useState(false);
   const [planForChild, setPlanForChild] = useState<{ customerId: string; child: ChildSummary } | null>(null);
   const [applyingPlan, setApplyingPlan] = useState(false);
+  const [messageDraft, setMessageDraft] = useState<CustomerMessageDraft | null>(null);
 
   const search = useCallback(async (nextOffset = 0, append = false, queryOverride?: string, filterOverride?: MembershipFilter, planOverride?: string | null, allowBrowse = false) => {
     const normalized = (queryOverride ?? query).trim();
@@ -200,9 +203,9 @@ export default function AdminCustomers({ onBack, initialQuery = '', initialChild
     if (!contact) return;
     const number = whatsappDigits(contact.phone);
     if (number.length < 11 || number.length > 15) { setError('The primary phone number is not valid for WhatsApp.'); return; }
-    const text = `Hi ${customer.parent_name}, this is QureoCity. How can we help you today?`;
-    try { await openCustomerMessageDraft({ channel: 'whatsapp', phone: number, message: text }); }
-    catch { setError('WhatsApp could not be opened on this device.'); }
+    const child = customer.children?.[0];
+    const details = child ? detailsByChild[child.id] ?? await loadChildDetails(customer.customer_id, child.id) : null;
+    setMessageDraft({ phone: number, parentName: customer.parent_name, childName: child?.name ?? '', dateOfBirth: details?.date_of_birth, values: { parent_name: customer.parent_name, child_name: child?.name ?? '', date_of_birth: details?.date_of_birth, business_name: 'QureoCity' } });
   };
 
   const checkIn = async (customer: Customer, child: ChildSummary, durationMins: number | null) => {
@@ -377,6 +380,7 @@ export default function AdminCustomers({ onBack, initialQuery = '', initialChild
 
   return (
     <View style={styles.root}>
+      <NativeMessageComposer open={Boolean(messageDraft)} onClose={() => setMessageDraft(null)} title={`Message ${messageDraft?.parentName ?? 'family'}`} phone={messageDraft?.phone ?? ''} event="customer_contact" values={messageDraft?.values ?? {}} initialMessage="Hi {{parent_name}}! This is {{business_name}}. How can we help you today?" canManageTemplates />
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Pressable accessibilityRole="button" onPress={onBack} style={styles.backButton}><Text style={styles.backText}>‹ Back</Text></Pressable>

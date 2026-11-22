@@ -16,6 +16,8 @@ import AdminPartyRequests from './AdminPartyRequests';
 import AdminRequestHistory from './AdminRequestHistory';
 import AdminExpiryAlerts from './AdminExpiryAlerts';
 import AdminPushHistory from './AdminPushHistory';
+import NativeMessageComposer from '../components/NativeMessageComposer';
+import type { MessageTemplateEvent, MessageTemplateValues } from '../lib/messageTemplates';
 
 const REGISTRATION_PAGE_SIZE = 30;
 type Registration = {
@@ -42,6 +44,7 @@ type Registration = {
   whatsapp_consent?: boolean;
   submitted_at: string;
 };
+type RegistrationMessageDraft = { phone: string; event: MessageTemplateEvent; title: string; values: MessageTemplateValues; initialMessage: string };
 
 function displayDate(value: string | null | undefined) {
   if (!value) return '—';
@@ -61,6 +64,7 @@ export default function AdminRequests({ onBack, onOpenSettings }: { onBack: () =
   const [busyId, setBusyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [messageDraft, setMessageDraft] = useState<RegistrationMessageDraft | null>(null);
 
   const load = useCallback(async (nextOffset = 0, append = false) => {
     setError(null);
@@ -155,10 +159,28 @@ export default function AdminRequests({ onBack, onOpenSettings }: { onBack: () =
     setRegistrationOffset((current) => Math.max(0, current - 1));
     setDetailsById((current) => { const next = { ...current }; delete next[row.id]; return next; });
     setExpandedId(null);
+    const detail = detailsById[row.id] ?? row;
+    const phone = detail.phone || detail.secondary_phone || row.phone || row.secondary_phone || '';
+    if (phone) {
+      const special = row.registration_type === 'special';
+      const approved = action === 'confirm';
+      const event: MessageTemplateEvent = special
+        ? approved ? 'special_day_approved' : 'special_day_declined'
+        : approved ? 'membership_approved' : 'membership_declined';
+      const eventDate = displayDate(detail.special_event_date ?? detail.plan_event_date);
+      setMessageDraft({
+        phone, event, title: `${special ? 'Special day' : 'Membership'} ${approved ? 'approved' : 'declined'}`,
+        values: { parent_name: detail.parent_name, child_name: detail.child_name, plan_name: detail.plan_name ?? '', request_type: row.registration_type === 'renewal' ? 'renewal' : special ? 'special-day' : 'membership', event_date: eventDate === '—' ? '' : eventDate, business_name: 'QureoCity' },
+        initialMessage: approved
+          ? special ? 'Hi {{parent_name}}, {{child_name}}’s registration for {{plan_name}} on {{event_date}} is confirmed. We look forward to welcoming you!' : 'Hi {{parent_name}}, {{child_name}}’s {{plan_name}} has been approved and their subscription is now active. We look forward to welcoming you!'
+          : special ? 'Hi {{parent_name}}, unfortunately we’re unable to approve {{child_name}}’s {{request_type}} request for {{event_date}}. Please contact us if you have questions.' : 'Hi {{parent_name}}, unfortunately we’re unable to approve {{child_name}}’s {{request_type}} request at this time. Please contact us if you have any questions.',
+      });
+    }
   };
 
   return (
     <View style={styles.root}>
+      <NativeMessageComposer open={Boolean(messageDraft)} onClose={() => setMessageDraft(null)} title={messageDraft?.title ?? 'Message family'} phone={messageDraft?.phone ?? ''} event={messageDraft?.event ?? 'customer_contact'} values={messageDraft?.values ?? {}} initialMessage={messageDraft?.initialMessage ?? ''} canManageTemplates />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Pressable accessibilityRole="button" onPress={() => setSection('hub')} style={styles.backButton}>

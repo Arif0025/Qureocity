@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { colors as C } from '../theme/tokens';
-import { openCustomerMessageDraft } from '../integrations/customerMessaging';
+import NativeMessageComposer from '../components/NativeMessageComposer';
+import type { MessageTemplateEvent, MessageTemplateValues } from '../lib/messageTemplates';
 
 type ExpiryStatus = 'expiring_soon' | 'expired';
 type ExpiryRow = { child_id: string; child_name: string; parent_name: string; phone: string | null; secondary_phone: string | null; plan_name: string; expires_on: string; days_remaining: number; date_of_birth: string };
 const PAGE_SIZE = 30;
 const dateLabel = (value: string) => new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+type Draft = { phone: string; event: MessageTemplateEvent; title: string; values: MessageTemplateValues; initialMessage: string };
 
 export default function AdminExpiryAlerts({ onBack }: { onBack: () => void }) {
   const [status, setStatus] = useState<ExpiryStatus>('expiring_soon');
@@ -18,6 +20,7 @@ export default function AdminExpiryAlerts({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(false);
   const [loadingCounts, setLoadingCounts] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [messageDraft, setMessageDraft] = useState<Draft | null>(null);
 
   const loadCounts = useCallback(async () => {
     setLoadingCounts(true);
@@ -48,14 +51,10 @@ export default function AdminExpiryAlerts({ onBack }: { onBack: () => void }) {
     const phone = row.phone || row.secondary_phone;
     if (!phone) { setError('There is no customer phone number for this membership.'); return; }
     const expiryDate = dateLabel(row.expires_on);
-    const message = `Hi ${row.parent_name}! Just a heads up that ${row.child_name}'s membership at QureoCity expires on ${expiryDate}. Renew anytime at the front desk to keep the fun going!`;
-    Alert.alert('Open WhatsApp draft?', 'WhatsApp will open with this message ready to review. It will not be sent automatically.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Open WhatsApp', onPress: () => { void openCustomerMessageDraft({ channel: 'whatsapp', phone, message }).catch(() => setError('WhatsApp could not be opened on this device.')); } },
-    ]);
+    setMessageDraft({ phone, event: 'membership_expiry', title: `Membership reminder for ${row.child_name}`, values: { parent_name: row.parent_name, child_name: row.child_name, expiry_date: expiryDate, business_name: 'QureoCity' }, initialMessage: 'Hi {{parent_name}}! Just a heads up that {{child_name}}’s membership at {{business_name}} expires on {{expiry_date}}. Renew anytime at the front desk to keep the fun going!' });
   };
 
-  return <View style={styles.root}><ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+  return <View style={styles.root}><NativeMessageComposer open={Boolean(messageDraft)} onClose={() => setMessageDraft(null)} title={messageDraft?.title ?? 'Membership reminder'} phone={messageDraft?.phone ?? ''} event={messageDraft?.event ?? 'membership_expiry'} values={messageDraft?.values ?? {}} initialMessage={messageDraft?.initialMessage ?? ''} canManageTemplates /><ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
     <View style={styles.header}><Pressable accessibilityRole="button" onPress={onBack} style={styles.back}><Text style={styles.backText}>‹ Notifications</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Refresh expiry alerts" onPress={() => { void loadCounts(); void loadPage(status); }} style={styles.refresh}><Text style={styles.refreshText}>↻</Text></Pressable></View>
     <Text style={styles.eyebrow}>MEMBERSHIPS</Text><Text accessibilityRole="header" style={styles.title}>Expiry alerts</Text><Text style={styles.subtitle}>A paged list of expired memberships and those ending in the next 7 days.</Text>
     <View style={styles.filters}>
