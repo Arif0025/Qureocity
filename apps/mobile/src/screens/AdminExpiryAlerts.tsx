@@ -56,7 +56,7 @@ export default function AdminExpiryAlerts({ onBack }: { onBack: () => void }) {
   };
 
   return <View style={styles.root}><ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-    <View style={styles.header}><Pressable accessibilityRole="button" onPress={onBack} style={styles.back}><Text style={styles.backText}>‹ Back</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Refresh expiry alerts" onPress={() => { void loadCounts(); void loadPage(status); }} style={styles.refresh}><Text style={styles.refreshText}>↻</Text></Pressable></View>
+    <View style={styles.header}><Pressable accessibilityRole="button" onPress={onBack} style={styles.back}><Text style={styles.backText}>‹ Notifications</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Refresh expiry alerts" onPress={() => { void loadCounts(); void loadPage(status); }} style={styles.refresh}><Text style={styles.refreshText}>↻</Text></Pressable></View>
     <Text style={styles.eyebrow}>MEMBERSHIPS</Text><Text accessibilityRole="header" style={styles.title}>Expiry alerts</Text><Text style={styles.subtitle}>A paged list of expired memberships and those ending in the next 7 days.</Text>
     <View style={styles.filters}>
       <Pressable accessibilityRole="tab" accessibilityState={{ selected: status === 'expiring_soon' }} onPress={() => setStatus('expiring_soon')} style={[styles.filter, status === 'expiring_soon' && styles.expiringActive]}><Text style={[styles.filterText, status === 'expiring_soon' && styles.activeText]}>Expiring · 7 days{!loadingCounts ? ` · ${counts.expiring_soon}` : ''}</Text></Pressable>

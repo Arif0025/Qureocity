@@ -62,7 +62,7 @@ export default function AdminPartyRequests({ onBack }: { onBack: () => void }) {
   };
 
   return <View style={styles.root}><ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-    <View style={styles.header}><Pressable accessibilityRole="button" onPress={onBack} style={styles.back}><Text style={styles.backText}>‹ Back</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Refresh party requests" onPress={() => void load()} style={styles.refresh}><Text style={styles.refreshText}>↻</Text></Pressable></View>
+    <View style={styles.header}><Pressable accessibilityRole="button" onPress={onBack} style={styles.back}><Text style={styles.backText}>‹ Notifications</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Refresh party requests" onPress={() => void load()} style={styles.refresh}><Text style={styles.refreshText}>↻</Text></Pressable></View>
     <Text style={styles.eyebrow}>CUSTOMER REQUESTS</Text><Text accessibilityRole="header" style={styles.title}>Party bookings</Text><Text style={styles.subtitle}>Review package and custom requests. Message drafts are opened only after you choose.</Text>
     {error ? <View accessibilityRole="alert" style={styles.errorBox}><Text style={styles.errorTitle}>Couldn’t update party request</Text><Text style={styles.errorText}>{error}</Text></View> : null}
     {loading ? <ActivityIndicator color={C.plum} size="large" style={styles.loading} /> : rows.length === 0 ? <View style={styles.empty}><Text style={styles.emptyTitle}>No party requests need a response</Text><Text style={styles.emptyText}>New requests will appear here after refresh.</Text></View> : rows.map((booking) => <View key={booking.id} style={styles.card}>

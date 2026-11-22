@@ -35,7 +35,7 @@ export default function AdminRequestHistory({ onBack }: { onBack: () => void }) 
   }, []);
   useEffect(() => { void load(); }, [load]);
   return <View style={styles.root}><ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-    <Text onPress={onBack} style={styles.back}>‹ Back</Text><Text style={styles.eyebrow}>ADMIN INBOX</Text><Text accessibilityRole="header" style={styles.title}>Action history</Text><Text style={styles.subtitle}>Recent registration, party, and staff leave decisions.</Text>
+    <Text accessibilityRole="button" onPress={onBack} style={styles.back}>‹ Notifications</Text><Text style={styles.eyebrow}>ADMIN INBOX</Text><Text accessibilityRole="header" style={styles.title}>Action history</Text><Text style={styles.subtitle}>Recent registration, party, and staff leave decisions.</Text>
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
     {loading ? <ActivityIndicator color={C.plum} size="large" style={styles.loading} /> : rows.length === 0 ? <View style={styles.empty}><Text style={styles.emptyText}>No recent decisions yet.</Text></View> : rows.map((row) => <View key={row.id} style={styles.card}>
       <View style={styles.top}><Text style={styles.name}>{row.name}</Text><Text style={[styles.status, row.status === 'confirmed' ? styles.approved : row.status === 'quoted' ? styles.quoted : styles.declined]}>{row.status === 'confirmed' ? 'Approved' : row.status === 'quoted' ? 'Quoted' : 'Declined'}</Text></View>
